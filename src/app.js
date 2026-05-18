@@ -9,6 +9,7 @@ const els = {
   pages: $("#pages"),
   pageCount: $("#pageCount"),
   status: $("#statusText"),
+  themeToggle: $("#themeToggleBtn"),
   exportAll: $("#exportAllBtn"),
   downloadZip: $("#downloadZipBtn"),
   rerender: $("#rerenderBtn"),
@@ -116,6 +117,16 @@ const FONT_STACKS = {
   "en-mono": '"SFMono-Regular", Menlo, Consolas, monospace',
 };
 
+const UI_THEMES = ["paper", "blue", "sage", "rose", "ink"];
+
+const UI_THEME_LABELS = {
+  paper: "纸白",
+  blue: "晴蓝",
+  sage: "青绿",
+  rose: "玫瑰",
+  ink: "墨色",
+};
+
 const defaultText = `[[image:sample]]
 
 她说，如果你无聊的时候，不想只是刷手机，可以让 AI 做一件事：
@@ -141,6 +152,7 @@ const state = {
   scrollOffset: 0,
   scrollMax: 0,
   colorBrush: false,
+  uiTheme: "paper",
 };
 
 const textHistory = {
@@ -173,6 +185,7 @@ function defaultFormState() {
     zhFont: "zh-system",
     enFont: "en-system",
     imageHeight: "520",
+    uiTheme: "paper",
     avatar: sampleAvatar,
     avatarCrop: null,
     images: state.images,
@@ -192,6 +205,7 @@ function readForm() {
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
     imageHeight: clamp(Number(els.imageHeight.value) || 520, 220, 760),
+    uiTheme: state.uiTheme,
     avatar: state.avatar,
     avatarCrop: state.avatarCrop,
     images: state.images,
@@ -210,13 +224,34 @@ function applyForm(data) {
   els.zhFont.value = FONT_STACKS[data.zhFont] ? data.zhFont : "zh-system";
   els.enFont.value = FONT_STACKS[data.enFont] ? data.enFont : "en-system";
   els.imageHeight.value = String(data.imageHeight ?? "520") === "380" ? "520" : data.imageHeight ?? "520";
+  setUiTheme(data.uiTheme || "paper");
   state.avatar = data.avatar || sampleAvatar;
   state.avatarCrop = data.avatarCrop || null;
   state.images = { ...defaultFormState().images, ...(data.images || {}) };
   els.avatarPreview.src = state.avatar;
-  document.documentElement.style.setProperty("--accent", els.accentColor.value);
   document.documentElement.style.setProperty("--brush-color", els.inlineColor.value);
   updateImageList();
+}
+
+function setUiTheme(theme, announce = false) {
+  const nextTheme = UI_THEMES.includes(theme) ? theme : "paper";
+  state.uiTheme = nextTheme;
+  document.documentElement.dataset.uiTheme = nextTheme;
+  if (els.themeToggle) {
+    const label = UI_THEME_LABELS[nextTheme];
+    els.themeToggle.title = `切换主题色：当前 ${label}`;
+    els.themeToggle.setAttribute("aria-label", `切换主题色，当前 ${label}`);
+  }
+  if (announce) {
+    els.status.textContent = `已切换为${UI_THEME_LABELS[nextTheme]}主题`;
+  }
+}
+
+function toggleUiTheme() {
+  const index = UI_THEMES.indexOf(state.uiTheme);
+  const nextTheme = UI_THEMES[(index + 1) % UI_THEMES.length];
+  setUiTheme(nextTheme, true);
+  saveState();
 }
 
 function normalizeHandle(value) {
@@ -1534,7 +1569,6 @@ function clampText(ctx, text, maxWidth) {
 
 async function render() {
   const settings = readForm();
-  document.documentElement.style.setProperty("--accent", settings.accentColor);
   if (state.mode === "scroll") {
     const page = await buildScrollPage(settings);
     state.canvases = [renderScrollPage(page)];
@@ -1759,6 +1793,7 @@ function bindEvents() {
   els.findNext.addEventListener("click", findNext);
   els.replaceOne.addEventListener("click", replaceCurrent);
   els.replaceAll.addEventListener("click", replaceAll);
+  els.themeToggle.addEventListener("click", toggleUiTheme);
   els.rerender.addEventListener("click", render);
   els.exportAll.addEventListener("click", downloadAll);
   els.downloadZip.addEventListener("click", downloadAll);
