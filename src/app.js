@@ -1666,9 +1666,45 @@ function setScrollOffset(value) {
 }
 
 async function downloadCanvas(canvas, filename) {
+  const writable = await chooseSaveTarget(filename, "image/png", ".png");
+  if (writable === false) {
+    els.status.textContent = "已取消下载";
+    return;
+  }
   const blob = await canvasToBlob(canvas);
   if (!blob) {
     els.status.textContent = "图片生成失败，请重新排版后再试";
+    return;
+  }
+  await saveBlob(blob, filename, writable);
+  els.status.textContent = writable ? `已保存 ${filename}` : `已交给浏览器下载 ${filename}`;
+}
+
+async function chooseSaveTarget(filename, mimeType, extension) {
+  if (!window.showSaveFilePicker) return null;
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: filename,
+      types: [
+        {
+          description: extension === ".zip" ? "ZIP 压缩包" : "PNG 图片",
+          accept: {
+            [mimeType]: [extension],
+          },
+        },
+      ],
+    });
+    return await handle.createWritable();
+  } catch (error) {
+    if (error?.name === "AbortError") return false;
+    throw error;
+  }
+}
+
+async function saveBlob(blob, filename, writable = null) {
+  if (writable) {
+    await writable.write(blob);
+    await writable.close();
     return;
   }
   const url = URL.createObjectURL(blob);
@@ -1679,7 +1715,6 @@ async function downloadCanvas(canvas, filename) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  els.status.textContent = `已下载 ${filename}`;
 }
 
 function canvasToBlob(canvas) {
@@ -1690,10 +1725,18 @@ async function downloadAll() {
   if (!state.canvases.length) return;
 
   if (!window.JSZip) {
+    els.status.textContent = "当前环境不支持打包，将逐张下载";
     state.canvases.forEach((canvas, index) => {
       const filename = state.mode === "scroll" ? "layout-scroll-shot.png" : `layout-page-${String(index + 1).padStart(2, "0")}.png`;
       window.setTimeout(() => downloadCanvas(canvas, filename), index * 120);
     });
+    return;
+  }
+
+  const zipFilename = state.mode === "scroll" ? "graphic-layout-scroll-shot.zip" : "graphic-layout-pages.zip";
+  const writable = await chooseSaveTarget(zipFilename, "application/zip", ".zip");
+  if (writable === false) {
+    els.status.textContent = "已取消下载";
     return;
   }
 
@@ -1709,15 +1752,12 @@ async function downloadAll() {
     zip.file(filename, blob);
   }
   const blob = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.download = state.mode === "scroll" ? "graphic-layout-scroll-shot.zip" : "graphic-layout-pages.zip";
-  link.href = url;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  els.status.textContent = state.mode === "scroll" ? "已打包当前滑动截图" : `已打包 ${state.canvases.length} 张图片`;
+  await saveBlob(blob, zipFilename, writable);
+  els.status.textContent = writable
+    ? `已保存 ${zipFilename}`
+    : state.mode === "scroll"
+      ? "已交给浏览器下载当前滑动截图"
+      : `已交给浏览器下载 ${state.canvases.length} 张图片`;
 }
 
 const requestRender = debounce(render, 120);
