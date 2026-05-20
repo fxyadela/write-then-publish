@@ -123,6 +123,19 @@ const UI_THEME_LABELS = {
   dark: "黑色",
 };
 
+const CARD_THEME_COLORS = {
+  light: {
+    textColor: "#202938",
+    accentColor: "#17202f",
+    bgColor: "#ffffff",
+  },
+  dark: {
+    textColor: "#ffffff",
+    accentColor: "#ffffff",
+    bgColor: "#050505",
+  },
+};
+
 const defaultText = `[[image:sample]]
 
 她说，如果你无聊的时候，不想只是刷手机，可以让 AI 做一件事：
@@ -220,7 +233,7 @@ function applyForm(data) {
   els.zhFont.value = FONT_STACKS[data.zhFont] ? data.zhFont : "zh-system";
   els.enFont.value = FONT_STACKS[data.enFont] ? data.enFont : "en-system";
   els.imageHeight.value = String(data.imageHeight ?? "520") === "380" ? "520" : data.imageHeight ?? "520";
-  setUiTheme(data.uiTheme || "light");
+  setUiTheme(data.uiTheme || "light", false, true);
   state.avatar = data.avatar || sampleAvatar;
   state.avatarCrop = data.avatarCrop || null;
   state.images = { ...defaultFormState().images, ...(data.images || {}) };
@@ -229,11 +242,12 @@ function applyForm(data) {
   updateImageList();
 }
 
-function setUiTheme(theme, announce = false) {
+function setUiTheme(theme, announce = false, syncCard = false) {
   const normalizedTheme = theme === "ink" ? "dark" : theme === "paper" ? "light" : theme;
   const nextTheme = UI_THEMES.includes(normalizedTheme) ? normalizedTheme : "light";
   state.uiTheme = nextTheme;
   document.documentElement.dataset.uiTheme = nextTheme;
+  if (syncCard) syncCardColorsToTheme(nextTheme);
   if (els.themeToggle) {
     const label = UI_THEME_LABELS[nextTheme];
     els.themeToggle.title = `切换黑白主题：当前 ${label}`;
@@ -244,11 +258,19 @@ function setUiTheme(theme, announce = false) {
   }
 }
 
-function toggleUiTheme() {
+function syncCardColorsToTheme(theme) {
+  const colors = CARD_THEME_COLORS[theme] || CARD_THEME_COLORS.light;
+  els.textColor.value = colors.textColor;
+  els.accentColor.value = colors.accentColor;
+  els.bgColor.value = colors.bgColor;
+}
+
+async function toggleUiTheme() {
   const index = UI_THEMES.indexOf(state.uiTheme);
   const nextTheme = UI_THEMES[(index + 1) % UI_THEMES.length];
-  setUiTheme(nextTheme, true);
-  saveState();
+  setUiTheme(nextTheme, false, true);
+  await render();
+  els.status.textContent = `已切换为${UI_THEME_LABELS[nextTheme]}主题`;
 }
 
 function normalizeHandle(value) {
@@ -1404,7 +1426,7 @@ function renderScrollPage(page) {
   }
   ctx.restore();
 
-  ctx.strokeStyle = "rgba(23,32,47,.06)";
+  ctx.strokeStyle = isDarkHexColor(page.settings.bgColor) ? "rgba(255,255,255,.12)" : "rgba(23,32,47,.06)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(bounds.left, bounds.top - 10);
@@ -1423,6 +1445,7 @@ function drawHeader(ctx, settings, avatar, badge) {
   const x = 42;
   const y = 38;
   const size = 82;
+  const darkCard = isDarkHexColor(settings.bgColor);
 
   ctx.save();
   ctx.beginPath();
@@ -1437,7 +1460,7 @@ function drawHeader(ctx, settings, avatar, badge) {
   ctx.restore();
 
   ctx.lineWidth = 2;
-  ctx.strokeStyle = "rgba(32,41,56,.12)";
+  ctx.strokeStyle = darkCard ? "rgba(255,255,255,.2)" : "rgba(32,41,56,.12)";
   ctx.beginPath();
   ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
   ctx.stroke();
@@ -1452,16 +1475,26 @@ function drawHeader(ctx, settings, avatar, badge) {
   const nameWidth = ctx.measureText(name).width;
   drawVerifiedBadge(ctx, badge, textX + nameWidth + 24, 59);
 
-  ctx.fillStyle = "#6f7785";
+  ctx.fillStyle = darkCard ? "rgba(255,255,255,.72)" : "#6f7785";
   ctx.font = `400 29px ${fontFamilyForText(settings.handle, settings)}`;
   ctx.fillText(clampText(ctx, settings.handle, 480), textX, 113);
 
-  ctx.fillStyle = "#9aa2af";
+  ctx.fillStyle = darkCard ? "rgba(255,255,255,.5)" : "#9aa2af";
   for (let i = 0; i < 3; i += 1) {
     ctx.beginPath();
     ctx.arc(769 + i * 16, 79, 5, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+function isDarkHexColor(hex) {
+  const match = String(hex || "").match(/^#?([0-9a-fA-F]{6})$/);
+  if (!match) return false;
+  const value = match[1];
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return (red * 299 + green * 587 + blue * 114) / 1000 < 128;
 }
 
 function drawVerifiedBadge(ctx, badge, x, y) {
