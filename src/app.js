@@ -1,5 +1,7 @@
 const CANVAS_WIDTH = 864;
 const CANVAS_HEIGHT = 1152;
+const CARD_SIDE_PADDING = 42;
+const CARD_CONTENT_WIDTH = CANVAS_WIDTH - CARD_SIDE_PADDING * 2;
 const STORAGE_KEY = "graphicTextLayoutState.v1";
 
 const $ = (selector) => document.querySelector(selector);
@@ -1318,7 +1320,9 @@ function imageBlockSize(sourceRect, maxWidth, maxHeight, layout = null) {
   const normalized = normalizeImageLayout(layout);
   const aspect = sourceRect.width / sourceRect.height;
   const baseWidth = Math.min(maxWidth, maxHeight * aspect);
-  const width = baseWidth * normalized.widthScale;
+  const maxScale = baseWidth > 0 ? maxWidth / baseWidth : 1;
+  const widthScale = clamp(normalized.widthScale, 0.25, maxScale);
+  const width = baseWidth * widthScale;
   const height = width / aspect;
   const maxOffset = Math.max(0, maxWidth - width);
   let offsetX = maxOffset / 2;
@@ -1334,6 +1338,7 @@ function imageBlockSize(sourceRect, maxWidth, maxHeight, layout = null) {
     height,
     offsetX,
     baseWidth,
+    maxWidth,
   };
 }
 
@@ -1341,7 +1346,7 @@ function normalizeImageLayout(layout = {}) {
   const value = layout || {};
   const align = ["left", "center", "right"].includes(value.align) ? value.align : "center";
   return {
-    widthScale: clamp(Number(value.widthScale) || 1, 0.25, 1),
+    widthScale: clamp(Number(value.widthScale) || 1, 0.25, 20),
     align,
   };
 }
@@ -1410,6 +1415,7 @@ async function buildPages(settings) {
         image: img,
         sourceRect,
         baseWidth: size.baseWidth,
+        maxWidth: size.maxWidth,
         x: bounds.left + size.offsetX,
         y,
         width: size.width,
@@ -1498,6 +1504,7 @@ async function buildScrollPage(settings) {
         image: img,
         sourceRect,
         baseWidth: size.baseWidth,
+        maxWidth: size.maxWidth,
         x: bounds.left + size.offsetX,
         y,
         width: size.width,
@@ -1656,6 +1663,7 @@ function collectImageHits(page, scrollPage = false) {
         width: item.width,
         height: Math.max(0, bottom - top),
         baseWidth: item.baseWidth || item.width,
+        maxWidth: item.maxWidth || CARD_CONTENT_WIDTH,
       };
     })
     .filter((hit) => hit.height > 0 && hit.width > 0);
@@ -1900,6 +1908,7 @@ function createImageEditLayer(canvas) {
     box.className = "preview-image-box";
     box.dataset.imageId = hit.imageId;
     box.dataset.baseWidth = String(hit.baseWidth || hit.width);
+    box.dataset.maxWidth = String(hit.maxWidth || CARD_CONTENT_WIDTH);
     box.title = "拖右下角调整图片大小；点击左/中/右按钮调整对齐";
     applyImageBoxStyle(box, hit);
 
@@ -2021,6 +2030,7 @@ function startPreviewImageResize(event) {
       width: (Number.parseFloat(box.style.width) / 100) * CANVAS_WIDTH,
       height: (Number.parseFloat(box.style.height) / 100) * CANVAS_HEIGHT,
       baseWidth: Number(box.dataset.baseWidth) || (Number.parseFloat(box.style.width) / 100) * CANVAS_WIDTH,
+      maxWidth: Number(box.dataset.maxWidth) || CARD_CONTENT_WIDTH,
     },
     canvasScaleX: CANVAS_WIDTH / frameRect.width,
     canvasScaleY: CANVAS_HEIGHT / frameRect.height,
@@ -2041,8 +2051,8 @@ function movePreviewImageResize(event) {
 
   const nextWidth = imageEditDrag.startBox.baseWidth * nextLayout.widthScale;
   const nextHeight = nextWidth * (imageEditDrag.startBox.height / imageEditDrag.startBox.width);
-  const maxOffset = Math.max(0, 780 - nextWidth);
-  const nextX = nextLayout.align === "left" ? 42 : nextLayout.align === "right" ? 42 + maxOffset : 42 + maxOffset / 2;
+  const maxOffset = Math.max(0, imageEditDrag.startBox.maxWidth - nextWidth);
+  const nextX = nextLayout.align === "left" ? CARD_SIDE_PADDING : nextLayout.align === "right" ? CARD_SIDE_PADDING + maxOffset : CARD_SIDE_PADDING + maxOffset / 2;
   applyImageBoxStyle(imageEditDrag.box, {
     x: nextX,
     y: imageEditDrag.startBox.y,
@@ -2063,18 +2073,13 @@ function stopPreviewImageResize() {
 }
 
 function resizeImageLayout(startLayout, startBox, dx, dy) {
-  const delta = diagonalResizeDelta(startBox, dx, dy);
-  const nextWidth = clamp(startBox.width * (1 + delta), startBox.baseWidth * 0.25, startBox.baseWidth);
+  const heightDrivenDelta = dy * (startBox.width / Math.max(1, startBox.height));
+  const deltaWidth = Math.abs(dx) >= Math.abs(heightDrivenDelta) ? dx : heightDrivenDelta;
+  const nextWidth = clamp(startBox.width + deltaWidth, startBox.baseWidth * 0.25, startBox.maxWidth);
   return {
     ...startLayout,
     widthScale: nextWidth / startBox.baseWidth,
   };
-}
-
-function diagonalResizeDelta(startBox, dx, dy) {
-  const width = Math.max(1, startBox.width);
-  const height = Math.max(1, startBox.height);
-  return ((dx * width) + (dy * height)) / ((width * width) + (height * height));
 }
 
 function attachScrollFrameHandlers(frame) {
