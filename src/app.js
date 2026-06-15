@@ -10,6 +10,8 @@ const PROJECTS_STORAGE_KEY = "graphicTextLayoutProjects.v1";
 const PANEL_LAYOUT_STORAGE_KEY = "writeThenPublishPanelLayout.v1";
 const MAX_PROJECTS = 24;
 const BUILT_IN_PROJECT_PREFIX = "guide_";
+const GUIDE_CARDS_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}cards`;
+const GUIDE_ARTICLE_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}article`;
 const PANEL_LIMITS = {
   history: { min: 210, max: 380, fallback: 260 },
   editor: { min: 360, max: 760, fallback: 500 },
@@ -397,14 +399,14 @@ function builtInGuideProjects() {
   });
   return [
     {
-      id: `${BUILT_IN_PROJECT_PREFIX}cards`,
+      id: GUIDE_CARDS_PROJECT_ID,
       title: "图文卡片说明书",
       updatedAt: 0,
       data: cardsData,
       builtIn: true,
     },
     {
-      id: `${BUILT_IN_PROJECT_PREFIX}article`,
+      id: GUIDE_ARTICLE_PROJECT_ID,
       title: "公众号长文说明书",
       updatedAt: 0,
       data: articleData,
@@ -724,9 +726,9 @@ function saveState() {
 function loadState() {
   const store = loadProjectStore();
   state.projects = store.projects;
-  state.currentProjectId = store.activeId || store.projects[0]?.id || null;
+  state.currentProjectId = store.activeId || store.projects[0]?.id || GUIDE_CARDS_PROJECT_ID;
   state.readOnlyProjectSnapshot = null;
-  return store.projects.find((project) => project.id === state.currentProjectId)?.data || defaultFormState();
+  return findHistoryProject(state.currentProjectId)?.data || findHistoryProject(GUIDE_CARDS_PROJECT_ID)?.data || defaultFormState();
 }
 
 function migrateStoredState(data) {
@@ -785,21 +787,22 @@ function loadProjectStore() {
       const projects = Array.isArray(parsed.projects)
         ? parsed.projects.map(normalizeProject).filter(Boolean).slice(0, MAX_PROJECTS)
         : [];
-      if (projects.length) {
-        return {
-          activeId: projects.some((project) => project.id === parsed.activeId) ? parsed.activeId : projects[0].id,
-          projects,
-        };
-      }
+      const activeId = isBuiltInProjectId(parsed.activeId)
+        ? parsed.activeId
+        : projects.some((project) => project.id === parsed.activeId)
+          ? parsed.activeId
+          : projects[0]?.id || GUIDE_CARDS_PROJECT_ID;
+      return { activeId, projects };
     }
 
     const legacyRaw = localStorage.getItem(STORAGE_KEY);
-    const legacyData = legacyRaw ? JSON.parse(legacyRaw) : defaultFormState();
+    if (!legacyRaw) return { activeId: GUIDE_CARDS_PROJECT_ID, projects: [] };
+
+    const legacyData = JSON.parse(legacyRaw);
     const project = createProject(legacyData);
     return { activeId: project.id, projects: [project] };
   } catch {
-    const project = createProject(defaultFormState());
-    return { activeId: project.id, projects: [project] };
+    return { activeId: GUIDE_CARDS_PROJECT_ID, projects: [] };
   }
 }
 
@@ -943,17 +946,17 @@ async function deleteProject(projectId) {
   state.projects = state.projects.filter((item) => item.id !== project.id);
 
   if (!state.projects.length) {
-    const nextProject = createProject(blankFormState());
-    state.projects = [nextProject];
-    state.currentProjectId = nextProject.id;
+    const guideProject = findHistoryProject(GUIDE_CARDS_PROJECT_ID);
+    state.currentProjectId = GUIDE_CARDS_PROJECT_ID;
     state.mode = "auto";
     state.scrollOffset = 0;
-    applyForm(nextProject.data);
+    applyForm(guideProject?.data || defaultFormState());
+    state.readOnlyProjectSnapshot = JSON.stringify(readForm());
     resetTextHistory();
     saveProjectStore();
     updateProjectHistory();
     await render();
-    els.status.textContent = "已删除历史记录，并新建空白图文";
+    els.status.textContent = "已删除全部草稿，已回到图文卡片说明书";
     return;
   }
 
@@ -3220,7 +3223,11 @@ function bindEvents() {
 
 loadPanelLayout();
 applyPanelLayout();
-applyForm(loadState());
+const initialFormState = loadState();
+applyForm(initialFormState);
+if (isBuiltInProjectId(state.currentProjectId)) {
+  state.readOnlyProjectSnapshot = JSON.stringify(readForm());
+}
 resetTextHistory();
 updateProjectHistory();
 bindEvents();
