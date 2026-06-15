@@ -110,6 +110,24 @@ button:disabled {
   grid-template-columns: var(--history-width, 260px) 6px minmax(360px, var(--editor-width, 500px)) 6px minmax(360px, 1fr);
 }
 
+.site-credit {
+  position: fixed;
+  right: 18px;
+  bottom: 14px;
+  z-index: 20;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  box-shadow: var(--shadow-soft);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
 .history-sidebar,
 .editor-panel,
 .preview-panel {
@@ -1484,6 +1502,12 @@ body[data-app-mode="article"] .profile-inline {
 
   .workspace.history-open {
     grid-template-columns: 1fr;
+  }
+
+  .site-credit {
+    right: 12px;
+    bottom: 10px;
+    font-size: 11px;
   }
 
   .panel-resizer {
