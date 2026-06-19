@@ -321,11 +321,11 @@ const cardsGuideText = `# 图文卡片说明书
 
 如果你只想第一张显示个人信息，点击“仅首页头像”。`;
 
-const articleGuideText = `# 公众号长文说明书
+const articleGuideText = `# 长文说明书
 
-这是一份内置说明书，用来快速看懂公众号长文模式。它不会被修改，也不能删除。
+这是一份内置说明书，用来快速看懂长文模式。它不会被修改，也不能删除。
 
-公众号长文模式适合把内容整理成完整文章，而不是拆成多张图。
+长文模式适合把内容整理成完整文章，而不是拆成多张图。
 
 ## 适合什么内容
 
@@ -337,7 +337,7 @@ const articleGuideText = `# 公众号长文说明书
 
 ## 基本流程
 
-1. 切换到“公众号长文”。
+1. 切换到“长文”。
 2. 在左侧输入 Markdown 内容。
 3. 在右侧查看长文预览。
 4. 调整主题、字体、字号和主题色。
@@ -406,7 +406,7 @@ function builtInGuideProjects() {
     },
     {
       id: GUIDE_ARTICLE_PROJECT_ID,
-      title: "公众号长文说明书",
+      title: "长文说明书",
       updatedAt: 0,
       data: articleData,
       builtIn: true,
@@ -578,7 +578,7 @@ function updateAppMode() {
   const targetLabel = targetMode === "article" ? "转长文" : "转图文";
   els.convertMode.dataset.targetMode = targetMode;
   els.convertMode.setAttribute("aria-label", targetLabel);
-  els.convertMode.setAttribute("title", targetMode === "article" ? "将当前内容转为公众号长文" : "将当前内容自动分页为图文卡片");
+  els.convertMode.setAttribute("title", targetMode === "article" ? "将当前内容转为长文" : "将当前内容自动分页为图文卡片");
   els.convertMode.querySelector("span").textContent = targetLabel;
   els.articleSettings.hidden = state.appMode !== "article";
   els.scrollMode.hidden = state.appMode === "article";
@@ -598,7 +598,7 @@ async function setAppMode(mode) {
 async function convertCurrentMode() {
   const nextMode = state.appMode === "article" ? "cards" : "article";
   await setAppMode(nextMode);
-  els.status.textContent = nextMode === "article" ? "已转为公众号长文" : "已转为图文卡片，并自动分页排版";
+  els.status.textContent = nextMode === "article" ? "已转为长文" : "已转为图文卡片，并自动分页排版";
 }
 
 function updateArticleControls() {
@@ -2567,8 +2567,8 @@ function renderArticlePreview(settings) {
   els.pages.append(article);
 
   const wordCount = settings.content.replace(/\s/g, "").length;
-  els.pageCount.textContent = "公众号长文";
-  els.status.textContent = `已生成公众号长文预览，约 ${wordCount} 字`;
+  els.pageCount.textContent = "长文";
+  els.status.textContent = `已生成长文预览，约 ${wordCount} 字`;
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -2657,7 +2657,7 @@ function markdownToArticleHtml(markdown, images = {}) {
   flushParagraph();
   flushList();
   flushCode();
-  return html.length ? html.join("") : '<p class="article-empty">在左侧输入 Markdown，右侧会生成公众号长文预览。</p>';
+  return html.length ? html.join("") : '<p class="article-empty">在左侧输入 Markdown，右侧会生成长文预览。</p>';
 }
 
 function renderArticleInline(text) {
