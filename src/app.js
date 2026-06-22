@@ -315,6 +315,10 @@ const cardsGuideText = `# 图文卡片说明书
 
 如果某一页太满，优先减少长段落，而不是缩小字号。图文卡片的重点是“读起来不累”，不是把所有字塞进去。
 
+单次回车会在同一段内手动换行。
+
+空出来的行会在右侧图文卡片里保留为空白行。你想留几行，就在左侧留几行。
+
 ## 头像显示
 
 默认每一页都显示头像、名称和昵称。
@@ -1758,7 +1762,14 @@ function parseBlocks(content) {
   const normalized = content.replace(/\r\n/g, "\n");
   const lines = normalized.match(/[^\n]*(?:\n|$)/g) || [];
   const blocks = [];
+  let paragraphLines = [];
   let offset = 0;
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return;
+    blocks.push({ type: "p", lines: paragraphLines });
+    paragraphLines = [];
+  };
 
   for (const rawLine of lines) {
     const line = rawLine.endsWith("\n") ? rawLine.slice(0, -1) : rawLine;
@@ -1770,24 +1781,34 @@ function parseBlocks(content) {
     if (trimmed) {
       const imageInline = trimmed.match(/^\[\[image:([\w-]+)\]\]$/);
       if (imageInline) {
+        flushParagraph();
         blocks.push({ type: "image", id: imageInline[1] });
       } else if (trimmed.startsWith("# ")) {
+        flushParagraph();
         const contentStart = trimmedStart + 2 + countLeadingSpaces(trimmed.slice(2));
         blocks.push({ type: "h1", tokens: parseInline(trimmed.slice(2).trim(), contentStart) });
       } else if (trimmed.startsWith("## ")) {
+        flushParagraph();
         const contentStart = trimmedStart + 3 + countLeadingSpaces(trimmed.slice(3));
         blocks.push({ type: "h2", tokens: parseInline(trimmed.slice(3).trim(), contentStart) });
       } else if (trimmed.startsWith("> ")) {
+        flushParagraph();
         const contentStart = trimmedStart + 2 + countLeadingSpaces(trimmed.slice(2));
         blocks.push({ type: "quote", tokens: parseInline(trimmed.slice(2).trim(), contentStart) });
       } else {
-        blocks.push({ type: "p", tokens: parseInline(trimmed, trimmedStart) });
+        paragraphLines.push(parseInline(trimmed, trimmedStart));
+      }
+    } else {
+      flushParagraph();
+      if (rawLine.length > 0) {
+        blocks.push({ type: "spacer" });
       }
     }
 
     offset += rawLine.length;
   }
 
+  flushParagraph();
   return blocks;
 }
 
@@ -2016,6 +2037,15 @@ function wrapTokens(ctx, tokens, style, maxWidth) {
   return lines;
 }
 
+function wrapBlockLines(ctx, block, style, maxWidth) {
+  if (!block.lines) return wrapTokens(ctx, block.tokens, style, maxWidth);
+  const lines = [];
+  for (const sourceLine of block.lines) {
+    lines.push(...wrapTokens(ctx, sourceLine, style, maxWidth));
+  }
+  return lines;
+}
+
 function measureToken(ctx, token, style) {
   ctx.font = fontString(style, token);
   return ctx.measureText(token.text).width;
@@ -2113,6 +2143,13 @@ async function buildPages(settings) {
   }
 
   for (const block of blocks) {
+    if (block.type === "spacer") {
+      const spacerHeight = Math.ceil(settings.fontSize * settings.lineHeight);
+      ensureSpace(spacerHeight, 0);
+      y += spacerHeight;
+      continue;
+    }
+
     if (block.type === "image") {
       const data = settings.images[block.id];
       if (!data) continue;
@@ -2146,7 +2183,7 @@ async function buildPages(settings) {
     const style = styleForBlock(block.type, settings);
     const lineHeight = Math.ceil(style.size * style.lineHeight);
     const textWidth = style.quote ? contentWidth - 28 : contentWidth;
-    const lines = wrapTokens(ctx, block.tokens, style, textWidth);
+    const lines = wrapBlockLines(ctx, block, style, textWidth);
     let firstLine = true;
 
     for (const line of lines) {
@@ -2199,6 +2236,11 @@ async function buildScrollPage(settings) {
   let hasContent = false;
 
   for (const block of blocks) {
+    if (block.type === "spacer") {
+      y += Math.ceil(settings.fontSize * settings.lineHeight);
+      continue;
+    }
+
     if (block.type === "image") {
       const data = settings.images[block.id];
       if (!data) continue;
@@ -2231,7 +2273,7 @@ async function buildScrollPage(settings) {
     const style = styleForBlock(block.type, settings);
     const lineHeight = Math.ceil(style.size * style.lineHeight);
     const textWidth = style.quote ? contentWidth - 28 : contentWidth;
-    const lines = wrapTokens(ctx, block.tokens, style, textWidth);
+    const lines = wrapBlockLines(ctx, block, style, textWidth);
     let firstLine = true;
 
     for (const line of lines) {
