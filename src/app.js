@@ -1959,8 +1959,8 @@ function styleForBlock(type, settings) {
     lineHeight: settings.lineHeight,
     weight: 400,
     italic: false,
-    marginTop: 16,
-    marginBottom: 10,
+    marginTop: 6,
+    marginBottom: 0,
     color: settings.textColor,
   };
 }
@@ -2159,6 +2159,7 @@ async function buildPages(settings) {
   const contentWidth = page.bounds.right - page.bounds.left;
   let y = page.bounds.top;
   let hasContent = false;
+  let previousBlockType = null;
 
   function createPage() {
     const showHeader = settings.headerMode !== "first" || pages.length === 0;
@@ -2180,6 +2181,7 @@ async function buildPages(settings) {
     page = createPage();
     y = page.bounds.top;
     hasContent = false;
+    previousBlockType = null;
   }
 
   function ensureSpace(height, topMargin = 0) {
@@ -2195,6 +2197,7 @@ async function buildPages(settings) {
       const spacerHeight = Math.ceil(settings.fontSize * settings.lineHeight);
       ensureSpace(spacerHeight, 0);
       y += spacerHeight;
+      previousBlockType = "spacer";
       continue;
     }
 
@@ -2209,7 +2212,7 @@ async function buildPages(settings) {
       const sourceRect = getImageSourceRect(img, data.crop);
       const size = imageBlockSize(sourceRect, contentWidth, Math.min(settings.imageHeight, page.bounds.bottom - page.bounds.top), data.layout);
       const height = size.height;
-      ensureSpace(height, hasContent ? 24 : 0);
+      ensureSpace(height, hasContent && previousBlockType !== "spacer" ? 24 : 0);
       page.items.push({
         type: "image",
         imageId: block.id,
@@ -2225,6 +2228,7 @@ async function buildPages(settings) {
       });
       y += height + 34;
       hasContent = true;
+      previousBlockType = "image";
       continue;
     }
 
@@ -2235,7 +2239,7 @@ async function buildPages(settings) {
     let firstLine = true;
 
     for (const line of lines) {
-      const topMargin = firstLine ? (hasContent ? style.marginTop : 0) : 0;
+      const topMargin = firstLine ? (hasContent && previousBlockType !== "spacer" ? style.marginTop : 0) : 0;
       ensureSpace(lineHeight, topMargin);
       page.items.push({
         type: "text",
@@ -2253,6 +2257,7 @@ async function buildPages(settings) {
 
     if (lines.length) {
       y += style.marginBottom;
+      previousBlockType = block.type;
     }
   }
 
@@ -2282,10 +2287,12 @@ async function buildScrollPage(settings) {
   };
   let y = 0;
   let hasContent = false;
+  let previousBlockType = null;
 
   for (const block of blocks) {
     if (block.type === "spacer") {
       y += Math.ceil(settings.fontSize * settings.lineHeight);
+      previousBlockType = "spacer";
       continue;
     }
 
@@ -2299,7 +2306,7 @@ async function buildScrollPage(settings) {
       if (!img) continue;
       const sourceRect = getImageSourceRect(img, data.crop);
       const size = imageBlockSize(sourceRect, contentWidth, settings.imageHeight, data.layout);
-      y += hasContent ? 24 : 0;
+      y += hasContent && previousBlockType !== "spacer" ? 24 : 0;
       page.items.push({
         type: "image",
         imageId: block.id,
@@ -2315,6 +2322,7 @@ async function buildScrollPage(settings) {
       });
       y += size.height + 34;
       hasContent = true;
+      previousBlockType = "image";
       continue;
     }
 
@@ -2325,7 +2333,7 @@ async function buildScrollPage(settings) {
     let firstLine = true;
 
     for (const line of lines) {
-      y += firstLine && hasContent ? style.marginTop : 0;
+      y += firstLine && hasContent && previousBlockType !== "spacer" ? style.marginTop : 0;
       page.items.push({
         type: "text",
         blockType: block.type,
@@ -2342,6 +2350,7 @@ async function buildScrollPage(settings) {
 
     if (lines.length) {
       y += style.marginBottom;
+      previousBlockType = block.type;
     }
   }
 
