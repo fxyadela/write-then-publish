@@ -167,6 +167,23 @@
                   <button id="applyImageWidthBtn" class="secondary-button" type="button">
                     批量应用
                   </button>
+                  <label>
+                    固定宽
+                    <span class="unit-input">
+                      <input id="fixedImageWidthInput" type="number" min="80" max="780" step="1" placeholder="宽" />
+                      <b>px</b>
+                    </span>
+                  </label>
+                  <label>
+                    固定高
+                    <span class="unit-input">
+                      <input id="fixedImageHeightInput" type="number" min="80" max="760" step="1" placeholder="高" />
+                      <b>px</b>
+                    </span>
+                  </label>
+                  <button id="applyFixedImageSizeBtn" class="secondary-button wide" type="button">
+                    应用固定宽高
+                  </button>
                 </div>
                 <div id="imageList" class="image-list"></div>
               </div>
@@ -338,6 +355,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
-    <script src="src/app.js?v=20260630-paragraph-spacing-5"></script>
+    <script src="src/app.js?v=20260630-fixed-image-size"></script>
   </body>
 </html>

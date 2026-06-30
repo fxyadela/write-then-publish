@@ -66,6 +66,9 @@ const els = {
   imageList: $("#imageList"),
   imageWidthPercent: $("#imageWidthPercentInput"),
   applyImageWidth: $("#applyImageWidthBtn"),
+  fixedImageWidth: $("#fixedImageWidthInput"),
+  fixedImageHeight: $("#fixedImageHeightInput"),
+  applyFixedImageSize: $("#applyFixedImageSizeBtn"),
   displayName: $("#displayNameInput"),
   handle: $("#handleInput"),
   textColor: $("#textColorInput"),
@@ -1412,7 +1415,11 @@ function updateImageList() {
     name.textContent = image.name || id;
     const status = document.createElement("span");
     const layout = normalizeImageLayout(image.layout);
-    const widthLabel = layout.widthPercent ? `${Math.round(layout.widthPercent)}%` : "自适应";
+    const widthLabel = layout.fixedWidth && layout.fixedHeight
+      ? `固定框 ${Math.round(layout.fixedWidth)}x${Math.round(layout.fixedHeight)}`
+      : layout.widthPercent
+        ? `${Math.round(layout.widthPercent)}%`
+        : "自适应";
     status.textContent = `${image.crop ? "已裁剪" : "原图比例"} · ${widthLabel}`;
     meta.append(name, status);
 
@@ -1446,6 +1453,16 @@ function updateImageList() {
 }
 
 function defaultNewImageLayout() {
+  const fixedWidth = normalizeFixedImageDimension(els.fixedImageWidth?.value, CARD_CONTENT_WIDTH);
+  const fixedHeight = normalizeFixedImageDimension(els.fixedImageHeight?.value, 760);
+  if (fixedWidth && fixedHeight) {
+    return {
+      fixedWidth,
+      fixedHeight,
+      align: "center",
+    };
+  }
+
   const percent = Number(els.imageWidthPercent?.value);
   if (!Number.isFinite(percent)) return null;
   return {
@@ -1468,6 +1485,8 @@ function applyImageWidthToAll() {
     image.layout = {
       ...normalizeImageLayout(image.layout),
       widthPercent,
+      fixedWidth: null,
+      fixedHeight: null,
     };
   }
 
@@ -1475,6 +1494,44 @@ function applyImageWidthToAll() {
   saveState();
   render();
   els.status.textContent = `已将 ${entries.length} 张图片设置为 ${Math.round(widthPercent)}% 宽度`;
+}
+
+function applyFixedImageSizeToAll() {
+  const entries = Object.entries(state.images);
+  if (!entries.length) {
+    els.status.textContent = "还没有插入图片";
+    return;
+  }
+
+  const fixedWidth = normalizeFixedImageDimension(els.fixedImageWidth?.value, CARD_CONTENT_WIDTH);
+  const fixedHeight = normalizeFixedImageDimension(els.fixedImageHeight?.value, 760);
+  if (!fixedWidth || !fixedHeight) {
+    els.status.textContent = "请输入固定宽度和固定高度";
+    return;
+  }
+
+  if (els.fixedImageWidth) els.fixedImageWidth.value = String(Math.round(fixedWidth));
+  if (els.fixedImageHeight) els.fixedImageHeight.value = String(Math.round(fixedHeight));
+
+  for (const [, image] of entries) {
+    image.layout = {
+      ...normalizeImageLayout(image.layout),
+      fixedWidth,
+      fixedHeight,
+      widthPercent: null,
+    };
+  }
+
+  updateImageList();
+  saveState();
+  render();
+  els.status.textContent = `已将 ${entries.length} 张图片设置为 ${Math.round(fixedWidth)}x${Math.round(fixedHeight)}`;
+}
+
+function normalizeFixedImageDimension(value, max) {
+  const dimension = Number(value);
+  if (!Number.isFinite(dimension) || dimension <= 0) return null;
+  return clamp(dimension, 80, max);
 }
 
 async function openCropper(kind, id = null) {
@@ -2104,10 +2161,12 @@ function imageBlockSize(sourceRect, maxWidth, maxHeight, layout = null) {
   const aspect = sourceRect.width / sourceRect.height;
   const baseWidth = Math.min(maxWidth, maxHeight * aspect);
   const legacyMaxScale = baseWidth > 0 ? maxWidth / baseWidth : 1;
-  const width = normalized.widthPercent
+  const fixedWidth = normalized.fixedWidth && normalized.fixedHeight ? clamp(normalized.fixedWidth, 80, maxWidth) : null;
+  const fixedHeight = normalized.fixedWidth && normalized.fixedHeight ? clamp(normalized.fixedHeight, 80, maxHeight) : null;
+  const width = fixedWidth || (normalized.widthPercent
     ? maxWidth * (normalized.widthPercent / 100)
-    : baseWidth * clamp(normalized.widthScale, 0.25, legacyMaxScale);
-  const height = width / aspect;
+    : baseWidth * clamp(normalized.widthScale, 0.25, legacyMaxScale));
+  const height = fixedHeight || width / aspect;
   const maxOffset = Math.max(0, maxWidth - width);
   let offsetX = maxOffset / 2;
 
@@ -2131,11 +2190,23 @@ function normalizeImageLayout(layout = {}) {
   const align = ["left", "center", "right"].includes(value.align) ? value.align : "center";
   const rawPercent = Number(value.widthPercent);
   const widthPercent = Number.isFinite(rawPercent) && rawPercent > 0 ? clamp(rawPercent, 25, 100) : null;
+  const rawFixedWidth = Number(value.fixedWidth);
+  const rawFixedHeight = Number(value.fixedHeight);
+  const fixedWidth = Number.isFinite(rawFixedWidth) && rawFixedWidth > 0 ? clamp(rawFixedWidth, 80, CARD_CONTENT_WIDTH) : null;
+  const fixedHeight = Number.isFinite(rawFixedHeight) && rawFixedHeight > 0 ? clamp(rawFixedHeight, 80, 760) : null;
   return {
     widthScale: clamp(Number(value.widthScale) || 1, 0.25, 20),
     widthPercent,
+    fixedWidth,
+    fixedHeight,
     align,
   };
+}
+
+function imageMaxHeightForLayout(layout, fallbackMaxHeight, absoluteMaxHeight = fallbackMaxHeight) {
+  const normalized = normalizeImageLayout(layout);
+  if (!normalized.fixedHeight) return fallbackMaxHeight;
+  return clamp(normalized.fixedHeight, 80, Math.max(80, absoluteMaxHeight));
 }
 
 function contentBoundsForHeader(showHeader) {
@@ -2210,7 +2281,7 @@ async function buildPages(settings) {
       const img = imageCache[block.id];
       if (!img) continue;
       const sourceRect = getImageSourceRect(img, data.crop);
-      const size = imageBlockSize(sourceRect, contentWidth, Math.min(settings.imageHeight, page.bounds.bottom - page.bounds.top), data.layout);
+      const size = imageBlockSize(sourceRect, contentWidth, imageMaxHeightForLayout(data.layout, Math.min(settings.imageHeight, page.bounds.bottom - page.bounds.top), page.bounds.bottom - page.bounds.top), data.layout);
       const height = size.height;
       ensureSpace(height, hasContent && previousBlockType !== "spacer" ? 24 : 0);
       page.items.push({
@@ -2305,7 +2376,7 @@ async function buildScrollPage(settings) {
       const img = imageCache[block.id];
       if (!img) continue;
       const sourceRect = getImageSourceRect(img, data.crop);
-      const size = imageBlockSize(sourceRect, contentWidth, settings.imageHeight, data.layout);
+      const size = imageBlockSize(sourceRect, contentWidth, imageMaxHeightForLayout(data.layout, settings.imageHeight, 760), data.layout);
       y += hasContent && previousBlockType !== "spacer" ? 24 : 0;
       page.items.push({
         type: "image",
@@ -2572,7 +2643,7 @@ function drawImageBlock(ctx, item) {
   ctx.save();
   roundedRect(ctx, item.x, item.y, item.width, item.height, item.radius);
   ctx.clip();
-  drawSourceImage(ctx, item.image, item.sourceRect, item.x, item.y, item.width, item.height);
+  drawSourceCoverImage(ctx, item.image, item.sourceRect, item.x, item.y, item.width, item.height);
   ctx.restore();
 }
 
@@ -3023,6 +3094,8 @@ function resizeImageLayout(startLayout, startBox, dx, dy) {
     ...startLayout,
     widthScale: nextWidth / startBox.baseWidth,
     widthPercent: (nextWidth / startBox.maxWidth) * 100,
+    fixedWidth: null,
+    fixedHeight: null,
   };
 }
 
@@ -3306,6 +3379,7 @@ function bindEvents() {
   });
   els.contentImage.addEventListener("change", handleContentImage);
   els.applyImageWidth?.addEventListener("click", applyImageWidthToAll);
+  els.applyFixedImageSize?.addEventListener("click", applyFixedImageSizeToAll);
   els.avatarInput.addEventListener("change", handleAvatar);
   els.scrollMode.addEventListener("click", () => {
     state.mode = state.mode === "scroll" ? "auto" : "scroll";

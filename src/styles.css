@@ -843,7 +843,7 @@ body[data-app-mode="article"] .profile-inline {
 
 .image-batch-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
   align-items: end;
   margin-bottom: 10px;
@@ -851,16 +851,19 @@ body[data-app-mode="article"] .profile-inline {
   border-bottom: 1px solid var(--line);
 }
 
-.percent-input {
+.percent-input,
+.unit-input {
   position: relative;
   display: block;
 }
 
-.percent-input input {
+.percent-input input,
+.unit-input input {
   padding-right: 34px;
 }
 
-.percent-input b {
+.percent-input b,
+.unit-input b {
   position: absolute;
   top: 50%;
   right: 12px;
