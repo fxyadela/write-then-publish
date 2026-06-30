@@ -478,7 +478,7 @@ function readForm() {
     accentColor: els.accentColor.value,
     bgColor: els.bgColor.value,
     fontSize: clamp(Number(els.fontSize.value) || 31, 24, 40),
-    lineHeight: clamp(Number(els.lineHeight.value) || 1.65, 1.25, 2.4),
+    lineHeight: clamp(Number(els.lineHeight.value) || 1.65, 1, 2.4),
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
     imageHeight: clamp(Number(els.imageHeight.value) || 520, 220, 760),
