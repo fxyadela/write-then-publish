@@ -37,6 +37,7 @@ const els = {
   headerModeToggle: $("#headerModeToggleBtn"),
   themeToggle: $("#themeToggleBtn"),
   downloadZip: $("#downloadZipBtn"),
+  downloadArticle: $("#downloadArticleBtn"),
   scrollMode: $("#scrollModeBtn"),
   articleSettings: $("#articleSettings"),
   articleThemeButtons: document.querySelectorAll("[data-article-theme]"),
@@ -592,6 +593,7 @@ function updateAppMode() {
   els.articleSettings.hidden = state.appMode !== "article";
   els.scrollMode.hidden = state.appMode === "article";
   els.downloadZip.hidden = state.appMode === "article";
+  els.downloadArticle.hidden = state.appMode !== "article";
   els.headerModeToggle.hidden = state.appMode === "article";
 }
 
@@ -3180,7 +3182,7 @@ async function chooseSaveTarget(filename, mimeType, extension) {
       suggestedName: filename,
       types: [
         {
-          description: extension === ".zip" ? "ZIP 压缩包" : "PNG 图片",
+          description: extension === ".zip" ? "ZIP 压缩包" : extension === ".html" ? "HTML 文件" : "PNG 图片",
           accept: {
             [mimeType]: [extension],
           },
@@ -3208,6 +3210,75 @@ async function saveBlob(blob, filename, writable = null) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadArticleHtml() {
+  const settings = readForm();
+  if (state.appMode !== "article") {
+    state.appMode = "article";
+    updateAppMode();
+  }
+  renderArticlePreview(settings);
+
+  const article = els.pages.querySelector(".article-preview");
+  if (!article) {
+    els.status.textContent = "长文生成失败，请先检查内容";
+    return;
+  }
+
+  const filename = "write-then-publish-article.html";
+  const writable = await chooseSaveTarget(filename, "text/html", ".html");
+  if (writable === false) {
+    els.status.textContent = "已取消下载";
+    return;
+  }
+
+  const blob = new Blob([buildStandaloneArticleHtml(article.outerHTML)], { type: "text/html;charset=utf-8" });
+  await saveBlob(blob, filename, writable);
+  els.status.textContent = writable ? `已保存 ${filename}` : `已交给浏览器下载 ${filename}`;
+}
+
+function buildStandaloneArticleHtml(articleHtml) {
+  const css = collectPageStyles();
+  return `<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>写了就发 - 长文</title>
+    <style>
+${css}
+      body {
+        min-height: 100vh;
+        overflow: auto;
+        padding: 48px 18px;
+        background: var(--preview-bg, #ffffff);
+      }
+
+      .article-preview {
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body>
+    ${articleHtml}
+  </body>
+</html>`;
+}
+
+function collectPageStyles() {
+  return Array.from(document.styleSheets)
+    .map((sheet) => {
+      try {
+        return Array.from(sheet.cssRules || [])
+          .map((rule) => rule.cssText)
+          .join("\n");
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 function canvasToLosslessPngBlob(canvas) {
@@ -3434,6 +3505,7 @@ function bindEvents() {
   els.headerModeToggle.addEventListener("click", toggleHeaderMode);
   els.themeToggle.addEventListener("click", toggleUiTheme);
   els.downloadZip.addEventListener("click", downloadAll);
+  els.downloadArticle.addEventListener("click", downloadArticleHtml);
 }
 
 loadPanelLayout();
