@@ -64,6 +64,8 @@ const els = {
   avatarPreview: $("#avatarPreview"),
   cropAvatar: $("#cropAvatarBtn"),
   imageList: $("#imageList"),
+  imageWidthPercent: $("#imageWidthPercentInput"),
+  applyImageWidth: $("#applyImageWidthBtn"),
   displayName: $("#displayNameInput"),
   handle: $("#handleInput"),
   textColor: $("#textColorInput"),
@@ -241,7 +243,7 @@ function defaultFormState() {
     accentColor: "#2563eb",
     bgColor: "#ffffff",
     fontSize: "31",
-    lineHeight: "1.85",
+    lineHeight: "1.65",
     zhFont: "zh-system",
     enFont: "en-system",
     imageHeight: "520",
@@ -476,7 +478,7 @@ function readForm() {
     accentColor: els.accentColor.value,
     bgColor: els.bgColor.value,
     fontSize: clamp(Number(els.fontSize.value) || 31, 24, 40),
-    lineHeight: clamp(Number(els.lineHeight.value) || 1.85, 1.25, 2.4),
+    lineHeight: clamp(Number(els.lineHeight.value) || 1.65, 1.25, 2.4),
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
     imageHeight: clamp(Number(els.imageHeight.value) || 520, 220, 760),
@@ -501,7 +503,7 @@ function applyForm(data) {
   els.accentColor.value = data.accentColor ?? "#2563eb";
   els.bgColor.value = data.bgColor ?? "#ffffff";
   els.fontSize.value = data.fontSize ?? "31";
-  els.lineHeight.value = Number(data.lineHeight) <= 1.65 ? "1.85" : data.lineHeight ?? "1.85";
+  els.lineHeight.value = data.lineHeight ?? "1.65";
   els.zhFont.value = FONT_STACKS[data.zhFont] ? data.zhFont : "zh-system";
   els.enFont.value = FONT_STACKS[data.enFont] ? data.enFont : "en-system";
   els.imageHeight.value = String(data.imageHeight ?? "520") === "380" ? "520" : data.imageHeight ?? "520";
@@ -765,7 +767,8 @@ function migrateStoredState(data) {
     "“请你从某个领域里，选择一个研究生水平的概念。然后写一个寓言故事，用间接的方式把这个概念讲清楚。不要一开始就说答案，尽量到故事快结束的时候，才让人意识到原来讲的是这个概念。故事结束后，再解释这个概念，以及故事里的隐喻分别对应什么。”",
   );
   if (String(data.imageHeight) === "380") data.imageHeight = "520";
-  if (Number(data.lineHeight) <= 1.65) data.lineHeight = "1.85";
+  if (!Number.isFinite(Number(data.lineHeight))) data.lineHeight = "1.65";
+  if (Math.abs(Number(data.lineHeight) - 1.85) < 0.001) data.lineHeight = "1.65";
   data.headerMode = data.headerMode === "first" ? "first" : "every";
   data.appMode = data.appMode === "article" ? "article" : "cards";
   data.articleTheme = normalizeArticleTheme(data.articleTheme);
@@ -1325,18 +1328,25 @@ function loadImage(src) {
 }
 
 async function handleContentImage(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const src = await readFileAsDataURL(file);
-  const id = `img_${Date.now().toString(36)}`;
-  state.images[id] = {
-    src,
-    name: file.name,
-    crop: null,
-    layout: null,
-  };
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+  const tags = [];
+  const now = Date.now().toString(36);
+
+  for (const [index, file] of files.entries()) {
+    const src = await readFileAsDataURL(file);
+    const id = `img_${now}_${index.toString(36)}`;
+    state.images[id] = {
+      src,
+      name: file.name,
+      crop: null,
+      layout: defaultNewImageLayout(),
+    };
+    tags.push(`[[image:${id}]]`);
+  }
+
   updateImageList();
-  insertAtSelection(els.content, `\n[[image:${id}]]\n`);
+  insertAtSelection(els.content, `\n${tags.join("\n\n")}\n`);
   event.target.value = "";
 }
 
@@ -1401,7 +1411,9 @@ function updateImageList() {
     const name = document.createElement("strong");
     name.textContent = image.name || id;
     const status = document.createElement("span");
-    status.textContent = image.crop ? "已裁剪" : "原图比例";
+    const layout = normalizeImageLayout(image.layout);
+    const widthLabel = layout.widthPercent ? `${Math.round(layout.widthPercent)}%` : "自适应";
+    status.textContent = `${image.crop ? "已裁剪" : "原图比例"} · ${widthLabel}`;
     meta.append(name, status);
 
     const actions = document.createElement("div");
@@ -1431,6 +1443,38 @@ function updateImageList() {
   }
 
   if (window.lucide) window.lucide.createIcons();
+}
+
+function defaultNewImageLayout() {
+  const percent = Number(els.imageWidthPercent?.value);
+  if (!Number.isFinite(percent)) return null;
+  return {
+    widthPercent: clamp(percent, 25, 100),
+    align: "center",
+  };
+}
+
+function applyImageWidthToAll() {
+  const entries = Object.entries(state.images);
+  if (!entries.length) {
+    els.status.textContent = "还没有插入图片";
+    return;
+  }
+
+  const widthPercent = clamp(Number(els.imageWidthPercent?.value) || 100, 25, 100);
+  if (els.imageWidthPercent) els.imageWidthPercent.value = String(Math.round(widthPercent));
+
+  for (const [, image] of entries) {
+    image.layout = {
+      ...normalizeImageLayout(image.layout),
+      widthPercent,
+    };
+  }
+
+  updateImageList();
+  saveState();
+  render();
+  els.status.textContent = `已将 ${entries.length} 张图片设置为 ${Math.round(widthPercent)}% 宽度`;
 }
 
 async function openCropper(kind, id = null) {
@@ -2059,9 +2103,10 @@ function imageBlockSize(sourceRect, maxWidth, maxHeight, layout = null) {
   const normalized = normalizeImageLayout(layout);
   const aspect = sourceRect.width / sourceRect.height;
   const baseWidth = Math.min(maxWidth, maxHeight * aspect);
-  const maxScale = baseWidth > 0 ? maxWidth / baseWidth : 1;
-  const widthScale = clamp(normalized.widthScale, 0.25, maxScale);
-  const width = baseWidth * widthScale;
+  const legacyMaxScale = baseWidth > 0 ? maxWidth / baseWidth : 1;
+  const width = normalized.widthPercent
+    ? maxWidth * (normalized.widthPercent / 100)
+    : baseWidth * clamp(normalized.widthScale, 0.25, legacyMaxScale);
   const height = width / aspect;
   const maxOffset = Math.max(0, maxWidth - width);
   let offsetX = maxOffset / 2;
@@ -2084,8 +2129,11 @@ function imageBlockSize(sourceRect, maxWidth, maxHeight, layout = null) {
 function normalizeImageLayout(layout = {}) {
   const value = layout || {};
   const align = ["left", "center", "right"].includes(value.align) ? value.align : "center";
+  const rawPercent = Number(value.widthPercent);
+  const widthPercent = Number.isFinite(rawPercent) && rawPercent > 0 ? clamp(rawPercent, 25, 100) : null;
   return {
     widthScale: clamp(Number(value.widthScale) || 1, 0.25, 20),
+    widthPercent,
     align,
   };
 }
@@ -2961,10 +3009,11 @@ function stopPreviewImageResize() {
 function resizeImageLayout(startLayout, startBox, dx, dy) {
   const heightDrivenDelta = dy * (startBox.width / Math.max(1, startBox.height));
   const deltaWidth = Math.abs(dx) >= Math.abs(heightDrivenDelta) ? dx : heightDrivenDelta;
-  const nextWidth = clamp(startBox.width + deltaWidth, startBox.baseWidth * 0.25, startBox.maxWidth);
+  const nextWidth = clamp(startBox.width + deltaWidth, startBox.maxWidth * 0.25, startBox.maxWidth);
   return {
     ...startLayout,
     widthScale: nextWidth / startBox.baseWidth,
+    widthPercent: (nextWidth / startBox.maxWidth) * 100,
   };
 }
 
@@ -3247,6 +3296,7 @@ function bindEvents() {
     }
   });
   els.contentImage.addEventListener("change", handleContentImage);
+  els.applyImageWidth?.addEventListener("click", applyImageWidthToAll);
   els.avatarInput.addEventListener("change", handleAvatar);
   els.scrollMode.addEventListener("click", () => {
     state.mode = state.mode === "scroll" ? "auto" : "scroll";

@@ -81,7 +81,7 @@
             <button type="button" class="tool-button" data-format="quote" title="重点引用"><i data-lucide="quote"></i></button>
             <label class="tool-button file-tool" title="插入图片" aria-label="插入图片">
               <i data-lucide="image-plus"></i>
-              <input id="contentImageInput" type="file" accept="image/*" />
+              <input id="contentImageInput" type="file" accept="image/*" multiple />
             </label>
             <details id="colorMenu" class="tool-menu">
               <summary class="tool-button color-tool" title="选中文字颜色" aria-label="选中文字颜色">
@@ -156,6 +156,18 @@
                 <i data-lucide="images"></i>
               </summary>
               <div class="tool-popover image-popover">
+                <div class="image-batch-controls">
+                  <label>
+                    图片宽度
+                    <span class="percent-input">
+                      <input id="imageWidthPercentInput" type="number" min="25" max="100" step="1" value="100" />
+                      <b>%</b>
+                    </span>
+                  </label>
+                  <button id="applyImageWidthBtn" class="secondary-button" type="button">
+                    批量应用
+                  </button>
+                </div>
                 <div id="imageList" class="image-list"></div>
               </div>
             </details>
@@ -184,7 +196,7 @@
                   </label>
                   <label>
                     行距
-                    <input id="lineHeightInput" type="number" min="1.25" max="2.4" step="0.05" value="1.85" />
+                    <input id="lineHeightInput" type="number" min="1.25" max="2.4" step="0.05" value="1.65" />
                   </label>
                   <label>
                     中文字体
@@ -326,6 +338,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
-    <script src="src/app.js?v=20260623-manual-line-breaks"></script>
+    <script src="src/app.js?v=20260630-image-batch-ratio"></script>
   </body>
 </html>

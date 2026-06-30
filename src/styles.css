@@ -841,6 +841,36 @@ body[data-app-mode="article"] .profile-inline {
   overflow: auto;
 }
 
+.image-batch-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.percent-input {
+  position: relative;
+  display: block;
+}
+
+.percent-input input {
+  padding-right: 34px;
+}
+
+.percent-input b {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .image-list {
   display: grid;
   gap: 10px;
