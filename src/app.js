@@ -2147,6 +2147,10 @@ function wrapBlockLines(ctx, block, style, maxWidth) {
   return lines;
 }
 
+function blankLineGap(settings) {
+  return Math.max(5, Math.ceil(settings.fontSize * 0.16));
+}
+
 function measureToken(ctx, token, style) {
   ctx.font = fontString(style, token);
   return ctx.measureText(token.text).width;
@@ -2265,7 +2269,7 @@ async function buildPages(settings) {
 
   for (const block of blocks) {
     if (block.type === "spacer") {
-      const spacerHeight = Math.ceil(settings.fontSize * settings.lineHeight);
+      const spacerHeight = blankLineGap(settings);
       ensureSpace(spacerHeight, 0);
       y += spacerHeight;
       previousBlockType = "spacer";
@@ -2362,7 +2366,7 @@ async function buildScrollPage(settings) {
 
   for (const block of blocks) {
     if (block.type === "spacer") {
-      y += Math.ceil(settings.fontSize * settings.lineHeight);
+      y += blankLineGap(settings);
       previousBlockType = "spacer";
       continue;
     }
