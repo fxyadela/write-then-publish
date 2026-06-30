@@ -3182,7 +3182,7 @@ async function chooseSaveTarget(filename, mimeType, extension) {
       suggestedName: filename,
       types: [
         {
-          description: extension === ".zip" ? "ZIP 压缩包" : extension === ".html" ? "HTML 文件" : "PNG 图片",
+          description: extension === ".zip" ? "ZIP 压缩包" : "PNG 图片",
           accept: {
             [mimeType]: [extension],
           },
@@ -3212,7 +3212,7 @@ async function saveBlob(blob, filename, writable = null) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function downloadArticleHtml() {
+async function downloadArticleImage() {
   const settings = readForm();
   if (state.appMode !== "article") {
     state.appMode = "article";
@@ -3226,59 +3226,36 @@ async function downloadArticleHtml() {
     return;
   }
 
-  const filename = "write-then-publish-article.html";
-  const writable = await chooseSaveTarget(filename, "text/html", ".html");
+  if (!window.html2canvas) {
+    els.status.textContent = "长图下载组件未加载，请刷新页面后重试";
+    return;
+  }
+
+  const filename = "write-then-publish-article.png";
+  const writable = await chooseSaveTarget(filename, EXPORT_IMAGE_MIME, EXPORT_IMAGE_EXTENSION);
   if (writable === false) {
     els.status.textContent = "已取消下载";
     return;
   }
 
-  const blob = new Blob([buildStandaloneArticleHtml(article.outerHTML)], { type: "text/html;charset=utf-8" });
+  els.status.textContent = "正在生成长图...";
+  const canvas = await window.html2canvas(article, {
+    backgroundColor: null,
+    scale: Math.min(2, window.devicePixelRatio || 1),
+    useCORS: true,
+    imageTimeout: 15000,
+    width: article.scrollWidth,
+    height: article.scrollHeight,
+    windowWidth: Math.max(document.documentElement.clientWidth, article.scrollWidth),
+    windowHeight: Math.max(document.documentElement.clientHeight, article.scrollHeight),
+  });
+  const blob = await canvasToLosslessPngBlob(canvas);
+  if (!blob) {
+    els.status.textContent = "长图生成失败，请调整内容后再试";
+    return;
+  }
   await saveBlob(blob, filename, writable);
   els.status.textContent = writable ? `已保存 ${filename}` : `已交给浏览器下载 ${filename}`;
-}
-
-function buildStandaloneArticleHtml(articleHtml) {
-  const css = collectPageStyles();
-  return `<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>写了就发 - 长文</title>
-    <style>
-${css}
-      body {
-        min-height: 100vh;
-        overflow: auto;
-        padding: 48px 18px;
-        background: var(--preview-bg, #ffffff);
-      }
-
-      .article-preview {
-        margin: 0 auto;
-      }
-    </style>
-  </head>
-  <body>
-    ${articleHtml}
-  </body>
-</html>`;
-}
-
-function collectPageStyles() {
-  return Array.from(document.styleSheets)
-    .map((sheet) => {
-      try {
-        return Array.from(sheet.cssRules || [])
-          .map((rule) => rule.cssText)
-          .join("\n");
-      } catch {
-        return "";
-      }
-    })
-    .filter(Boolean)
-    .join("\n");
 }
 
 function canvasToLosslessPngBlob(canvas) {
@@ -3505,7 +3482,7 @@ function bindEvents() {
   els.headerModeToggle.addEventListener("click", toggleHeaderMode);
   els.themeToggle.addEventListener("click", toggleUiTheme);
   els.downloadZip.addEventListener("click", downloadAll);
-  els.downloadArticle.addEventListener("click", downloadArticleHtml);
+  els.downloadArticle.addEventListener("click", downloadArticleImage);
 }
 
 loadPanelLayout();
