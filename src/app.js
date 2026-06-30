@@ -1959,7 +1959,7 @@ function styleForBlock(type, settings) {
     lineHeight: settings.lineHeight,
     weight: 400,
     italic: false,
-    marginTop: 6,
+    marginTop: 5,
     marginBottom: 0,
     color: settings.textColor,
   };
