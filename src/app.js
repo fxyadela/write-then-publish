@@ -1260,6 +1260,13 @@ function applyBackgroundBrushToSelection() {
   els.status.textContent = "已应用背景色，可继续选中文字刷色，点取消结束";
 }
 
+function applyActiveBrushToSelection() {
+  window.setTimeout(() => {
+    applyColorBrushToSelection();
+    applyBackgroundBrushToSelection();
+  }, 0);
+}
+
 function findNext() {
   const needle = els.find.value;
   if (!needle) return;
@@ -1918,6 +1925,16 @@ function countLeadingSpaces(text) {
   return text.match(/^\s*/)[0].length;
 }
 
+function applyInlineStyle(tokens, style) {
+  return tokens.map((token) => {
+    const next = { ...token };
+    for (const [key, value] of Object.entries(style)) {
+      if (next[key] === undefined) next[key] = value;
+    }
+    return next;
+  });
+}
+
 function parseInline(text, baseStart = 0) {
   const tokens = [];
   let i = 0;
@@ -1926,7 +1943,7 @@ function parseInline(text, baseStart = 0) {
     const colorMatch = text.slice(i).match(/^\{\{color:(#[0-9a-fA-F]{3,8})\|([\s\S]*?)\}\}/);
     if (colorMatch) {
       const textStart = baseStart + i + colorMatch[0].indexOf("|") + 1;
-      tokens.push({ text: colorMatch[2], color: colorMatch[1], sourceStart: textStart, sourceEnd: textStart + colorMatch[2].length });
+      tokens.push(...applyInlineStyle(parseInline(colorMatch[2], textStart), { color: colorMatch[1] }));
       i += colorMatch[0].length;
       continue;
     }
@@ -1934,7 +1951,7 @@ function parseInline(text, baseStart = 0) {
     const bgMatch = text.slice(i).match(/^\{\{bg:(#[0-9a-fA-F]{3,8})\|([\s\S]*?)\}\}/);
     if (bgMatch) {
       const textStart = baseStart + i + bgMatch[0].indexOf("|") + 1;
-      tokens.push({ text: bgMatch[2], bgColor: bgMatch[1], sourceStart: textStart, sourceEnd: textStart + bgMatch[2].length });
+      tokens.push(...applyInlineStyle(parseInline(bgMatch[2], textStart), { bgColor: bgMatch[1] }));
       i += bgMatch[0].length;
       continue;
     }
@@ -1942,7 +1959,7 @@ function parseInline(text, baseStart = 0) {
     if (text.startsWith("**", i)) {
       const close = text.indexOf("**", i + 2);
       if (close !== -1) {
-        tokens.push({ text: text.slice(i + 2, close), bold: true, sourceStart: baseStart + i + 2, sourceEnd: baseStart + close });
+        tokens.push(...applyInlineStyle(parseInline(text.slice(i + 2, close), baseStart + i + 2), { bold: true }));
         i = close + 2;
         continue;
       }
@@ -1951,7 +1968,7 @@ function parseInline(text, baseStart = 0) {
     if (text.startsWith("*", i)) {
       const close = text.indexOf("*", i + 1);
       if (close !== -1) {
-        tokens.push({ text: text.slice(i + 1, close), italic: true, sourceStart: baseStart + i + 1, sourceEnd: baseStart + close });
+        tokens.push(...applyInlineStyle(parseInline(text.slice(i + 1, close), baseStart + i + 1), { italic: true }));
         i = close + 1;
         continue;
       }
@@ -3429,18 +3446,11 @@ function bindEvents() {
   els.colorCancel.addEventListener("click", disableColorBrush);
   els.bgColorConfirm.addEventListener("click", enableBackgroundBrush);
   els.bgColorCancel.addEventListener("click", disableBackgroundBrush);
-  els.content.addEventListener("mouseup", () => {
-    window.setTimeout(() => {
-      applyColorBrushToSelection();
-      applyBackgroundBrushToSelection();
-    }, 0);
-  });
+  els.content.addEventListener("mouseup", applyActiveBrushToSelection);
+  document.addEventListener("pointerup", applyActiveBrushToSelection);
   els.content.addEventListener("keyup", (event) => {
     if (event.key.startsWith("Arrow") || event.key === "Shift") {
-      window.setTimeout(() => {
-        applyColorBrushToSelection();
-        applyBackgroundBrushToSelection();
-      }, 0);
+      applyActiveBrushToSelection();
     }
   });
   els.contentImage.addEventListener("change", handleContentImage);
