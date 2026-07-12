@@ -1257,8 +1257,7 @@ function applyBackgroundBrushToSelection() {
   if (document.activeElement !== els.content) return;
   if (els.content.selectionStart === els.content.selectionEnd) return;
   wrapSelectionWithBackground();
-  disableBackgroundBrush();
-  els.status.textContent = "已应用选中文字背景色";
+  els.status.textContent = "已应用背景色，可继续选中文字刷色，点取消结束";
 }
 
 function findNext() {
