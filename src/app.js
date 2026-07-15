@@ -8,8 +8,6 @@ const EXPORT_ZIP_COMPRESSION = "STORE";
 const OBSIDIAN_VAULT_DB = "writeThenPublishObsidianVault";
 const OBSIDIAN_VAULT_STORE = "settings";
 const OBSIDIAN_VAULT_KEY = "directoryHandle";
-const IMAGE_REFERENCE_EXTENSION = /\.(avif|bmp|gif|heic|jpe?g|png|svg|webp)(?:[?#].*)?$/i;
-const NON_IMAGE_MEDIA_REFERENCE_EXTENSION = /\.(avi|m4v|mkv|mov|mp4|mpeg|mpg|ogg|ogv|webm|wmv)(?:[?#].*)?$/i;
 const STORAGE_KEY = "graphicTextLayoutState.v1";
 const PROJECTS_STORAGE_KEY = "graphicTextLayoutProjects.v1";
 const PANEL_LAYOUT_STORAGE_KEY = "writeThenPublishPanelLayout.v1";
@@ -53,7 +51,6 @@ const els = {
   obsidianImportMenu: $("#obsidianImportMenu"),
   connectObsidianVault: $("#connectObsidianVaultBtn"),
   obsidianVaultStatus: $("#obsidianVaultStatus"),
-  obsidianMarkdownFile: $("#obsidianMarkdownFileInput"),
   obsidianMarkdown: $("#obsidianMarkdownInput"),
   obsidianImage: $("#obsidianImageInput"),
   obsidianDropZone: $("#obsidianDropZone"),
@@ -1350,15 +1347,6 @@ async function readFileAsDataURL(file) {
   });
 }
 
-async function readFileAsText(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = reject;
-    reader.readAsText(file);
-  });
-}
-
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -1439,15 +1427,6 @@ function imageReferenceKeys(reference) {
   return name && name !== path ? [path, name] : [path];
 }
 
-function shouldImportObsidianImageReference(reference) {
-  const path = normalizeObsidianImagePath(reference);
-  if (!path) return false;
-  if (/^https?:/i.test(path)) return false;
-  if (NON_IMAGE_MEDIA_REFERENCE_EXTENSION.test(path)) return false;
-  if (IMAGE_REFERENCE_EXTENSION.test(path)) return true;
-  return !/\.[a-z0-9]{2,5}$/i.test(path);
-}
-
 function buildImageReferenceLookup(images) {
   const lookup = new Map();
   Object.entries(images || {}).forEach(([id, image]) => {
@@ -1475,7 +1454,6 @@ function convertObsidianImageReferences(markdown, images) {
   let matched = 0;
   const replaceReference = (whole, reference) => {
     const target = String(reference || "").split("|")[0].trim();
-    if (!shouldImportObsidianImageReference(target)) return whole;
     const result = resolveObsidianImageReference(target, lookup);
     if (result.id) {
       matched += 1;
@@ -1493,14 +1471,15 @@ function convertObsidianImageReferences(markdown, images) {
 }
 
 function countMarkdownImageReferences(markdown) {
-  return extractMarkdownImageReferences(markdown).length;
+  const text = String(markdown || "");
+  return (text.match(/!\[\[[^\]\n]+\]\]/g) || []).length + (text.match(/!\[[^\]\n]*\]\([^)]*\)/g) || []).length;
 }
 
 function updateObsidianFileSummary() {
   if (!els.obsidianFileSummary) return;
   els.obsidianFileSummary.textContent = pendingObsidianFiles.length
-    ? `已选择 ${pendingObsidianFiles.length} 张图片，系统会自动匹配`
-    : "仅在未授权仓库时使用";
+    ? `已选择 ${pendingObsidianFiles.length} 张图片，导入时会自动匹配`
+    : "可一次放入多张图片，也可拖入附件文件夹";
 }
 
 function addPendingObsidianFiles(files) {
@@ -1514,12 +1493,6 @@ function addPendingObsidianFiles(files) {
     }
   });
   updateObsidianFileSummary();
-  if (selected.length && els.obsidianImportStatus) {
-    const references = countMarkdownImageReferences(els.obsidianMarkdown?.value || "");
-    els.obsidianImportStatus.textContent = references
-      ? `已选择 ${pendingObsidianFiles.length} 张图片，检测到 ${references} 个图片引用，可同步到卡片`
-      : `已选择 ${pendingObsidianFiles.length} 张图片。请继续选择或粘贴 Markdown 文档`;
-  }
 }
 
 function openObsidianVaultDatabase() {
@@ -1556,7 +1529,6 @@ async function saveObsidianVault(handle) {
 }
 
 function setObsidianVaultStatus(message, connected = false) {
-  if (!els.obsidianVaultStatus || !els.connectObsidianVault) return;
   els.obsidianVaultStatus.textContent = message;
   els.obsidianVaultStatus.parentElement?.classList.toggle("is-connected", connected);
   els.obsidianImportMenu?.classList.toggle("is-vault-connected", Boolean(obsidianVault.handle));
@@ -1588,7 +1560,7 @@ async function connectObsidianVault() {
     obsidianVault.handle = handle;
     await saveObsidianVault(handle);
     setObsidianVaultStatus(`已连接：${handle.name}`, true);
-    els.obsidianImportStatus.textContent = "仓库已连接。现在可以选择 Markdown 文档，或直接粘贴 Obsidian Markdown。";
+    els.obsidianImportStatus.textContent = "仓库已连接。以后直接把 Obsidian Markdown 粘贴到正文编辑区即可。";
   } catch (error) {
     if (error?.name !== "AbortError") setObsidianVaultStatus("连接失败，请重新选择 Obsidian 仓库根目录。");
   }
@@ -1607,12 +1579,10 @@ function extractMarkdownImageReferences(markdown) {
   const references = new Set();
   const text = String(markdown || "");
   for (const match of text.matchAll(/!\[\[([^\]\n]+)\]\]/g)) {
-    const reference = match[1].split("|")[0].trim();
-    if (shouldImportObsidianImageReference(reference)) references.add(reference);
+    references.add(match[1].split("|")[0].trim());
   }
   for (const match of text.matchAll(/!\[[^\]\n]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+[^)]*)?\)/g)) {
-    const reference = (match[1] || match[2] || "").trim();
-    if (shouldImportObsidianImageReference(reference)) references.add(reference);
+    references.add((match[1] || match[2] || "").trim());
   }
   return Array.from(references).filter(Boolean);
 }
@@ -1671,7 +1641,7 @@ function replaceEditorContent(content) {
 function closeObsidianImportMenu() {
   els.obsidianImportMenu.open = false;
   els.obsidianMarkdown.value = "";
-  els.obsidianImportStatus.textContent = "先连接 Obsidian 仓库，再选择 Markdown 文档。";
+  els.obsidianImportStatus.textContent = "图片会按文件名自动匹配；有缺失时不会导入成品。";
 }
 
 function previewObsidianDraft() {
@@ -1683,9 +1653,7 @@ function previewObsidianDraft() {
   scheduleTextHistoryCommit();
   requestRender();
   if (countMarkdownImageReferences(markdown)) {
-    els.obsidianImportStatus.textContent = obsidianVault.handle
-      ? "已检测到图片引用，点击同步后会从已连接仓库读取图片。"
-      : "已检测到图片引用。请先连接 Obsidian 仓库，或在备用入口手动补图。";
+    els.obsidianImportStatus.textContent = "正在实时预览；图片会在导入时自动从已连接的仓库读取。";
   }
 }
 
@@ -1740,32 +1708,6 @@ async function importMarkdownFromConnectedVault(markdown) {
   }
 }
 
-async function handleObsidianMarkdownFile(event) {
-  const file = event.target.files?.[0];
-  event.target.value = "";
-  if (!file) return;
-  const markdown = await readFileAsText(file);
-  els.obsidianMarkdown.value = markdown;
-  previewObsidianDraft();
-  const references = countMarkdownImageReferences(markdown);
-  if (!references) {
-    replaceEditorContent(markdown);
-    const message = "已读取文档，未检测到本地图片引用";
-    els.obsidianImportStatus.textContent = message;
-    els.status.textContent = message;
-    return;
-  }
-  if (obsidianVault.handle) {
-    await importMarkdownFromConnectedVault(markdown);
-    return;
-  }
-  const message = pendingObsidianFiles.length
-    ? `已读取文档，检测到 ${references} 个本地图片引用，可用备用附件同步`
-    : `已读取文档，检测到 ${references} 个本地图片引用。请先连接 Obsidian 仓库`;
-  els.obsidianImportStatus.textContent = message;
-  els.status.textContent = message;
-}
-
 function readDroppedEntry(entry) {
   if (!entry) return Promise.resolve([]);
   if (entry.isFile) {
@@ -1797,7 +1739,7 @@ async function getDroppedFiles(dataTransfer) {
 async function importObsidianDocument() {
   const markdown = els.obsidianMarkdown.value.trim();
   if (!markdown) {
-    els.obsidianImportStatus.textContent = "先选择 Markdown 文档，或在备用入口粘贴正文。";
+    els.obsidianImportStatus.textContent = "先把 Obsidian 正文粘贴到上方。";
     return;
   }
 
@@ -2383,27 +2325,17 @@ function resolveMarkdownImageBlock(line, imageLookup) {
   if (internal) return internal[1];
 
   const obsidian = line.match(/^!\[\[([^\]\n]+)\]\]$/);
-  if (obsidian) {
-    const reference = obsidian[1].split("|")[0].trim();
-    if (!shouldImportObsidianImageReference(reference)) return null;
-    return resolveObsidianImageReference(reference, imageLookup).id || null;
-  }
+  if (obsidian) return resolveObsidianImageReference(obsidian[1].split("|")[0].trim(), imageLookup).id || null;
 
   const markdown = line.match(/^!\[[^\]\n]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+[^)]*)?\)$/);
-  if (markdown) {
-    const reference = markdown[1] || markdown[2];
-    if (!shouldImportObsidianImageReference(reference)) return null;
-    return resolveObsidianImageReference(reference, imageLookup).id || null;
-  }
+  if (markdown) return resolveObsidianImageReference(markdown[1] || markdown[2], imageLookup).id || null;
   return null;
 }
 
 function isMarkdownImageBlock(line) {
-  if (/^\[\[image:[\w-]+\]\]$/.test(line)) return true;
-  const obsidian = line.match(/^!\[\[([^\]\n]+)\]\]$/);
-  if (obsidian) return shouldImportObsidianImageReference(obsidian[1].split("|")[0].trim());
-  const markdown = line.match(/^!\[[^\]\n]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+[^)]*)?\)$/);
-  return markdown ? shouldImportObsidianImageReference(markdown[1] || markdown[2]) : false;
+  return /^\[\[image:[\w-]+\]\]$/.test(line)
+    || /^!\[\[[^\]\n]+\]\]$/.test(line)
+    || /^!\[[^\]\n]*\]\((?:<[^>]+>|[^\s)]+)(?:\s+[^)]*)?\)$/.test(line);
 }
 
 function parseBlocks(content, images = {}) {
@@ -4160,7 +4092,6 @@ function bindEvents() {
   });
   els.contentImage.addEventListener("change", handleContentImage);
   els.connectObsidianVault?.addEventListener("click", connectObsidianVault);
-  els.obsidianMarkdownFile.addEventListener("change", handleObsidianMarkdownFile);
   els.obsidianMarkdown.addEventListener("input", debounce(previewObsidianDraft, 180));
   els.obsidianImage.addEventListener("change", (event) => {
     addPendingObsidianFiles(event.target.files);

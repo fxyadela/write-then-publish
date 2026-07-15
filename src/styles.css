@@ -882,6 +882,15 @@ body[data-app-mode="article"] .profile-inline {
   display: block;
 }
 
+.obsidian-manual-import {
+  display: grid;
+  gap: 10px;
+}
+
+.obsidian-import-menu.is-vault-connected .obsidian-manual-import {
+  display: none;
+}
+
 .obsidian-vault-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
