@@ -84,21 +84,22 @@
               <input id="contentImageInput" type="file" accept="image/*" multiple />
             </label>
             <details id="obsidianImportMenu" class="tool-menu obsidian-import-menu">
-              <summary class="tool-button" title="同步 Obsidian 文档" aria-label="同步 Obsidian 文档">
+              <summary class="tool-button" title="从 Obsidian 导入图文" aria-label="从 Obsidian 导入图文">
                 <i data-lucide="clipboard-paste"></i>
               </summary>
               <div class="tool-popover obsidian-import-popover">
                 <div class="obsidian-import-heading">
-                  <strong>连接 Obsidian 仓库</strong>
-                  <span>授权一次本地仓库后，选择 Markdown 文档，系统会自动读取文档里的本地图片。</span>
+                  <strong>从 Obsidian 导入图文</strong>
+                  <span>连接一次本地仓库后，可以选择 Markdown 文档，也可以直接粘贴 Obsidian Markdown。</span>
                 </div>
                 <div class="obsidian-vault-row">
                   <button id="connectObsidianVaultBtn" class="secondary-button" type="button">
                     <i data-lucide="folder-open"></i>
-                    连接仓库
+                    连接 Obsidian 仓库
                   </button>
                   <span id="obsidianVaultStatus">尚未连接仓库</span>
                 </div>
+                <p class="obsidian-direct-paste-hint">已连接仓库。可选择 Markdown 文档，也可直接把 Obsidian Markdown 粘贴到左侧原文编辑区，图片会自动读取。</p>
                 <label class="obsidian-document-picker">
                   <input id="obsidianMarkdownFileInput" type="file" accept=".md,.markdown,text/markdown,text/plain" />
                   <i data-lucide="file-text"></i>

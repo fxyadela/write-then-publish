@@ -1559,6 +1559,7 @@ function setObsidianVaultStatus(message, connected = false) {
   if (!els.obsidianVaultStatus || !els.connectObsidianVault) return;
   els.obsidianVaultStatus.textContent = message;
   els.obsidianVaultStatus.parentElement?.classList.toggle("is-connected", connected);
+  els.obsidianImportMenu?.classList.toggle("is-vault-connected", Boolean(obsidianVault.handle));
   els.connectObsidianVault.innerHTML = connected
     ? '<i data-lucide="folder-cog"></i> 更换仓库'
     : '<i data-lucide="folder-open"></i> 连接 Obsidian 仓库';
@@ -1587,7 +1588,7 @@ async function connectObsidianVault() {
     obsidianVault.handle = handle;
     await saveObsidianVault(handle);
     setObsidianVaultStatus(`已连接：${handle.name}`, true);
-    els.obsidianImportStatus.textContent = "仓库已连接。现在选择 Markdown 文档，系统会自动读取其中的本地图片。";
+    els.obsidianImportStatus.textContent = "仓库已连接。现在可以选择 Markdown 文档，或直接粘贴 Obsidian Markdown。";
   } catch (error) {
     if (error?.name !== "AbortError") setObsidianVaultStatus("连接失败，请重新选择 Obsidian 仓库根目录。");
   }
