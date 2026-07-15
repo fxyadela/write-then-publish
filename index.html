@@ -89,34 +89,27 @@
               </summary>
               <div class="tool-popover obsidian-import-popover">
                 <div class="obsidian-import-heading">
-                  <strong>Obsidian 同步</strong>
-                  <span>连接本地仓库后，读取 Markdown 文档，并自动同步文档里的本地图片。</span>
-                </div>
-                <div class="obsidian-vault-row">
-                  <button id="connectObsidianVaultBtn" class="secondary-button" type="button">
-                    <i data-lucide="folder-open"></i>
-                    连接 Obsidian 仓库
-                  </button>
-                  <span id="obsidianVaultStatus">尚未连接仓库</span>
+                  <strong>上传 Obsidian 文档</strong>
+                  <span>选择 Markdown 文档和图片附件，系统会按文档里的图片链接自动匹配到卡片。</span>
                 </div>
                 <label class="obsidian-document-picker">
                   <input id="obsidianMarkdownFileInput" type="file" accept=".md,.markdown,text/markdown,text/plain" />
                   <i data-lucide="file-text"></i>
-                  <span><b>选择 Markdown 文档</b><small>推荐方式：连接仓库后直接选择 Obsidian 里的文章</small></span>
+                  <span><b>选择 Markdown 文档</b><small>第一步：选择 Obsidian 里的 .md 文章</small></span>
                 </label>
-                <label>
-                  或粘贴 Markdown
-                  <textarea id="obsidianMarkdownInput" class="obsidian-markdown-input" placeholder="粘贴含 ![[图片.png]] 或 ![](附件/图片.png) 的正文，系统会从已连接仓库读取图片…"></textarea>
+                <label id="obsidianDropZone" class="obsidian-drop-zone" tabindex="0">
+                  <input id="obsidianImageInput" type="file" accept="image/*" multiple webkitdirectory directory />
+                  <i data-lucide="images"></i>
+                  <span><b>选择图片附件或附件文件夹</b><small id="obsidianFileSummary">第二步：选择 Obsidian 的附件图片</small></span>
                 </label>
                 <details class="obsidian-fallback">
-                  <summary>找不到图片时，手动补充附件</summary>
-                  <label id="obsidianDropZone" class="obsidian-drop-zone" tabindex="0">
-                    <input id="obsidianImageInput" type="file" accept="image/*" multiple />
-                    <i data-lucide="images"></i>
-                    <span><b>选择或拖入图片附件</b><small id="obsidianFileSummary">仅作为自动同步失败时的兜底</small></span>
+                  <summary>备用：粘贴 Markdown</summary>
+                  <label>
+                    Markdown 正文
+                    <textarea id="obsidianMarkdownInput" class="obsidian-markdown-input" placeholder="也可以粘贴含 ![[图片.png]] 或 ![](附件/图片.png) 的正文…"></textarea>
                   </label>
                 </details>
-                <p id="obsidianImportStatus" class="obsidian-import-status" aria-live="polite">先连接仓库，再选择或粘贴 Obsidian 文档；图片会自动同步到卡片。</p>
+                <p id="obsidianImportStatus" class="obsidian-import-status" aria-live="polite">选择 Markdown 和附件图片后，点击同步到卡片。</p>
                 <button id="obsidianImportBtn" class="primary-button wide" type="button">
                   <i data-lucide="import"></i>
                   同步到卡片

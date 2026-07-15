@@ -1499,8 +1499,8 @@ function countMarkdownImageReferences(markdown) {
 function updateObsidianFileSummary() {
   if (!els.obsidianFileSummary) return;
   els.obsidianFileSummary.textContent = pendingObsidianFiles.length
-    ? `已选择 ${pendingObsidianFiles.length} 张图片，导入时会自动匹配`
-    : "可一次放入多张图片，也可拖入附件文件夹";
+    ? `已选择 ${pendingObsidianFiles.length} 张图片，系统会自动匹配`
+    : "第二步：选择 Obsidian 的附件图片";
 }
 
 function addPendingObsidianFiles(files) {
@@ -1514,6 +1514,12 @@ function addPendingObsidianFiles(files) {
     }
   });
   updateObsidianFileSummary();
+  if (selected.length && els.obsidianImportStatus) {
+    const references = countMarkdownImageReferences(els.obsidianMarkdown?.value || "");
+    els.obsidianImportStatus.textContent = references
+      ? `已选择 ${pendingObsidianFiles.length} 张图片，检测到 ${references} 个图片引用，可同步到卡片`
+      : `已选择 ${pendingObsidianFiles.length} 张图片。请继续选择 Markdown 文档`;
+  }
 }
 
 function openObsidianVaultDatabase() {
@@ -1550,6 +1556,7 @@ async function saveObsidianVault(handle) {
 }
 
 function setObsidianVaultStatus(message, connected = false) {
+  if (!els.obsidianVaultStatus || !els.connectObsidianVault) return;
   els.obsidianVaultStatus.textContent = message;
   els.obsidianVaultStatus.parentElement?.classList.toggle("is-connected", connected);
   els.connectObsidianVault.innerHTML = connected
@@ -1663,7 +1670,7 @@ function replaceEditorContent(content) {
 function closeObsidianImportMenu() {
   els.obsidianImportMenu.open = false;
   els.obsidianMarkdown.value = "";
-  els.obsidianImportStatus.textContent = "先连接仓库，再选择或粘贴 Obsidian 文档；图片会自动同步到卡片。";
+  els.obsidianImportStatus.textContent = "选择 Markdown 和附件图片后，点击同步到卡片。";
 }
 
 function previewObsidianDraft() {
@@ -1737,13 +1744,19 @@ async function handleObsidianMarkdownFile(event) {
   const markdown = await readFileAsText(file);
   els.obsidianMarkdown.value = markdown;
   previewObsidianDraft();
-  if (!obsidianVault.handle) {
-    const message = "已读取文档。请先连接 Obsidian 仓库，才能自动同步文档里的本地图片。";
+  const references = countMarkdownImageReferences(markdown);
+  if (!references) {
+    replaceEditorContent(markdown);
+    const message = "已读取文档，未检测到本地图片引用";
     els.obsidianImportStatus.textContent = message;
     els.status.textContent = message;
     return;
   }
-  await importMarkdownFromConnectedVault(markdown);
+  const message = pendingObsidianFiles.length
+    ? `已读取文档，检测到 ${references} 个本地图片引用，可同步到卡片`
+    : `已读取文档，检测到 ${references} 个本地图片引用。请选择附件图片或附件文件夹`;
+  els.obsidianImportStatus.textContent = message;
+  els.status.textContent = message;
 }
 
 function readDroppedEntry(entry) {
@@ -1777,12 +1790,7 @@ async function getDroppedFiles(dataTransfer) {
 async function importObsidianDocument() {
   const markdown = els.obsidianMarkdown.value.trim();
   if (!markdown) {
-    els.obsidianImportStatus.textContent = "先把 Obsidian 正文粘贴到上方。";
-    return;
-  }
-
-  if (obsidianVault.handle && !pendingObsidianFiles.length) {
-    await importMarkdownFromConnectedVault(markdown);
+    els.obsidianImportStatus.textContent = "先选择 Markdown 文档，或在备用入口粘贴正文。";
     return;
   }
 
@@ -4139,7 +4147,7 @@ function bindEvents() {
     }
   });
   els.contentImage.addEventListener("change", handleContentImage);
-  els.connectObsidianVault.addEventListener("click", connectObsidianVault);
+  els.connectObsidianVault?.addEventListener("click", connectObsidianVault);
   els.obsidianMarkdownFile.addEventListener("change", handleObsidianMarkdownFile);
   els.obsidianMarkdown.addEventListener("input", debounce(previewObsidianDraft, 180));
   els.obsidianImage.addEventListener("change", (event) => {
@@ -4211,8 +4219,6 @@ resetTextHistory();
 updateProjectHistory();
 bindEvents();
 render();
-void loadObsidianVaultConnection();
-
 if (window.lucide) {
   window.lucide.createIcons();
 }
