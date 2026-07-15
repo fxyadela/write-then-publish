@@ -865,6 +865,31 @@ body[data-app-mode="article"] .profile-inline {
   line-height: 1.5;
 }
 
+.obsidian-direct-paste-hint {
+  display: none;
+  margin: 0;
+  padding: 10px 11px;
+  border-left: 3px solid var(--accent);
+  color: var(--control-text);
+  background: color-mix(in srgb, var(--accent) 8%, var(--soft));
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.obsidian-manual-import {
+  display: grid;
+  gap: 10px;
+}
+
+.obsidian-import-menu.is-vault-connected .obsidian-direct-paste-hint {
+  display: block;
+}
+
+.obsidian-import-menu.is-vault-connected .obsidian-manual-import {
+  display: none;
+}
+
 .obsidian-vault-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

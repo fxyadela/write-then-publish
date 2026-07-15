@@ -1531,6 +1531,7 @@ async function saveObsidianVault(handle) {
 function setObsidianVaultStatus(message, connected = false) {
   els.obsidianVaultStatus.textContent = message;
   els.obsidianVaultStatus.parentElement?.classList.toggle("is-connected", connected);
+  els.obsidianImportMenu?.classList.toggle("is-vault-connected", Boolean(obsidianVault.handle));
   els.connectObsidianVault.innerHTML = connected
     ? '<i data-lucide="folder-cog"></i> 更换仓库'
     : '<i data-lucide="folder-open"></i> 连接 Obsidian 仓库';

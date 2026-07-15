@@ -99,20 +99,23 @@
                   </button>
                   <span id="obsidianVaultStatus">尚未连接仓库</span>
                 </div>
-                <label>
-                  Obsidian 正文
-                  <textarea id="obsidianMarkdownInput" class="obsidian-markdown-input" placeholder="粘贴含 ![[图片.png]] 或 ![](附件/图片.png) 的 Obsidian Markdown…"></textarea>
-                </label>
-                <label id="obsidianDropZone" class="obsidian-drop-zone" tabindex="0">
-                  <input id="obsidianImageInput" type="file" accept="image/*" multiple />
-                  <i data-lucide="images"></i>
-                  <span><b>选择或拖入图片附件</b><small id="obsidianFileSummary">可一次放入多张图片</small></span>
-                </label>
-                <p id="obsidianImportStatus" class="obsidian-import-status" aria-live="polite">图片会按文件名自动匹配；有缺失时不会导入成品。</p>
-                <button id="obsidianImportBtn" class="primary-button wide" type="button">
-                  <i data-lucide="import"></i>
-                  导入并替换正文
-                </button>
+                <p class="obsidian-direct-paste-hint">已连接仓库。直接回到左侧的原文编辑区粘贴 Obsidian Markdown，图片会自动读取。</p>
+                <div class="obsidian-manual-import">
+                  <label>
+                    Obsidian 正文
+                    <textarea id="obsidianMarkdownInput" class="obsidian-markdown-input" placeholder="粘贴含 ![[图片.png]] 或 ![](附件/图片.png) 的 Obsidian Markdown…"></textarea>
+                  </label>
+                  <label id="obsidianDropZone" class="obsidian-drop-zone" tabindex="0">
+                    <input id="obsidianImageInput" type="file" accept="image/*" multiple />
+                    <i data-lucide="images"></i>
+                    <span><b>选择或拖入图片附件</b><small id="obsidianFileSummary">可一次放入多张图片</small></span>
+                  </label>
+                  <p id="obsidianImportStatus" class="obsidian-import-status" aria-live="polite">图片会按文件名自动匹配；有缺失时不会导入成品。</p>
+                  <button id="obsidianImportBtn" class="primary-button wide" type="button">
+                    <i data-lucide="import"></i>
+                    导入并替换正文
+                  </button>
+                </div>
               </div>
             </details>
             <details id="colorMenu" class="tool-menu">
