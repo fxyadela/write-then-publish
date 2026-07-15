@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>写了就发 | Write Then Publish</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317202f'/%3E%3Cpath d='M18 17h28v7H18zm0 13h20v6H18zm0 12h28v6H18z' fill='%23fff'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="src/styles.css?v=20260615-author-credit" />
+    <link rel="stylesheet" href="src/styles.css?v=20260715-obsidian-import" />
   </head>
   <body>
     <main class="workspace">
@@ -83,6 +83,26 @@
               <i data-lucide="image-plus"></i>
               <input id="contentImageInput" type="file" accept="image/*" multiple />
             </label>
+            <details id="obsidianImportMenu" class="tool-menu obsidian-import-menu">
+              <summary class="tool-button" title="从 Obsidian 导入图文" aria-label="从 Obsidian 导入图文">
+                <i data-lucide="clipboard-paste"></i>
+              </summary>
+              <div class="tool-popover obsidian-import-popover">
+                <div class="obsidian-import-heading">
+                  <strong>从 Obsidian 导入图文</strong>
+                  <span>连接一次仓库后，以后直接粘贴即可自动读取图片。</span>
+                </div>
+                <div class="obsidian-vault-row">
+                  <button id="connectObsidianVaultBtn" class="secondary-button" type="button">
+                    <i data-lucide="folder-open"></i>
+                    连接 Obsidian 仓库
+                  </button>
+                  <input id="obsidianVaultFolderInput" class="obsidian-vault-folder-input" type="file" webkitdirectory directory multiple />
+                  <span id="obsidianVaultStatus">尚未连接仓库</span>
+                </div>
+                <p class="obsidian-direct-paste-hint">已连接仓库。直接回到左侧的原文编辑区粘贴 Obsidian Markdown，图片会自动读取。</p>
+              </div>
+            </details>
             <details id="colorMenu" class="tool-menu">
               <summary class="tool-button color-tool" title="选中文字颜色" aria-label="选中文字颜色">
                 <i data-lucide="paintbrush"></i>
@@ -360,6 +380,6 @@
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="src/app.js?v=20260630-article-image-download"></script>
+    <script src="src/app.js?v=20260715-obsidian-import"></script>
   </body>
 </html>
