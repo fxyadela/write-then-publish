@@ -1500,7 +1500,7 @@ function updateObsidianFileSummary() {
   if (!els.obsidianFileSummary) return;
   els.obsidianFileSummary.textContent = pendingObsidianFiles.length
     ? `已选择 ${pendingObsidianFiles.length} 张图片，系统会自动匹配`
-    : "第二步：选择 Obsidian 的附件图片";
+    : "仅在未授权仓库时使用";
 }
 
 function addPendingObsidianFiles(files) {
@@ -1518,7 +1518,7 @@ function addPendingObsidianFiles(files) {
     const references = countMarkdownImageReferences(els.obsidianMarkdown?.value || "");
     els.obsidianImportStatus.textContent = references
       ? `已选择 ${pendingObsidianFiles.length} 张图片，检测到 ${references} 个图片引用，可同步到卡片`
-      : `已选择 ${pendingObsidianFiles.length} 张图片。请继续选择 Markdown 文档`;
+      : `已选择 ${pendingObsidianFiles.length} 张图片。请继续选择或粘贴 Markdown 文档`;
   }
 }
 
@@ -1670,7 +1670,7 @@ function replaceEditorContent(content) {
 function closeObsidianImportMenu() {
   els.obsidianImportMenu.open = false;
   els.obsidianMarkdown.value = "";
-  els.obsidianImportStatus.textContent = "选择 Markdown 和附件图片后，点击同步到卡片。";
+  els.obsidianImportStatus.textContent = "先连接 Obsidian 仓库，再选择 Markdown 文档。";
 }
 
 function previewObsidianDraft() {
@@ -1682,7 +1682,9 @@ function previewObsidianDraft() {
   scheduleTextHistoryCommit();
   requestRender();
   if (countMarkdownImageReferences(markdown)) {
-    els.obsidianImportStatus.textContent = "正在实时预览；图片会在导入时自动从已连接的仓库读取。";
+    els.obsidianImportStatus.textContent = obsidianVault.handle
+      ? "已检测到图片引用，点击同步后会从已连接仓库读取图片。"
+      : "已检测到图片引用。请先连接 Obsidian 仓库，或在备用入口手动补图。";
   }
 }
 
@@ -1752,9 +1754,13 @@ async function handleObsidianMarkdownFile(event) {
     els.status.textContent = message;
     return;
   }
+  if (obsidianVault.handle) {
+    await importMarkdownFromConnectedVault(markdown);
+    return;
+  }
   const message = pendingObsidianFiles.length
-    ? `已读取文档，检测到 ${references} 个本地图片引用，可同步到卡片`
-    : `已读取文档，检测到 ${references} 个本地图片引用。请选择附件图片或附件文件夹`;
+    ? `已读取文档，检测到 ${references} 个本地图片引用，可用备用附件同步`
+    : `已读取文档，检测到 ${references} 个本地图片引用。请先连接 Obsidian 仓库`;
   els.obsidianImportStatus.textContent = message;
   els.status.textContent = message;
 }
@@ -1791,6 +1797,11 @@ async function importObsidianDocument() {
   const markdown = els.obsidianMarkdown.value.trim();
   if (!markdown) {
     els.obsidianImportStatus.textContent = "先选择 Markdown 文档，或在备用入口粘贴正文。";
+    return;
+  }
+
+  if (obsidianVault.handle && !pendingObsidianFiles.length) {
+    await importMarkdownFromConnectedVault(markdown);
     return;
   }
 
@@ -4219,6 +4230,7 @@ resetTextHistory();
 updateProjectHistory();
 bindEvents();
 render();
+void loadObsidianVaultConnection();
 if (window.lucide) {
   window.lucide.createIcons();
 }
