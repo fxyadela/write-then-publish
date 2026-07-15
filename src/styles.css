@@ -843,8 +843,8 @@ body[data-app-mode="article"] .profile-inline {
 
 .obsidian-import-popover {
   display: grid;
-  gap: 10px;
-  width: min(430px, calc(100vw - 36px));
+  gap: 12px;
+  width: min(420px, calc(100vw - 36px));
 }
 
 .obsidian-import-heading {
@@ -895,15 +895,87 @@ body[data-app-mode="article"] .profile-inline {
   border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
 }
 
+.obsidian-document-picker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 11px 12px;
+  border: 1px solid var(--active-border);
+  border-radius: 8px;
+  color: var(--active-text);
+  background: var(--active-bg);
+  cursor: pointer;
+}
+
+.obsidian-document-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.obsidian-document-picker > svg {
+  width: 22px;
+  height: 22px;
+}
+
+.obsidian-document-picker span {
+  display: grid;
+  gap: 2px;
+}
+
+.obsidian-document-picker b {
+  font-size: 13px;
+}
+
+.obsidian-document-picker small {
+  color: currentColor;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.72;
+}
+
 .obsidian-markdown-input {
-  min-height: 154px;
+  min-height: 118px;
   padding: 10px 11px;
   resize: vertical;
   font-size: 12px;
   line-height: 1.55;
 }
 
+.obsidian-fallback {
+  display: grid;
+  gap: 8px;
+}
+
+.obsidian-fallback summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+  list-style: none;
+}
+
+.obsidian-fallback summary::-webkit-details-marker {
+  display: none;
+}
+
+.obsidian-fallback summary::after {
+  content: "展开";
+  margin-left: 8px;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.obsidian-fallback[open] summary::after {
+  content: "收起";
+}
+
 .obsidian-drop-zone {
+  display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
