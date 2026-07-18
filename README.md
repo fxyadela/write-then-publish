@@ -167,3 +167,7 @@ http://127.0.0.1:5173/
 │   └── screenshots
 └── assets
 ```
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
