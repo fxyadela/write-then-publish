@@ -2336,6 +2336,7 @@ function parseBlocks(content, images = {}) {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const hasContentBeforeLine = blocks.length > 0 || paragraphLines.length > 0;
     const leading = line.match(/^\s*/)[0].length;
     const trailing = line.match(/\s*$/)[0].length;
     const trimmed = line.slice(leading, line.length - trailing);
@@ -2382,7 +2383,7 @@ function parseBlocks(content, images = {}) {
       }
     } else {
       flushParagraph();
-      if (line.length > 0) {
+      if (hasContentBeforeLine) {
         blocks.push({ type: "spacer" });
       }
     }
