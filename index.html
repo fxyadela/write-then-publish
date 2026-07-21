@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>写了就发 | Write Then Publish</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317202f'/%3E%3Cpath d='M18 17h28v7H18zm0 13h20v6H18zm0 12h28v6H18z' fill='%23fff'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="src/styles.css?v=20260715-obsidian-import" />
+    <link rel="stylesheet" href="src/styles.css?v=20260721-preview-pin" />
   </head>
   <body>
     <main class="workspace">
@@ -46,6 +46,15 @@
             <button class="icon-button" id="newProjectBtn" type="button" title="新建图文" aria-label="新建图文">
               <i data-lucide="plus"></i>
             </button>
+            <button class="secondary-button" id="exportProjectsBtn" type="button" title="备份全部草稿、图片和排版设置">
+              <i data-lucide="archive"></i>
+              备份
+            </button>
+            <button class="secondary-button" id="importProjectsBtn" type="button" title="从本地 JSON 合并导入草稿、图片和排版设置">
+              <i data-lucide="folder-up"></i>
+              导入 JSON
+            </button>
+            <input id="projectBackupInput" class="backup-file-input" type="file" accept=".json,application/json" />
             <button class="secondary-button convert-mode-button" id="convertModeBtn" type="button">
               <i data-lucide="repeat-2"></i>
               <span>转长文</span>
@@ -274,6 +283,14 @@
             <span id="statusText">自动分页已开启</span>
           </div>
           <div class="topbar-actions">
+            <label class="export-scale-control" title="保持版式比例，按更高像素重新绘制下载图片">
+              <span>清晰度</span>
+              <select id="exportScaleSelect" aria-label="导出清晰度">
+                <option value="1">1× 标准</option>
+                <option value="2" selected>2× 高清</option>
+                <option value="3">3× 超清</option>
+              </select>
+            </label>
             <button id="scrollModeBtn" class="secondary-button" type="button">
               <i data-lucide="scroll-text"></i>
               滑动截图
@@ -377,9 +394,44 @@
       </div>
     </div>
 
+    <div id="importPreviewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="importPreviewTitle">
+      <div class="modal-card import-preview-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="importPreviewTitle">确认导入本地 JSON</h3>
+            <p id="importPreviewSubtitle">同 ID 草稿将以所选备份为准，不会删除其他内容</p>
+          </div>
+          <button id="importPreviewCloseBtn" class="icon-button ghost" type="button" title="取消导入" aria-label="取消导入">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="import-preview-body">
+          <dl class="import-preview-meta">
+            <div>
+              <dt>本地文件</dt>
+              <dd id="importPreviewFile">—</dd>
+            </div>
+            <div>
+              <dt>来源地址</dt>
+              <dd id="importPreviewSource">—</dd>
+            </div>
+          </dl>
+          <div id="importPreviewSummary" class="import-preview-summary">正在读取…</div>
+          <ul id="importPreviewList" class="import-preview-list" aria-label="待导入草稿"></ul>
+        </div>
+        <div class="import-preview-actions">
+          <button id="importPreviewCancelBtn" class="secondary-button" type="button">取消</button>
+          <button id="importPreviewConfirmBtn" class="primary-button" type="button">
+            <i data-lucide="folder-input"></i>
+            按备份恢复
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="src/app.js?v=20260715-obsidian-import"></script>
+    <script src="src/app.js?v=20260721-preview-pin"></script>
   </body>
 </html>

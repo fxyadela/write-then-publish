@@ -11,6 +11,17 @@ const OBSIDIAN_VAULT_KEY = "directoryHandle";
 const STORAGE_KEY = "graphicTextLayoutState.v1";
 const PROJECTS_STORAGE_KEY = "graphicTextLayoutProjects.v1";
 const PANEL_LAYOUT_STORAGE_KEY = "writeThenPublishPanelLayout.v1";
+const EXPORT_SCALE_STORAGE_KEY = "writeThenPublishExportScale.v1";
+const PROJECT_BACKUP_SCHEMA = "write-then-publish-projects";
+const PROJECT_BACKUP_VERSION = 1;
+const LOCAL_DATABASE_NAME = "writeThenPublishLocal.v1";
+const LOCAL_DATABASE_STORE = "snapshots";
+const LOCAL_DATABASE_PROJECTS_KEY = "projects";
+const LOCAL_STATE_SAVE_DELAY = 450;
+const LOCAL_STATE_SAVE_MAX_WAIT = 5000;
+const LOCAL_DATABASE_SAVE_DELAY = 1200;
+const SHARED_PROJECT_STORE_URL = "/api/project-store";
+const MAX_DECODED_IMAGE_CACHE = 64;
 const MAX_PROJECTS = 24;
 const BUILT_IN_PROJECT_PREFIX = "guide_";
 const GUIDE_CARDS_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}cards`;
@@ -19,6 +30,8 @@ const PANEL_LIMITS = {
   history: { min: 210, max: 380, fallback: 260 },
   editor: { min: 360, max: 760, fallback: 500 },
 };
+
+let previewEditorPin = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -32,6 +45,17 @@ const els = {
   historyToggle: $("#historyToggleBtn"),
   historyClose: $("#historyCloseBtn"),
   newProject: $("#newProjectBtn"),
+  exportProjects: $("#exportProjectsBtn"),
+  importProjects: $("#importProjectsBtn"),
+  projectBackupInput: $("#projectBackupInput"),
+  importPreviewModal: $("#importPreviewModal"),
+  importPreviewClose: $("#importPreviewCloseBtn"),
+  importPreviewCancel: $("#importPreviewCancelBtn"),
+  importPreviewConfirm: $("#importPreviewConfirmBtn"),
+  importPreviewFile: $("#importPreviewFile"),
+  importPreviewSource: $("#importPreviewSource"),
+  importPreviewSummary: $("#importPreviewSummary"),
+  importPreviewList: $("#importPreviewList"),
   projectHistory: $("#projectHistory"),
   historyFilterButtons: document.querySelectorAll("[data-history-filter]"),
   panelResizers: document.querySelectorAll("[data-panel-resize]"),
@@ -41,6 +65,7 @@ const els = {
   themeToggle: $("#themeToggleBtn"),
   downloadZip: $("#downloadZipBtn"),
   downloadArticle: $("#downloadArticleBtn"),
+  exportScale: $("#exportScaleSelect"),
   scrollMode: $("#scrollModeBtn"),
   articleSettings: $("#articleSettings"),
   articleThemeButtons: document.querySelectorAll("[data-article-theme]"),
@@ -220,11 +245,24 @@ const state = {
   currentProjectId: null,
   projects: [],
   historyFilter: "all",
+  exportScale: 2,
+  localDatabaseHydrated: false,
   panelLayout: {
     history: PANEL_LIMITS.history.fallback,
     editor: PANEL_LIMITS.editor.fallback,
   },
 };
+
+let localDatabaseSaveTimer = 0;
+let localDatabaseSaveChain = Promise.resolve(true);
+let legacyStateLocalStorageUnavailable = false;
+let projectStoreLocalStorageUnavailable = false;
+let sharedProjectStoreAvailable = null;
+let localStateSaveTimer = 0;
+let localStateSaveMaxTimer = 0;
+let renderGeneration = 0;
+const decodedImageCache = new Map();
+let pendingProjectImport = null;
 
 const textHistory = {
   stack: [],
@@ -647,6 +685,32 @@ function normalizeHandle(value) {
   return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
 }
 
+function normalizeExportScale(value) {
+  const scale = Number(value);
+  return [1, 2, 3].includes(scale) ? scale : 2;
+}
+
+function loadExportScale() {
+  try {
+    return normalizeExportScale(localStorage.getItem(EXPORT_SCALE_STORAGE_KEY));
+  } catch {
+    return 2;
+  }
+}
+
+function setExportScale(value, announce = true) {
+  state.exportScale = normalizeExportScale(value);
+  if (els.exportScale) els.exportScale.value = String(state.exportScale);
+  try {
+    localStorage.setItem(EXPORT_SCALE_STORAGE_KEY, String(state.exportScale));
+  } catch {
+    // 清晰度选项写入失败不影响当前导出。
+  }
+  if (announce) {
+    els.status.textContent = `导出清晰度：${state.exportScale}×（${CANVAS_WIDTH * state.exportScale}x${CANVAS_HEIGHT * state.exportScale}）`;
+  }
+}
+
 function normalizeArticleTheme(value) {
   return ["classic", "elegant", "clean", "wechat", "colorful"].includes(value) ? value : "wechat";
 }
@@ -739,7 +803,30 @@ function debounce(fn, wait = 140) {
   };
 }
 
+function flushStateSave() {
+  window.clearTimeout(localStateSaveTimer);
+  window.clearTimeout(localStateSaveMaxTimer);
+  localStateSaveTimer = 0;
+  localStateSaveMaxTimer = 0;
+  saveState();
+}
+
+function scheduleStateSave() {
+  // 首屏必须先让 IndexedDB 与 LocalStorage 完成合并。否则旧的 LocalStorage
+  // 草稿会被首屏渲染误标成“刚刚更新”，反过来覆盖数据库里的新图片。
+  if (!state.localDatabaseHydrated) return;
+  window.clearTimeout(localStateSaveTimer);
+  localStateSaveTimer = window.setTimeout(flushStateSave, LOCAL_STATE_SAVE_DELAY);
+  if (!localStateSaveMaxTimer) {
+    localStateSaveMaxTimer = window.setTimeout(flushStateSave, LOCAL_STATE_SAVE_MAX_WAIT);
+  }
+}
+
 function saveState() {
+  window.clearTimeout(localStateSaveTimer);
+  window.clearTimeout(localStateSaveMaxTimer);
+  localStateSaveTimer = 0;
+  localStateSaveMaxTimer = 0;
   try {
     const data = readForm();
     if (isBuiltInProjectId(state.currentProjectId)) {
@@ -761,11 +848,24 @@ function saveState() {
       current,
       ...state.projects.filter((project) => project.id !== current.id),
     ].slice(0, MAX_PROJECTS);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    saveProjectStore();
+    let legacyStateSaved = !legacyStateLocalStorageUnavailable;
+    if (!legacyStateLocalStorageUnavailable) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (error) {
+        legacyStateSaved = false;
+        legacyStateLocalStorageUnavailable = true;
+        console.warn("LocalStorage 当前草稿写入失败，后续改用 IndexedDB", error);
+      }
+    }
+    const projectStoreSaved = saveProjectStore();
     updateProjectHistory();
-  } catch {
-    els.status.textContent = "本次内容较大，浏览器未写入本地缓存";
+    if (!legacyStateSaved || !projectStoreSaved) {
+      els.status.textContent = "内容较大，已改用本地数据库保存；建议再导出一份备份";
+    }
+  } catch (error) {
+    console.error(error);
+    els.status.textContent = "本次内容未能自动保存，请立即导出草稿备份";
   }
 }
 
@@ -825,6 +925,192 @@ function createProject(data = defaultFormState()) {
   };
 }
 
+function projectStoreSnapshot() {
+  return {
+    activeId: state.currentProjectId,
+    projects: state.projects.filter((project) => !isBuiltInProject(project)).slice(0, MAX_PROJECTS),
+  };
+}
+
+function openLocalDatabase() {
+  if (!window.indexedDB) return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(LOCAL_DATABASE_NAME, 1);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(LOCAL_DATABASE_STORE)) {
+        database.createObjectStore(LOCAL_DATABASE_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("无法打开本地草稿数据库"));
+  });
+}
+
+async function saveProjectStoreToIndexedDb(snapshot) {
+  const database = await openLocalDatabase();
+  if (!database) return false;
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(LOCAL_DATABASE_STORE, "readwrite");
+    transaction.objectStore(LOCAL_DATABASE_STORE).put(snapshot, LOCAL_DATABASE_PROJECTS_KEY);
+    transaction.oncomplete = () => {
+      database.close();
+      resolve(true);
+    };
+    transaction.onerror = () => {
+      const error = transaction.error || new Error("本地草稿数据库写入失败");
+      database.close();
+      reject(error);
+    };
+  });
+}
+
+async function loadProjectStoreFromSharedServer() {
+  try {
+    const response = await fetch(SHARED_PROJECT_STORE_URL, { cache: "no-store" });
+    if (!response.ok) throw new Error(`共享草稿库读取失败（${response.status}）`);
+    const payload = await response.json();
+    if (!payload || !Array.isArray(payload.projects)) throw new Error("共享草稿库格式无效");
+    sharedProjectStoreAvailable = true;
+    return payload;
+  } catch (error) {
+    sharedProjectStoreAvailable = false;
+    console.info("共享草稿库暂不可用，继续使用浏览器本地数据库", error);
+    return null;
+  }
+}
+
+async function saveProjectStoreToSharedServer(snapshot) {
+  if (sharedProjectStoreAvailable === false) return false;
+  try {
+    const response = await fetch(SHARED_PROJECT_STORE_URL, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snapshot),
+    });
+    if (!response.ok) throw new Error(`共享草稿库写入失败（${response.status}）`);
+    sharedProjectStoreAvailable = true;
+    return true;
+  } catch (error) {
+    sharedProjectStoreAvailable = false;
+    console.warn("共享草稿库写入失败，已保留浏览器本地副本", error);
+    return false;
+  }
+}
+
+async function flushProjectStoreToIndexedDb() {
+  if (!state.localDatabaseHydrated) return false;
+  window.clearTimeout(localDatabaseSaveTimer);
+  localDatabaseSaveTimer = 0;
+  const queuedSave = localDatabaseSaveChain
+    .catch(() => false)
+    .then(async () => {
+      const snapshot = projectStoreSnapshot();
+      try {
+        // 在真正轮到本次事务时读取最新快照，避免旧的大图事务晚完成后覆盖新图。
+        const localSaved = await saveProjectStoreToIndexedDb(snapshot);
+        const sharedSaved = await saveProjectStoreToSharedServer(snapshot);
+        return localSaved || sharedSaved;
+      } catch (error) {
+        console.warn("IndexedDB 草稿写入失败", error);
+        return false;
+      }
+    });
+  localDatabaseSaveChain = queuedSave;
+  return queuedSave;
+}
+
+function scheduleProjectStoreToIndexedDb() {
+  if (!state.localDatabaseHydrated) return;
+  if (localDatabaseSaveTimer) return;
+  localDatabaseSaveTimer = window.setTimeout(flushProjectStoreToIndexedDb, LOCAL_DATABASE_SAVE_DELAY);
+}
+
+async function loadProjectStoreFromIndexedDb() {
+  const database = await openLocalDatabase();
+  if (!database) return null;
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(LOCAL_DATABASE_STORE, "readonly");
+    const request = transaction.objectStore(LOCAL_DATABASE_STORE).get(LOCAL_DATABASE_PROJECTS_KEY);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("本地草稿数据库读取失败"));
+    transaction.oncomplete = () => database.close();
+    transaction.onerror = () => {
+      const error = transaction.error || new Error("本地草稿数据库读取失败");
+      database.close();
+      reject(error);
+    };
+  });
+}
+
+function mergeProjectLists(existingProjects, incomingProjects) {
+  const merged = new Map();
+  for (const source of [...(existingProjects || []), ...(incomingProjects || [])]) {
+    const project = normalizeProject(source);
+    if (!project) continue;
+    const current = merged.get(project.id);
+    if (!current || project.updatedAt >= current.updatedAt) merged.set(project.id, project);
+  }
+  return [...merged.values()]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_PROJECTS);
+}
+
+function restoreImportedProjects(existingProjects, incomingProjects) {
+  const normalizedIncoming = (incomingProjects || []).map(normalizeProject).filter(Boolean);
+  const importedIds = new Set(normalizedIncoming.map((project) => project.id));
+  const restoredAt = Date.now();
+  const restoredProjects = normalizedIncoming.map((project, index) => ({
+    ...project,
+    // 用户明确确认导入时，所选备份就是恢复源；更新时间必须晚于当前缓存。
+    updatedAt: restoredAt + index,
+  }));
+  const untouchedProjects = (existingProjects || [])
+    .map(normalizeProject)
+    .filter((project) => project && !importedIds.has(project.id));
+  return [...restoredProjects, ...untouchedProjects]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_PROJECTS);
+}
+
+async function hydrateProjectStoreFromIndexedDb() {
+  try {
+    const [stored, shared] = await Promise.all([loadProjectStoreFromIndexedDb(), loadProjectStoreFromSharedServer()]);
+    const storedProjects = stored && Array.isArray(stored.projects) ? stored.projects : [];
+    const sharedProjects = shared && Array.isArray(shared.projects) ? shared.projects : [];
+    const projectsBeforeHydration = state.projects;
+    const activeBeforeHydration = projectsBeforeHydration.find((project) => project.id === state.currentProjectId);
+    const merged = mergeProjectLists(mergeProjectLists(state.projects, storedProjects), sharedProjects);
+    const changed =
+      merged.length !== state.projects.length ||
+      merged.some((project, index) => project.id !== state.projects[index]?.id || project.updatedAt !== state.projects[index]?.updatedAt);
+    if (changed) {
+      state.projects = merged;
+      const mergedActive = state.projects.find((project) => project.id === state.currentProjectId);
+      const preferredActiveId = shared?.activeId || stored?.activeId;
+      const storedActive = state.projects.find((project) => project.id === preferredActiveId);
+      const activeWasReplaced = mergedActive && (!activeBeforeHydration || mergedActive.updatedAt !== activeBeforeHydration.updatedAt);
+      const projectToApply = activeWasReplaced ? mergedActive : !mergedActive ? storedActive : null;
+      if (projectToApply) {
+        state.currentProjectId = projectToApply.id;
+        applyForm(projectToApply.data);
+        syncGuideReadOnlyMode();
+        resetTextHistory();
+        await render({ persist: false });
+      }
+      updateProjectHistory();
+    }
+    state.localDatabaseHydrated = true;
+    saveProjectStore();
+    if (sharedProjectStoreAvailable) {
+      els.status.textContent = "已连接共享草稿库，Codex 与 Chrome 刷新后会读取同一版本";
+    }
+  } catch (error) {
+    console.warn("IndexedDB 草稿恢复失败", error);
+    state.localDatabaseHydrated = true;
+  }
+}
+
 function loadProjectStore() {
   try {
     const raw = localStorage.getItem(PROJECTS_STORAGE_KEY);
@@ -859,26 +1145,213 @@ function normalizeProject(project) {
   const updatedAt = Number(project.updatedAt) || Date.now();
   return {
     id: project.id || `project_${updatedAt.toString(36)}`,
-    title: project.title || projectTitleFromData(data),
+    title: projectTitleFromData(data),
     updatedAt,
     data,
   };
 }
 
 function saveProjectStore() {
-  localStorage.setItem(
-    PROJECTS_STORAGE_KEY,
-    JSON.stringify({
-      activeId: state.currentProjectId,
-      projects: state.projects.filter((project) => !isBuiltInProject(project)).slice(0, MAX_PROJECTS),
+  const snapshot = projectStoreSnapshot();
+  let localStorageSaved = !projectStoreLocalStorageUnavailable;
+  if (!projectStoreLocalStorageUnavailable) {
+    try {
+      localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch (error) {
+      localStorageSaved = false;
+      projectStoreLocalStorageUnavailable = true;
+      console.warn("LocalStorage 草稿写入失败，后续改用 IndexedDB", error);
+    }
+  }
+  if (state.localDatabaseHydrated) {
+    scheduleProjectStoreToIndexedDb();
+  }
+  return localStorageSaved;
+}
+
+function backupTimestamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+function createProjectBackupPayload() {
+  saveState();
+  const snapshot = projectStoreSnapshot();
+  return {
+    schema: PROJECT_BACKUP_SCHEMA,
+    version: PROJECT_BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    sourceOrigin: window.location.origin,
+    activeId: snapshot.activeId,
+    projects: snapshot.projects,
+  };
+}
+
+async function exportProjectBackup() {
+  const payload = createProjectBackupPayload();
+  if (!payload.projects.length) {
+    els.status.textContent = "还没有可备份的草稿";
+    return;
+  }
+  if (state.localDatabaseHydrated) {
+    await flushProjectStoreToIndexedDb();
+  }
+  const filename = `write-then-publish-backup-${backupTimestamp()}.json`;
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  await saveBlob(blob, filename);
+  els.status.textContent = `已备份 ${payload.projects.length} 篇草稿（含图片和排版设置）`;
+}
+
+async function importProjectBackupPayload(payload) {
+  if (!payload || typeof payload !== "object") throw new Error("备份文件格式无效");
+  if (payload.schema && payload.schema !== PROJECT_BACKUP_SCHEMA) throw new Error("不是写了就发的草稿备份");
+  const sourceProjects = Array.isArray(payload.projects) ? payload.projects : [];
+  const importedProjects = sourceProjects.map(normalizeProject).filter(Boolean);
+  if (!importedProjects.length) throw new Error("备份中没有可导入的草稿");
+
+  saveState();
+  const beforeById = new Map(state.projects.map((project) => [project.id, project]));
+  state.projects = restoreImportedProjects(state.projects, importedProjects);
+  const importedIds = new Set(importedProjects.map((project) => project.id));
+  const addedCount = importedProjects.filter((project) => !beforeById.has(project.id)).length;
+  const updatedCount = importedProjects.filter((project) => beforeById.has(project.id)).length;
+
+  const preferredId = importedIds.has(payload.activeId) ? payload.activeId : importedProjects[0].id;
+  const preferredProject = state.projects.find((project) => project.id === preferredId) || state.projects[0];
+  state.currentProjectId = preferredProject.id;
+  state.mode = "auto";
+  state.scrollOffset = 0;
+  applyForm(preferredProject.data);
+  syncGuideReadOnlyMode();
+  resetTextHistory();
+  saveProjectStore();
+  updateProjectHistory();
+  const databaseSaved = state.localDatabaseHydrated ? await flushProjectStoreToIndexedDb() : false;
+  await render();
+  els.status.textContent = databaseSaved
+    ? `已导入并写入本地数据库：${importedProjects.length} 篇（新增 ${addedCount}，恢复覆盖 ${updatedCount}）`
+    : `已导入 ${importedProjects.length} 篇（新增 ${addedCount}，恢复覆盖 ${updatedCount}）；建议等待自动保存后再刷新`;
+}
+
+function inspectProjectBackupPayload(payload) {
+  if (!payload || typeof payload !== "object") throw new Error("备份文件格式无效");
+  if (payload.schema && payload.schema !== PROJECT_BACKUP_SCHEMA) throw new Error("不是写了就发的草稿备份");
+  const projects = (Array.isArray(payload.projects) ? payload.projects : []).map(normalizeProject).filter(Boolean);
+  if (!projects.length) throw new Error("备份中没有可导入的草稿");
+
+  const existingById = new Map(state.projects.map((project) => [project.id, project]));
+  const items = projects.map((project) => {
+    const existing = existingById.get(project.id);
+    let action = "新增";
+    if (existing) {
+      action = project.updatedAt === existing.updatedAt ? "内容相同" : "覆盖当前版本";
+    }
+    return { project, action };
+  });
+
+  return {
+    projects,
+    items,
+    addedCount: items.filter((item) => item.action === "新增").length,
+    updatedCount: items.filter((item) => item.action === "覆盖当前版本").length,
+    sameCount: items.filter((item) => item.action === "内容相同").length,
+  };
+}
+
+function closeProjectImportPreview() {
+  pendingProjectImport = null;
+  els.importPreviewModal?.classList.add("hidden");
+}
+
+function openProjectImportPreview(payload, filename) {
+  const inspection = inspectProjectBackupPayload(payload);
+  pendingProjectImport = { payload, inspection };
+  els.importPreviewFile.textContent = filename || "本地 JSON";
+  els.importPreviewSource.textContent = payload.sourceOrigin || "未记录来源地址";
+  const summaryParts = [`共 ${inspection.projects.length} 篇`, `新增 ${inspection.addedCount}`, `更新 ${inspection.updatedCount}`];
+  if (inspection.sameCount) summaryParts.push(`相同 ${inspection.sameCount}`);
+  els.importPreviewSummary.textContent = summaryParts.join(" · ");
+  els.importPreviewList.replaceChildren(
+    ...inspection.items.map(({ project, action }) => {
+      const item = document.createElement("li");
+      const title = document.createElement("span");
+      const badge = document.createElement("strong");
+      title.textContent = project.title;
+      badge.textContent = action;
+      badge.dataset.action = action;
+      item.append(title, badge);
+      return item;
     }),
   );
+  els.importPreviewModal.classList.remove("hidden");
+  els.importPreviewConfirm?.focus();
+}
+
+async function confirmProjectBackupImport() {
+  const pending = pendingProjectImport;
+  if (!pending) return;
+  els.importPreviewConfirm.disabled = true;
+  try {
+    await importProjectBackupPayload(pending.payload);
+    closeProjectImportPreview();
+  } catch (error) {
+    console.error(error);
+    els.status.textContent = `导入失败：${error?.message || "无法导入备份文件"}`;
+  } finally {
+    els.importPreviewConfirm.disabled = false;
+  }
+}
+
+async function handleProjectBackupImport(event) {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  try {
+    const payload = JSON.parse(await file.text());
+    openProjectImportPreview(payload, file.name);
+  } catch (error) {
+    console.error(error);
+    els.status.textContent = `导入失败：${error?.message || "无法读取备份文件"}`;
+  }
+}
+
+async function restoreProjectBackupFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const backupPath = params.get("restoreBackup");
+  if (!backupPath) return;
+
+  try {
+    const backupUrl = new URL(backupPath, window.location.origin);
+    if (backupUrl.origin !== window.location.origin) throw new Error("只允许恢复当前本地服务中的备份");
+    const response = await fetch(backupUrl, { cache: "no-store" });
+    if (!response.ok) throw new Error(`备份读取失败（${response.status}）`);
+    await importProjectBackupPayload(await response.json());
+    if (state.localDatabaseHydrated) {
+      await flushProjectStoreToIndexedDb();
+    }
+    els.status.textContent = `已从本地归档恢复 ${state.projects.length} 篇草稿`;
+  } catch (error) {
+    console.error(error);
+    els.status.textContent = `恢复失败：${error?.message || "无法读取本地归档"}`;
+  } finally {
+    params.delete("restoreBackup");
+    const nextQuery = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`);
+  }
 }
 
 function projectTitleFromData(data) {
   const contentLine = String(data.content || "")
     .split("\n")
-    .map((line) => line.replace(/^\s*#+\s*/, "").trim())
+    .map((line) =>
+      line
+        .replace(/^\s*#+\s*/, "")
+        .replace(/\{\{(?:color|bg):#[0-9a-f]{3,8}\|([\s\S]*?)\}\}/gi, "$1")
+        .replace(/\*\*([^*]+)\*\*/g, "$1")
+        .replace(/[`*_~]/g, "")
+        .trim(),
+    )
     .find((line) => line && !line.startsWith("[[image:"));
   return (contentLine || data.displayName || "未命名图文").slice(0, 24);
 }
@@ -1343,12 +1816,27 @@ async function readFileAsDataURL(file) {
 }
 
 function loadImage(src) {
-  return new Promise((resolve, reject) => {
+  if (decodedImageCache.has(src)) {
+    const cached = decodedImageCache.get(src);
+    decodedImageCache.delete(src);
+    decodedImageCache.set(src, cached);
+    return cached;
+  }
+
+  const pending = new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = src;
   });
+  decodedImageCache.set(src, pending);
+  while (decodedImageCache.size > MAX_DECODED_IMAGE_CACHE) {
+    decodedImageCache.delete(decodedImageCache.keys().next().value);
+  }
+  pending.catch(() => {
+    if (decodedImageCache.get(src) === pending) decodedImageCache.delete(src);
+  });
+  return pending;
 }
 
 function isImageFile(file) {
@@ -1516,6 +2004,12 @@ function setObsidianVaultStatus(message, connected = false) {
     ? '<i data-lucide="folder-cog"></i> 更换仓库'
     : '<i data-lucide="folder-open"></i> 连接 Obsidian 仓库';
   if (window.lucide) window.lucide.createIcons();
+}
+
+async function persistCurrentDraftImmediately() {
+  flushStateSave();
+  if (!state.localDatabaseHydrated) return false;
+  return flushProjectStoreToIndexedDb();
 }
 
 function canUseDirectoryPickerSafely() {
@@ -1777,7 +2271,10 @@ async function handleEditorPaste(event) {
   event.preventDefault();
   const imported = await addImageFiles(files);
   insertImageTagsAtCursor(imported.tags);
-  els.status.textContent = `已粘贴 ${imported.tags.length} 张图片`;
+  const databaseSaved = await persistCurrentDraftImmediately();
+  els.status.textContent = databaseSaved
+    ? `已粘贴 ${imported.tags.length} 张图片，并已写入本地数据库`
+    : `已粘贴 ${imported.tags.length} 张图片；请稍候再刷新`;
 }
 
 async function handleEditorDrop(event) {
@@ -1788,7 +2285,10 @@ async function handleEditorDrop(event) {
   if (!files.some(isImageFile)) return;
   const imported = await addImageFiles(files);
   insertImageTagsAtCursor(imported.tags);
-  els.status.textContent = `已插入 ${imported.tags.length} 张图片`;
+  const databaseSaved = await persistCurrentDraftImmediately();
+  els.status.textContent = databaseSaved
+    ? `已插入 ${imported.tags.length} 张图片，并已写入本地数据库`
+    : `已插入 ${imported.tags.length} 张图片；请稍候再刷新`;
 }
 
 async function handleAvatar(event) {
@@ -3007,13 +3507,65 @@ async function buildScrollPage(settings) {
   return page;
 }
 
-function renderPage(page, index, total) {
+function imageSourceFingerprint(source) {
+  const value = String(source || "");
+  return `${value.length}:${value.slice(0, 48)}:${value.slice(-48)}`;
+}
+
+function pageRenderSignature(page, scrollPage = false) {
+  const { content, images, avatar, ...settings } = page.settings;
+  const items = page.items.map((item) => {
+    if (item.type === "image") {
+      return {
+        type: item.type,
+        imageId: item.imageId,
+        imageSource: imageSourceFingerprint(images?.[item.imageId]?.src),
+        sourceRect: item.sourceRect,
+        baseWidth: item.baseWidth,
+        maxWidth: item.maxWidth,
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        radius: item.radius,
+      };
+    }
+    return {
+      type: item.type,
+      blockType: item.blockType,
+      line: item.line,
+      style: item.style,
+      x: item.x,
+      y: item.y,
+      lineHeight: item.lineHeight,
+    };
+  });
+  return JSON.stringify({
+    scrollPage,
+    scrollOffset: scrollPage ? page.scrollOffset : 0,
+    showHeader: page.showHeader,
+    bounds: page.bounds,
+    avatar: imageSourceFingerprint(avatar),
+    settings,
+    items,
+  });
+}
+
+function renderPage(page, index, total, previousCanvas = null) {
+  const signature = pageRenderSignature(page, false);
+  if (previousCanvas?._renderSignature === signature) {
+    previousCanvas.dataset.page = String(index + 1);
+    previousCanvas._page = page;
+    return previousCanvas;
+  }
+
   const canvas = document.createElement("canvas");
   canvas.width = CANVAS_WIDTH;
   canvas.height = CANVAS_HEIGHT;
   canvas.dataset.page = String(index + 1);
   canvas._page = page;
   canvas._scrollPage = false;
+  canvas._renderSignature = signature;
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingQuality = "high";
 
@@ -3023,19 +3575,41 @@ function renderPage(page, index, total) {
   return canvas;
 }
 
-function renderScrollPage(page) {
+function renderScrollPage(page, previousCanvas = null) {
+  const signature = pageRenderSignature(page, true);
+  if (previousCanvas?._renderSignature === signature) {
+    previousCanvas._page = page;
+    return previousCanvas;
+  }
+
   const canvas = document.createElement("canvas");
   canvas.width = CANVAS_WIDTH;
   canvas.height = CANVAS_HEIGHT;
   canvas.dataset.page = "scroll";
   canvas._page = page;
   canvas._scrollPage = true;
+  canvas._renderSignature = signature;
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingQuality = "high";
 
   drawPageToContext(ctx, page, true);
   canvas._textHits = collectTextHits(ctx, page, true);
   canvas._imageHits = collectImageHits(page, true);
+  return canvas;
+}
+
+function createExportCanvas(sourceCanvas) {
+  const scale = normalizeExportScale(state.exportScale);
+  if (scale === 1) return sourceCanvas;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = CANVAS_WIDTH * scale;
+  canvas.height = CANVAS_HEIGHT * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.scale(scale, scale);
+  drawPageToContext(ctx, sourceCanvas._page, sourceCanvas._scrollPage === true);
   return canvas;
 }
 
@@ -3488,26 +4062,30 @@ function escapeAttribute(value) {
   return escapeHtml(value).replace(/`/g, "&#96;");
 }
 
-async function render() {
+async function render({ persist = true } = {}) {
+  const generation = ++renderGeneration;
   const settings = readForm();
+  const previousCanvases = state.canvases;
+  if (persist) scheduleStateSave();
   updateAppMode();
   updateArticleControls();
   if (state.appMode === "article") {
+    if (generation !== renderGeneration) return;
     renderArticlePreview(settings);
-    saveState();
     return;
   }
   if (state.mode === "scroll") {
     const page = await buildScrollPage(settings);
-    state.canvases = [renderScrollPage(page)];
+    if (generation !== renderGeneration) return;
+    state.canvases = [renderScrollPage(page, previousCanvases[0])];
   } else {
     const pages = await buildPages(settings);
-    state.canvases = pages.map((page, index) => renderPage(page, index, pages.length));
+    if (generation !== renderGeneration) return;
+    state.canvases = pages.map((page, index) => renderPage(page, index, pages.length, previousCanvases[index]));
     state.scrollOffset = 0;
     state.scrollMax = 0;
   }
   drawPreview(state.canvases);
-  saveState();
 }
 
 function drawPreview(canvases) {
@@ -3555,8 +4133,8 @@ function drawPreview(canvases) {
   els.pageCount.textContent = state.mode === "scroll" ? "滑动截图模式" : `${canvases.length} 张图片`;
   els.status.textContent =
     state.mode === "scroll"
-      ? `滑动截图模式：在卡片上滚动，下载当前画面`
-      : `已生成 ${canvases.length} 张，尺寸 ${CANVAS_WIDTH}x${CANVAS_HEIGHT}`;
+      ? `滑动截图模式：预览 ${CANVAS_WIDTH}x${CANVAS_HEIGHT}，导出 ${CANVAS_WIDTH * state.exportScale}x${CANVAS_HEIGHT * state.exportScale}`
+      : `已生成 ${canvases.length} 张；预览 ${CANVAS_WIDTH}x${CANVAS_HEIGHT}，导出 ${CANVAS_WIDTH * state.exportScale}x${CANVAS_HEIGHT * state.exportScale}`;
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -3624,6 +4202,13 @@ function createTextHitLayer(canvas) {
     target.style.height = `${(hit.height / CANVAS_HEIGHT) * 100}%`;
     target.dataset.start = String(hit.sourceStart);
     target.dataset.end = String(hit.sourceEnd);
+    target.title = "悬浮定位；点击后锁定编辑位置";
+    if (previewEditorPin?.start === hit.sourceStart && previewEditorPin?.end === hit.sourceEnd) {
+      target.classList.add("is-pinned");
+      target.setAttribute("aria-pressed", "true");
+    } else {
+      target.setAttribute("aria-pressed", "false");
+    }
     target.addEventListener("pointerenter", handlePreviewTextTarget);
     target.addEventListener("click", handlePreviewTextTarget);
     layer.append(target);
@@ -3636,13 +4221,33 @@ function handlePreviewTextTarget(event) {
   const start = Number(event.currentTarget.dataset.start);
   const end = Number(event.currentTarget.dataset.end);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return;
-  focusEditorRange(start, end);
+  if (event.type === "pointerenter" && previewEditorPin) return;
+  const shouldPin = event.type === "click";
+  focusEditorRange(start, end, shouldPin);
 }
 
-function focusEditorRange(start, end) {
+function focusEditorRange(start, end, pin = false) {
+  if (pin) {
+    previewEditorPin = { start, end };
+    document.querySelectorAll(".preview-text-hit").forEach((target) => {
+      const matches = Number(target.dataset.start) === start && Number(target.dataset.end) === end;
+      target.classList.toggle("is-pinned", matches);
+      target.setAttribute("aria-pressed", String(matches));
+    });
+  }
   els.content.focus({ preventScroll: true });
   els.content.setSelectionRange(start, end);
   scrollTextareaToRange(start);
+  if (pin) els.status.textContent = "已锁定编辑位置；点击其他预览文字可切换，点击编辑框可解除";
+}
+
+function clearPreviewEditorPin() {
+  if (!previewEditorPin) return;
+  previewEditorPin = null;
+  document.querySelectorAll(".preview-text-hit.is-pinned").forEach((target) => {
+    target.classList.remove("is-pinned");
+    target.setAttribute("aria-pressed", "false");
+  });
 }
 
 function scrollTextareaToRange(index) {
@@ -3792,13 +4397,15 @@ async function downloadCanvas(canvas, filename) {
     els.status.textContent = "已取消下载";
     return;
   }
-  const blob = await canvasToLosslessPngBlob(canvas);
+  const exportCanvas = createExportCanvas(canvas);
+  const blob = await canvasToLosslessPngBlob(exportCanvas);
   if (!blob) {
     els.status.textContent = "图片生成失败，请调整内容后再试";
     return;
   }
   await saveBlob(blob, filename, writable);
-  els.status.textContent = writable ? `已保存 ${filename}` : `已交给浏览器下载 ${filename}`;
+  const dimensions = `${exportCanvas.width}x${exportCanvas.height}`;
+  els.status.textContent = writable ? `已保存 ${filename}（${dimensions}）` : `已交给浏览器下载 ${filename}（${dimensions}）`;
 }
 
 async function chooseSaveTarget(filename, mimeType, extension) {
@@ -3867,7 +4474,7 @@ async function downloadArticleImage() {
   els.status.textContent = "正在生成长图...";
   const canvas = await window.html2canvas(article, {
     backgroundColor: null,
-    scale: Math.min(2, window.devicePixelRatio || 1),
+    scale: normalizeExportScale(state.exportScale),
     useCORS: true,
     imageTimeout: 15000,
     width: article.scrollWidth,
@@ -3909,12 +4516,14 @@ async function downloadAll() {
     return;
   }
 
-  const zipFilename = state.mode === "scroll" ? "graphic-layout-scroll-shot.zip" : "graphic-layout-pages.zip";
-  els.status.textContent = "正在打包图片...";
+  const scaleSuffix = state.exportScale > 1 ? `-${state.exportScale}x` : "";
+  const zipFilename = state.mode === "scroll" ? `graphic-layout-scroll-shot${scaleSuffix}.zip` : `graphic-layout-pages${scaleSuffix}.zip`;
+  els.status.textContent = `正在按 ${state.exportScale}× 清晰度重新绘制并打包...`;
   try {
     const zip = new window.JSZip();
     for (const [index, canvas] of state.canvases.entries()) {
-      const blob = await canvasToLosslessPngBlob(canvas);
+      const exportCanvas = createExportCanvas(canvas);
+      const blob = await canvasToLosslessPngBlob(exportCanvas);
       if (!blob) {
         els.status.textContent = "图片生成失败，请调整内容后再试";
         return;
@@ -3935,7 +4544,8 @@ async function downloadAll() {
     }
 
     await saveBlob(blob, zipFilename);
-    els.status.textContent = state.mode === "scroll" ? "已下载当前滑动截图压缩包" : `已下载 ${state.canvases.length} 张图片压缩包`;
+    const dimensions = `${CANVAS_WIDTH * state.exportScale}x${CANVAS_HEIGHT * state.exportScale}`;
+    els.status.textContent = state.mode === "scroll" ? `已下载 ${state.exportScale}× 滑动截图压缩包` : `已下载 ${state.canvases.length} 张 ${state.exportScale}× 图片，尺寸 ${dimensions}`;
   } catch (error) {
     console.error(error);
     els.status.textContent = "打包失败，已改为逐张下载";
@@ -3943,7 +4553,12 @@ async function downloadAll() {
   }
 }
 
-const requestRender = debounce(render, 120);
+const debouncedRender = debounce(render, 180);
+
+function requestRender() {
+  scheduleStateSave();
+  debouncedRender();
+}
 
 function positionToolPopover(menu) {
   const popover = menu.querySelector(".tool-popover");
@@ -4028,6 +4643,7 @@ function bindEvents() {
     scheduleTextHistoryCommit();
     requestRender();
   });
+  els.content.addEventListener("pointerdown", clearPreviewEditorPin);
   els.content.addEventListener("keydown", handleTextShortcut);
   els.content.addEventListener("paste", handleEditorPaste);
   els.content.addEventListener("dragover", (event) => {
@@ -4094,6 +4710,8 @@ function bindEvents() {
   window.addEventListener("mouseup", stopCropDrag);
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.cropModal.classList.contains("hidden")) closeCropper();
+    if (event.key === "Escape" && !els.importPreviewModal?.classList.contains("hidden")) closeProjectImportPreview();
+    if (event.key === "Escape") clearPreviewEditorPin();
   });
   els.findNext.addEventListener("click", findNext);
   els.replaceOne.addEventListener("click", replaceCurrent);
@@ -4104,22 +4722,45 @@ function bindEvents() {
     button.addEventListener("click", () => setHistoryFilter(button.dataset.historyFilter));
   });
   els.newProject.addEventListener("click", createNewProject);
+  els.exportProjects?.addEventListener("click", exportProjectBackup);
+  els.importProjects?.addEventListener("click", () => els.projectBackupInput?.click());
+  els.projectBackupInput?.addEventListener("change", handleProjectBackupImport);
+  els.importPreviewClose?.addEventListener("click", closeProjectImportPreview);
+  els.importPreviewCancel?.addEventListener("click", closeProjectImportPreview);
+  els.importPreviewConfirm?.addEventListener("click", confirmProjectBackupImport);
+  els.importPreviewModal?.addEventListener("click", (event) => {
+    if (event.target === els.importPreviewModal) closeProjectImportPreview();
+  });
   els.convertMode.addEventListener("click", convertCurrentMode);
   els.headerModeToggle.addEventListener("click", toggleHeaderMode);
   els.themeToggle.addEventListener("click", toggleUiTheme);
+  els.exportScale?.addEventListener("change", () => setExportScale(els.exportScale.value));
   els.downloadZip.addEventListener("click", downloadAll);
   els.downloadArticle.addEventListener("click", downloadArticleImage);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      if (localStateSaveTimer || localStateSaveMaxTimer) flushStateSave();
+      if (localDatabaseSaveTimer) void flushProjectStoreToIndexedDb();
+    }
+  });
+  window.addEventListener("pagehide", () => {
+    if (localStateSaveTimer || localStateSaveMaxTimer) flushStateSave();
+    if (localDatabaseSaveTimer) void flushProjectStoreToIndexedDb();
+  });
 }
 
 loadPanelLayout();
 applyPanelLayout();
+setExportScale(loadExportScale(), false);
 const initialFormState = loadState();
 applyForm(initialFormState);
 syncGuideReadOnlyMode();
 resetTextHistory();
 updateProjectHistory();
 bindEvents();
-render();
+render({ persist: false })
+  .then(hydrateProjectStoreFromIndexedDb)
+  .then(restoreProjectBackupFromUrl);
 void loadObsidianVaultConnection();
 if (window.lucide) {
   window.lucide.createIcons();

@@ -2,3 +2,7 @@ node_modules
 outputs
 .DS_Store
 .vercel
+runtime-data/
+backups/
+__pycache__/
+*.pyc
