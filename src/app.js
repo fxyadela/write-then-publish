@@ -21,6 +21,7 @@ const LOCAL_STATE_SAVE_DELAY = 450;
 const LOCAL_STATE_SAVE_MAX_WAIT = 5000;
 const LOCAL_DATABASE_SAVE_DELAY = 1200;
 const SHARED_PROJECT_STORE_URL = "/api/project-store";
+const SHARED_PROJECT_TEXT_URL = "/api/project-store/current-text";
 const MAX_DECODED_IMAGE_CACHE = 64;
 const MAX_PROJECTS = 24;
 const BUILT_IN_PROJECT_PREFIX = "guide_";
@@ -32,6 +33,8 @@ const PANEL_LIMITS = {
 };
 
 let previewEditorPin = null;
+let lastEditorImageReferenceSignature = "";
+let sharedTextSaveTimer = 0;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -40,6 +43,7 @@ const els = {
   content: $("#contentInput"),
   pages: $("#pages"),
   pageCount: $("#pageCount"),
+  projectTitle: $("#projectTitleInput"),
   status: $("#statusText"),
   historySidebar: $("#historySidebar"),
   historyToggle: $("#historyToggleBtn"),
@@ -496,6 +500,10 @@ function syncGuideReadOnlyMode() {
   document.body.dataset.guideReadonly = readOnly ? "true" : "false";
   els.content.readOnly = readOnly;
   els.content.setAttribute("aria-readonly", readOnly ? "true" : "false");
+  if (els.projectTitle) {
+    els.projectTitle.disabled = readOnly;
+    els.projectTitle.setAttribute("aria-disabled", readOnly ? "true" : "false");
+  }
 
   document
     .querySelectorAll(
@@ -575,10 +583,17 @@ function applyForm(data) {
   state.avatar = data.avatar || sampleAvatar;
   state.avatarCrop = data.avatarCrop || null;
   state.images = normalizeImagesForContent(data.content, data.images);
+  lastEditorImageReferenceSignature = imageReferenceSignature(els.content.value);
   updateAvatarPreview();
   document.documentElement.style.setProperty("--brush-color", els.inlineColor.value);
   document.documentElement.style.setProperty("--text-bg-brush-color", els.inlineBgColor.value);
   updateImageList();
+  const currentProject = findHistoryProject(state.currentProjectId);
+  if (els.projectTitle) {
+    els.projectTitle.value = isBuiltInProject(currentProject)
+      ? currentProject?.title || ""
+      : currentProject?.title || projectTitleFromData(data);
+  }
 }
 
 function setUiTheme(theme, announce = false, syncCard = false) {
@@ -842,7 +857,7 @@ function saveState() {
       state.projects.unshift(current);
     }
     current.data = data;
-    current.title = projectTitleFromData(data);
+    current.title = normalizeProjectTitle(els.projectTitle?.value) || current.title || projectTitleFromData(data);
     current.updatedAt = now;
     state.projects = [
       current,
@@ -998,6 +1013,49 @@ async function saveProjectStoreToSharedServer(snapshot) {
   }
 }
 
+function imageReferenceSignature(content) {
+  return (String(content || "").match(/\[\[image:[^\]]+\]\]/g) || []).join("\n");
+}
+
+async function saveCurrentProjectTextToSharedServer({ keepalive = false } = {}) {
+  window.clearTimeout(sharedTextSaveTimer);
+  sharedTextSaveTimer = 0;
+  if (isBuiltInProjectId(state.currentProjectId) || sharedProjectStoreAvailable === false) return false;
+  const current = state.projects.find((project) => project.id === state.currentProjectId);
+  if (!current) return false;
+
+  const updatedAt = Date.now();
+  const title = normalizeProjectTitle(els.projectTitle?.value) || current.title || projectTitleFromData(current.data);
+  const content = els.content.value;
+  current.title = title;
+  current.updatedAt = updatedAt;
+  current.data = { ...current.data, content };
+
+  try {
+    const response = await fetch(SHARED_PROJECT_TEXT_URL, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: current.id, title, content, updatedAt }),
+      keepalive,
+    });
+    if (!response.ok) throw new Error(`正文快速保存失败（${response.status}）`);
+    sharedProjectStoreAvailable = true;
+    updateProjectHistory();
+    return true;
+  } catch (error) {
+    console.warn("正文快速保存失败，继续使用完整草稿保存", error);
+    return false;
+  }
+}
+
+function scheduleCurrentProjectTextSave() {
+  if (!state.localDatabaseHydrated || isBuiltInProjectId(state.currentProjectId)) return;
+  window.clearTimeout(sharedTextSaveTimer);
+  sharedTextSaveTimer = window.setTimeout(() => {
+    void saveCurrentProjectTextToSharedServer();
+  }, 320);
+}
+
 async function flushProjectStoreToIndexedDb() {
   if (!state.localDatabaseHydrated) return false;
   window.clearTimeout(localDatabaseSaveTimer);
@@ -1145,7 +1203,7 @@ function normalizeProject(project) {
   const updatedAt = Number(project.updatedAt) || Date.now();
   return {
     id: project.id || `project_${updatedAt.toString(36)}`,
-    title: projectTitleFromData(data),
+    title: normalizeProjectTitle(project.title) || projectTitleFromData(data),
     updatedAt,
     data,
   };
@@ -1354,6 +1412,20 @@ function projectTitleFromData(data) {
     )
     .find((line) => line && !line.startsWith("[[image:"));
   return (contentLine || data.displayName || "未命名图文").slice(0, 24);
+}
+
+function normalizeProjectTitle(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 40);
+}
+
+function updateCurrentProjectTitle() {
+  if (isBuiltInProjectId(state.currentProjectId)) return;
+  const current = state.projects.find((project) => project.id === state.currentProjectId);
+  if (!current) return;
+  current.title = normalizeProjectTitle(els.projectTitle?.value) || projectTitleFromData(current.data);
+  updateProjectHistory();
+  scheduleCurrentProjectTextSave();
+  scheduleStateSave();
 }
 
 function formatProjectTime(time) {
@@ -4641,8 +4713,19 @@ function bindEvents() {
 
   els.content.addEventListener("input", () => {
     scheduleTextHistoryCommit();
+    const nextImageReferenceSignature = imageReferenceSignature(els.content.value);
+    const imageReferencesChanged = nextImageReferenceSignature !== lastEditorImageReferenceSignature;
+    lastEditorImageReferenceSignature = nextImageReferenceSignature;
+    scheduleCurrentProjectTextSave();
+    if (imageReferencesChanged) {
+      flushStateSave();
+      void saveCurrentProjectTextToSharedServer();
+      void render({ persist: false });
+      return;
+    }
     requestRender();
   });
+  els.projectTitle?.addEventListener("input", updateCurrentProjectTitle);
   els.content.addEventListener("pointerdown", clearPreviewEditorPin);
   els.content.addEventListener("keydown", handleTextShortcut);
   els.content.addEventListener("paste", handleEditorPaste);
@@ -4741,11 +4824,13 @@ function bindEvents() {
     if (document.visibilityState === "hidden") {
       if (localStateSaveTimer || localStateSaveMaxTimer) flushStateSave();
       if (localDatabaseSaveTimer) void flushProjectStoreToIndexedDb();
+      if (sharedTextSaveTimer) void saveCurrentProjectTextToSharedServer({ keepalive: true });
     }
   });
   window.addEventListener("pagehide", () => {
     if (localStateSaveTimer || localStateSaveMaxTimer) flushStateSave();
     if (localDatabaseSaveTimer) void flushProjectStoreToIndexedDb();
+    if (sharedTextSaveTimer) void saveCurrentProjectTextToSharedServer({ keepalive: true });
   });
 }
 
