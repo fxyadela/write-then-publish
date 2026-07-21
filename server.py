@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "runtime-data"
 STORE_FILE = DATA_DIR / "project-store.json"
 MAX_BODY_BYTES = 64 * 1024 * 1024
+MAX_TEXT_PATCH_BYTES = 2 * 1024 * 1024
 STORE_LOCK = threading.Lock()
 
 
@@ -107,6 +108,61 @@ class WriteThenPublishHandler(SimpleHTTPRequestHandler):
             merged = merge_store(read_store(), incoming)
             write_store(merged)
         self.send_json(merged)
+
+    def do_PATCH(self) -> None:  # noqa: N802 - stdlib handler API
+        if urlparse(self.path).path != "/api/project-store/current-text":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            content_length = 0
+        if content_length <= 0 or content_length > MAX_TEXT_PATCH_BYTES:
+            self.send_json({"error": "正文数据大小无效"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return
+        try:
+            incoming = json.loads(self.rfile.read(content_length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_json({"error": "正文 JSON 无效"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        project_id = incoming.get("id") if isinstance(incoming, dict) else None
+        content = incoming.get("content") if isinstance(incoming, dict) else None
+        if not isinstance(project_id, str) or not isinstance(content, str):
+            self.send_json({"error": "正文草稿结构无效"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        with STORE_LOCK:
+            store = read_store()
+            projects = store.get("projects") or []
+            matched = False
+            for index, project in enumerate(projects):
+                if not isinstance(project, dict) or project.get("id") != project_id:
+                    continue
+                patched = dict(project)
+                patched_data = dict(project.get("data") or {})
+                patched_data["content"] = content
+                patched["data"] = patched_data
+                title = incoming.get("title")
+                if isinstance(title, str) and title.strip():
+                    patched["title"] = title.strip()[:40]
+                try:
+                    incoming_updated_at = float(incoming.get("updatedAt") or 0)
+                except (TypeError, ValueError):
+                    incoming_updated_at = 0
+                patched["updatedAt"] = max(project_timestamp(project), incoming_updated_at)
+                projects[index] = patched
+                matched = True
+                break
+
+            if not matched:
+                self.send_json({"error": "找不到对应草稿"}, HTTPStatus.NOT_FOUND)
+                return
+
+            projects = sorted(projects, key=project_timestamp, reverse=True)[:24]
+            store = {"activeId": project_id, "projects": projects}
+            write_store(store)
+        self.send_json({"ok": True, "id": project_id})
 
 
 if __name__ == "__main__":

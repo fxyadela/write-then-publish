@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>写了就发 | Write Then Publish</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317202f'/%3E%3Cpath d='M18 17h28v7H18zm0 13h20v6H18zm0 12h28v6H18z' fill='%23fff'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="src/styles.css?v=20260721-preview-pin" />
+    <link rel="stylesheet" href="src/styles.css?v=20260721-project-title" />
   </head>
   <body>
     <main class="workspace">
@@ -38,6 +38,10 @@
             <span class="brand-english">Write Then Publish</span>
             <p id="pageCount">0 张图片</p>
           </div>
+          <label class="project-title-control">
+            <span>项目标题</span>
+            <input id="projectTitleInput" type="text" maxlength="40" placeholder="例如：千问 Token Plan 优化版" aria-label="项目标题" />
+          </label>
           <div class="mode-switch" aria-label="切换工作区">
             <button type="button" class="active" data-app-mode="cards">图文卡片</button>
             <button type="button" data-app-mode="article">长文</button>
@@ -349,8 +353,6 @@
       </section>
     </main>
 
-    <footer class="site-credit" aria-label="作者署名">Made by 捏捏番茄</footer>
-
     <div id="cropModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cropTitle">
       <div class="modal-card">
         <div class="modal-head">
@@ -432,6 +434,6 @@
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="src/app.js?v=20260721-preview-pin"></script>
+    <script src="src/app.js?v=20260721-project-title"></script>
   </body>
 </html>
