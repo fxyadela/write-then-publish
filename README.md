@@ -111,6 +111,23 @@
 
 ## 本地使用
 
+最简单的启动方式：在 Finder 里双击项目根目录下的 `启动写了就发.command`。它会自动启动服务，并在浏览器打开固定地址：
+
+```text
+http://127.0.0.1:5173/
+```
+
+请固定使用这个地址，不要换成 `localhost:5173`，避免浏览器把它当成另一个本地站点。
+
+如果习惯用终端，也可以执行：
+
+```bash
+cd /Users/junwenzheng/second-brain/03-delivery/write-then-publish
+npm start
+```
+
+然后访问上面的固定地址。
+
 这个项目是纯前端静态页面，可以直接打开 `index.html` 使用。
 
 也可以在项目目录执行：
