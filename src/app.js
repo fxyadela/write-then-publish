@@ -55,6 +55,7 @@ const els = {
   contentImage: $("#contentImageInput"),
   obsidianImportMenu: $("#obsidianImportMenu"),
   connectObsidianVault: $("#connectObsidianVaultBtn"),
+  syncObsidianVault: $("#syncObsidianVaultBtn"),
   obsidianVaultFolder: $("#obsidianVaultFolderInput"),
   obsidianVaultStatus: $("#obsidianVaultStatus"),
   inlineColor: $("#inlineColorInput"),
@@ -222,6 +223,7 @@ const state = {
   articleFont: "sans",
   articleSize: "normal",
   articleColor: "#0f766e",
+  obsidianNotePath: null,
   currentProjectId: null,
   projects: [],
   historyFilter: "all",
@@ -252,8 +254,10 @@ let imageEditDrag = null;
 const obsidianVault = {
   handle: null,
   fileLookup: null,
+  writable: false,
   loading: false,
   importing: false,
+  syncing: false,
 };
 
 function defaultFormState() {
@@ -275,6 +279,7 @@ function defaultFormState() {
     articleFont: "sans",
     articleSize: "normal",
     articleColor: "#0f766e",
+    obsidianNotePath: null,
     uiTheme: "light",
     avatar: sampleAvatar,
     avatarCrop: null,
@@ -510,6 +515,7 @@ function readForm() {
     articleFont: normalizeArticleFont(state.articleFont),
     articleSize: normalizeArticleSize(state.articleSize),
     articleColor: normalizeArticleColor(state.articleColor),
+    obsidianNotePath: state.obsidianNotePath,
     uiTheme: state.uiTheme,
     avatar: state.avatar,
     avatarCrop: state.avatarCrop,
@@ -538,6 +544,7 @@ function applyForm(data) {
   state.articleFont = normalizeArticleFont(data.articleFont);
   state.articleSize = normalizeArticleSize(data.articleSize);
   state.articleColor = normalizeArticleColor(data.articleColor);
+  state.obsidianNotePath = normalizeObsidianNotePath(data.obsidianNotePath);
   updateAppMode();
   updateHeaderModeButton();
   updateArticleControls();
@@ -1385,6 +1392,7 @@ async function addImageFiles(files, sourcePaths = null) {
       src,
       name: file.name || "图片",
       sourcePath: sourcePaths?.get(file) || sourcePathForFile(file),
+      vaultPath: sourcePaths?.get(file) || null,
       crop: null,
       layout: defaultNewImageLayout(),
     };
@@ -1520,10 +1528,10 @@ function setObsidianVaultStatus(message, connected = false) {
     els.obsidianVaultStatus.textContent = statusText;
   }
   els.obsidianVaultStatus.parentElement?.classList.toggle("is-connected", connected);
-  els.obsidianImportMenu?.classList.toggle("is-vault-connected", Boolean(obsidianVault.handle));
+  els.obsidianImportMenu?.classList.toggle("is-vault-connected", hasConnectedObsidianVault());
   els.connectObsidianVault.innerHTML = connected
     ? '<i data-lucide="folder-cog"></i> 更换仓库'
-    : '<i data-lucide="folder-open"></i> 连接 Obsidian 仓库';
+    : '<i data-lucide="folder-open"></i> 连接仓库';
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -1567,8 +1575,15 @@ async function loadObsidianVaultConnection() {
     const handle = await readStoredObsidianVault();
     if (!handle) return;
     obsidianVault.handle = handle;
-    const permission = await handle.queryPermission({ mode: "read" });
-    setObsidianVaultStatus(permission === "granted" ? `已连接：${handle.name}` : `已记住：${handle.name}（首次粘贴时确认读取）`, permission === "granted");
+    const readPermission = await handle.queryPermission({ mode: "read" });
+    let writePermission = "prompt";
+    try {
+      writePermission = await handle.queryPermission({ mode: "readwrite" });
+    } catch {
+      // Some browsers can read a saved directory handle but do not expose write permission queries.
+    }
+    obsidianVault.writable = writePermission === "granted";
+    setObsidianVaultStatus(readPermission === "granted" ? `已连接：${handle.name}` : `已记住：${handle.name}（首次使用时确认权限）`, readPermission === "granted");
   } catch {
     setObsidianVaultStatus("尚未连接仓库");
   }
@@ -1583,6 +1598,7 @@ async function connectObsidianVault() {
     const handle = await window.showDirectoryPicker({ mode: "read" });
     obsidianVault.handle = handle;
     obsidianVault.fileLookup = null;
+    obsidianVault.writable = false;
     await saveObsidianVault(handle);
     setObsidianVaultStatus(`已连接：${handle.name}`, true);
     els.status.textContent = "仓库已连接。以后直接把 Obsidian Markdown 粘贴到正文编辑区即可。";
@@ -1598,6 +1614,7 @@ function handleObsidianVaultFolder(event) {
   const rootName = files[0]?.webkitRelativePath?.split("/")?.[0] || "已选择的仓库";
   obsidianVault.handle = null;
   obsidianVault.fileLookup = buildVaultFileLookup(files);
+  obsidianVault.writable = false;
   setObsidianVaultStatus(`已连接：${rootName}`, true);
   els.status.textContent = "仓库已连接。以后直接把 Obsidian Markdown 粘贴到正文编辑区即可。";
 }
@@ -1610,6 +1627,176 @@ async function ensureObsidianVaultPermission() {
   const granted = permission === "granted";
   setObsidianVaultStatus(granted ? `已连接：${obsidianVault.handle.name}` : `需要允许读取：${obsidianVault.handle.name}`, granted);
   return granted;
+}
+
+async function ensureObsidianVaultWritePermission() {
+  if (!obsidianVault.handle) return false;
+  try {
+    let permission = await obsidianVault.handle.queryPermission({ mode: "readwrite" });
+    if (permission !== "granted") permission = await obsidianVault.handle.requestPermission({ mode: "readwrite" });
+    obsidianVault.writable = permission === "granted";
+    setObsidianVaultStatus(
+      obsidianVault.writable ? `已连接：${obsidianVault.handle.name}` : `仓库只读：${obsidianVault.handle.name}`,
+      true,
+    );
+    return obsidianVault.writable;
+  } catch {
+    obsidianVault.writable = false;
+    return false;
+  }
+}
+
+function normalizeObsidianNotePath(value) {
+  const path = String(value || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter((part) => part && part !== "." && part !== "..")
+    .join("/");
+  if (!path) return null;
+  return path.toLowerCase().endsWith(".md") ? path : `${path}.md`;
+}
+
+function safeObsidianFileName(value, fallback = "未命名笔记") {
+  const name = String(value || "")
+    .replace(/[\\/:*?"<>|\r\n]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "")
+    .trim();
+  return (name || fallback).slice(0, 80);
+}
+
+function currentObsidianNotePath() {
+  if (state.obsidianNotePath) return state.obsidianNotePath;
+  const title = projectTitleFromData(readForm());
+  return `写了就发/${safeObsidianFileName(title)}.md`;
+}
+
+function imageExtensionFromSource(image, blob) {
+  const nameMatch = String(image?.name || "").match(/\.(avif|bmp|gif|heic|jpe?g|png|svg|webp)$/i);
+  if (nameMatch) return `.${nameMatch[1].toLowerCase().replace("jpeg", "jpg")}`;
+  const mimeExtensions = {
+    "image/avif": ".avif",
+    "image/bmp": ".bmp",
+    "image/gif": ".gif",
+    "image/heic": ".heic",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/svg+xml": ".svg",
+    "image/webp": ".webp",
+  };
+  return mimeExtensions[blob?.type] || ".png";
+}
+
+async function imageBlobForObsidian(image) {
+  const response = await fetch(image.src);
+  if (!response.ok) throw new Error("图片读取失败");
+  return response.blob();
+}
+
+async function buildObsidianExport() {
+  const content = String(els.content.value || "");
+  const imageIds = Array.from(content.matchAll(/\[\[image:([^\]\n]+)\]\]/g), (match) => match[1]);
+  const references = new Map();
+  const attachments = [];
+
+  for (const imageId of new Set(imageIds)) {
+    const image = state.images[imageId];
+    if (!image) continue;
+    if (image.vaultPath) {
+      references.set(imageId, `![[${String(image.vaultPath).replace(/\\/g, "/")}]]`);
+      continue;
+    }
+    const blob = await imageBlobForObsidian(image);
+    const extension = imageExtensionFromSource(image, blob);
+    const originalBase = String(image.name || "图片").replace(/\.[^.]+$/, "");
+    const stableSuffix = imageId.replace(/[^a-z0-9_-]/gi, "").slice(-8) || "image";
+    const fileName = `${safeObsidianFileName(originalBase, "图片")}-${stableSuffix}${extension}`;
+    const path = `写了就发/附件/${fileName}`;
+    attachments.push({ path, fileName, blob });
+    references.set(imageId, `![[${path}]]`);
+  }
+
+  const markdown = content.replace(/\[\[image:([^\]\n]+)\]\]/g, (whole, imageId) => {
+    return references.get(imageId) || `<!-- 缺失图片：${imageId} -->`;
+  });
+
+  return {
+    markdown,
+    notePath: currentObsidianNotePath(),
+    attachments,
+  };
+}
+
+async function getOrCreateVaultDirectory(root, parts) {
+  let directory = root;
+  for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
+  return directory;
+}
+
+async function writeVaultFile(root, path, content) {
+  const parts = String(path).split("/").filter(Boolean);
+  const fileName = parts.pop();
+  const directory = await getOrCreateVaultDirectory(root, parts);
+  const fileHandle = await directory.getFileHandle(fileName, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+}
+
+async function writeObsidianExportToVault(exportData) {
+  for (const attachment of exportData.attachments) {
+    await writeVaultFile(obsidianVault.handle, attachment.path, attachment.blob);
+  }
+  await writeVaultFile(obsidianVault.handle, exportData.notePath, exportData.markdown);
+}
+
+async function downloadObsidianExportPackage(exportData) {
+  if (!window.JSZip) throw new Error("ZIP 组件未加载");
+  const zip = new window.JSZip();
+  zip.file(exportData.notePath, exportData.markdown);
+  exportData.attachments.forEach((attachment) => zip.file(attachment.path, attachment.blob));
+  const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+  const title = exportData.notePath.split("/").pop().replace(/\.md$/i, "");
+  await saveBlob(blob, `${safeObsidianFileName(title)}-Obsidian.zip`);
+}
+
+async function syncCurrentNoteToObsidian() {
+  if (obsidianVault.syncing) return;
+  if (!hasConnectedObsidianVault()) {
+    els.obsidianImportMenu.open = true;
+    els.status.textContent = "请先连接 Obsidian 仓库";
+    requestAnimationFrame(() => positionToolPopover(els.obsidianImportMenu));
+    return;
+  }
+
+  obsidianVault.syncing = true;
+  els.syncObsidianVault.disabled = true;
+  els.status.textContent = "正在确认 Obsidian 写入权限…";
+  try {
+    const canWriteToVault = Boolean(
+      obsidianVault.handle && (obsidianVault.writable || (await ensureObsidianVaultWritePermission())),
+    );
+    els.status.textContent = "正在整理 Markdown 和图片…";
+    const exportData = await buildObsidianExport();
+    if (canWriteToVault) {
+      await writeObsidianExportToVault(exportData);
+      state.obsidianNotePath = exportData.notePath;
+      saveState();
+      els.status.textContent = `已同步到 Obsidian：${exportData.notePath}`;
+      closeObsidianImportMenu();
+      return;
+    }
+
+    await downloadObsidianExportPackage(exportData);
+    els.status.textContent = "当前浏览器只有仓库读取权限，已下载 Obsidian 导入包，未直接写入仓库";
+  } catch (error) {
+    console.error(error);
+    els.status.textContent = "同步失败：没有写入仓库，请检查权限后重试";
+  } finally {
+    obsidianVault.syncing = false;
+    els.syncObsidianVault.disabled = false;
+  }
 }
 
 function extractMarkdownImageReferences(markdown) {
@@ -3597,8 +3784,12 @@ function createImageEditLayer(canvas) {
     box.dataset.baseWidth = String(hit.baseWidth || hit.width);
     box.dataset.maxWidth = String(hit.maxWidth || CARD_CONTENT_WIDTH);
     box.dataset.resizeMaxWidth = String(hit.resizeMaxWidth || hit.baseWidth || hit.width);
-    box.title = "拖右下角调整图片大小；点击左/中/右按钮调整对齐";
+    box.tabIndex = 0;
+    box.title = "点击选择图片；右上角裁剪，顶部调整对齐，右下角缩放";
     applyImageBoxStyle(box, hit);
+    box.addEventListener("click", (event) => {
+      if (event.target === box) box.focus({ preventScroll: true });
+    });
 
     const alignBar = document.createElement("div");
     alignBar.className = "preview-image-align";
@@ -3617,12 +3808,24 @@ function createImageEditLayer(canvas) {
       alignBar.append(button);
     });
 
+    const cropButton = document.createElement("button");
+    cropButton.type = "button";
+    cropButton.className = "preview-image-crop";
+    cropButton.title = "裁剪当前图片";
+    cropButton.setAttribute("aria-label", "裁剪当前图片");
+    cropButton.innerHTML = '<i data-lucide="crop"></i>';
+    cropButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openCropper("image", hit.imageId);
+    });
+
     const resize = document.createElement("span");
     resize.className = "preview-image-resize";
     resize.dataset.action = "resize";
     resize.addEventListener("pointerdown", startPreviewImageResize);
 
-    box.append(alignBar, resize);
+    box.append(alignBar, cropButton, resize);
     layer.append(box);
   }
 
@@ -4098,6 +4301,7 @@ function bindEvents() {
   });
   els.contentImage.addEventListener("change", handleContentImage);
   els.connectObsidianVault?.addEventListener("click", connectObsidianVault);
+  els.syncObsidianVault?.addEventListener("click", syncCurrentNoteToObsidian);
   els.obsidianVaultFolder?.addEventListener("change", handleObsidianVaultFolder);
   els.applyImageWidth?.addEventListener("click", applyImageWidthToAll);
   els.applyFixedImageSize?.addEventListener("click", applyFixedImageSizeToAll);

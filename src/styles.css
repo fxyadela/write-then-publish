@@ -885,9 +885,7 @@ body[data-app-mode="article"] .profile-inline {
 
 .obsidian-vault-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 14px;
+  gap: 10px;
   min-height: 74px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -895,7 +893,14 @@ body[data-app-mode="article"] .profile-inline {
   background: var(--soft);
 }
 
-.obsidian-vault-row .secondary-button {
+.obsidian-vault-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.obsidian-vault-row .secondary-button,
+.obsidian-vault-row .primary-button {
   min-height: 50px;
   padding: 0 16px;
   font-size: 15px;
@@ -1487,6 +1492,13 @@ body[data-app-mode="article"] .profile-inline {
   transform: translateX(-50%) translateY(0);
 }
 
+.preview-image-box:hover .preview-image-crop,
+.preview-image-box:focus-within .preview-image-crop,
+.preview-image-box.is-resizing .preview-image-crop {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .preview-image-align button {
   display: inline-flex;
   width: 24px;
@@ -1506,6 +1518,36 @@ body[data-app-mode="article"] .profile-inline {
 .preview-image-align svg {
   width: 15px;
   height: 15px;
+}
+
+.preview-image-crop {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--control-text);
+  background: var(--popover-bg);
+  box-shadow: var(--shadow-soft);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: auto;
+}
+
+.preview-image-crop:hover {
+  color: var(--active-text);
+  background: var(--active-bg);
+}
+
+.preview-image-crop svg {
+  width: 17px;
+  height: 17px;
 }
 
 .preview-image-resize {
@@ -1801,6 +1843,10 @@ body[data-app-mode="article"] .profile-inline {
     width: auto;
     max-height: calc(100vh - 128px);
     overflow: auto;
+  }
+
+  .obsidian-vault-actions {
+    grid-template-columns: 1fr;
   }
 
   .search-popover,
