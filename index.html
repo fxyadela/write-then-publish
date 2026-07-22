@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>写了就发 | Write Then Publish</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317202f'/%3E%3Cpath d='M18 17h28v7H18zm0 13h20v6H18zm0 12h28v6H18z' fill='%23fff'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="src/styles.css?v=20260723-obsidian-sync-crop" />
+    <link rel="stylesheet" href="src/styles.css?v=20260723-wechat-sync" />
   </head>
   <body>
     <main class="workspace">
@@ -235,7 +235,7 @@
                   </label>
                   <label>
                     字号
-                    <input id="fontSizeInput" type="number" min="24" max="40" value="31" />
+                    <input id="fontSizeInput" type="number" min="24" max="40" value="34" />
                   </label>
                   <label>
                     行距
@@ -291,6 +291,14 @@
             <button id="downloadArticleBtn" class="primary-button" type="button" hidden>
               <i data-lucide="download"></i>
               下载长图
+            </button>
+            <button id="copyWechatBtn" class="secondary-button" type="button" hidden>
+              <i data-lucide="copy"></i>
+              复制公众号格式
+            </button>
+            <button id="syncWechatBtn" class="primary-button" type="button" hidden>
+              <i data-lucide="send"></i>
+              同步草稿箱
             </button>
           </div>
         </div>
@@ -383,9 +391,56 @@
       </div>
     </div>
 
+    <div id="wechatModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="wechatModalTitle">
+      <div class="modal-card wechat-modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="wechatModalTitle">同步到公众号草稿箱</h3>
+            <p>确认标题和封面后创建草稿，不会直接发布。</p>
+          </div>
+          <button id="wechatCloseBtn" class="icon-button ghost" type="button" title="关闭" aria-label="关闭公众号同步">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="wechat-sync-form">
+          <label class="wechat-field">
+            <span>文章标题</span>
+            <input id="wechatTitleInput" type="text" maxlength="64" />
+          </label>
+          <label class="wechat-field">
+            <span>作者（选填）</span>
+            <input id="wechatAuthorInput" type="text" maxlength="32" placeholder="留空则不显示作者" />
+          </label>
+          <div class="wechat-cover-field">
+            <div id="wechatCoverPreview" class="wechat-cover-preview">
+              <i data-lucide="image"></i>
+              <span>请选择封面</span>
+            </div>
+            <div class="wechat-cover-copy">
+              <strong>草稿封面</strong>
+              <span id="wechatCoverHint">默认使用正文第一张图片，也可以单独上传。</span>
+              <label class="secondary-button wechat-cover-button">
+                <i data-lucide="image-plus"></i>
+                更换封面
+                <input id="wechatCoverInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+              </label>
+            </div>
+          </div>
+          <div id="wechatServiceStatus" class="wechat-service-status">正在检查本机公众号同步服务…</div>
+          <div class="wechat-sync-actions">
+            <button id="wechatCancelBtn" class="secondary-button" type="button">取消</button>
+            <button id="wechatConfirmBtn" class="primary-button" type="button" disabled>
+              <i data-lucide="send"></i>
+              确认同步到草稿箱
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="src/app.js?v=20260723-obsidian-sync"></script>
+    <script src="src/app.js?v=20260723-wechat-sync"></script>
   </body>
 </html>

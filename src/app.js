@@ -46,6 +46,8 @@ const els = {
   themeToggle: $("#themeToggleBtn"),
   downloadZip: $("#downloadZipBtn"),
   downloadArticle: $("#downloadArticleBtn"),
+  copyWechat: $("#copyWechatBtn"),
+  syncWechat: $("#syncWechatBtn"),
   scrollMode: $("#scrollModeBtn"),
   articleSettings: $("#articleSettings"),
   articleThemeButtons: document.querySelectorAll("[data-article-theme]"),
@@ -101,6 +103,16 @@ const els = {
   cropApply: $("#cropApplyBtn"),
   cropReset: $("#cropResetBtn"),
   ratioButtons: document.querySelectorAll("[data-ratio]"),
+  wechatModal: $("#wechatModal"),
+  wechatClose: $("#wechatCloseBtn"),
+  wechatCancel: $("#wechatCancelBtn"),
+  wechatConfirm: $("#wechatConfirmBtn"),
+  wechatTitle: $("#wechatTitleInput"),
+  wechatAuthor: $("#wechatAuthorInput"),
+  wechatCover: $("#wechatCoverInput"),
+  wechatCoverPreview: $("#wechatCoverPreview"),
+  wechatCoverHint: $("#wechatCoverHint"),
+  wechatServiceStatus: $("#wechatServiceStatus"),
 };
 
 const sampleAvatar =
@@ -251,6 +263,9 @@ const cropper = {
 };
 
 let imageEditDrag = null;
+let wechatCoverData = "";
+let wechatServiceReady = false;
+let wechatSyncing = false;
 const obsidianVault = {
   handle: null,
   fileLookup: null,
@@ -268,7 +283,7 @@ function defaultFormState() {
     textColor: "#202938",
     accentColor: "#2563eb",
     bgColor: "#ffffff",
-    fontSize: "31",
+    fontSize: "34",
     lineHeight: "1.65",
     zhFont: "zh-system",
     enFont: "en-system",
@@ -504,7 +519,7 @@ function readForm() {
     textColor: els.textColor.value,
     accentColor: els.accentColor.value,
     bgColor: els.bgColor.value,
-    fontSize: clamp(Number(els.fontSize.value) || 31, 24, 40),
+    fontSize: clamp(Number(els.fontSize.value) || 34, 24, 40),
     lineHeight: clamp(Number(els.lineHeight.value) || 1.65, 1, 2.4),
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
@@ -530,7 +545,7 @@ function applyForm(data) {
   els.textColor.value = data.textColor ?? "#202938";
   els.accentColor.value = data.accentColor ?? "#2563eb";
   els.bgColor.value = data.bgColor ?? "#ffffff";
-  els.fontSize.value = data.fontSize ?? "31";
+  els.fontSize.value = data.fontSize ?? "34";
   els.lineHeight.value = data.lineHeight ?? "1.65";
   els.zhFont.value = FONT_STACKS[data.zhFont] ? data.zhFont : "zh-system";
   els.enFont.value = FONT_STACKS[data.enFont] ? data.enFont : "en-system";
@@ -622,6 +637,8 @@ function updateAppMode() {
   els.scrollMode.hidden = state.appMode === "article";
   els.downloadZip.hidden = state.appMode === "article";
   els.downloadArticle.hidden = state.appMode !== "article";
+  els.copyWechat.hidden = state.appMode !== "article";
+  els.syncWechat.hidden = state.appMode !== "article";
   els.headerModeToggle.hidden = state.appMode === "article";
 }
 
@@ -3701,6 +3718,300 @@ function escapeAttribute(value) {
   return escapeHtml(value).replace(/`/g, "&#96;");
 }
 
+const WECHAT_STYLE_PROPERTIES = [
+  "background-color",
+  "border",
+  "border-bottom",
+  "border-left",
+  "border-radius",
+  "border-right",
+  "border-top",
+  "border-collapse",
+  "box-decoration-break",
+  "color",
+  "display",
+  "font-family",
+  "font-size",
+  "font-style",
+  "font-weight",
+  "letter-spacing",
+  "line-height",
+  "list-style-position",
+  "list-style-type",
+  "margin-bottom",
+  "margin-left",
+  "margin-right",
+  "margin-top",
+  "max-width",
+  "overflow-wrap",
+  "padding-bottom",
+  "padding-left",
+  "padding-right",
+  "padding-top",
+  "text-align",
+  "text-decoration",
+  "vertical-align",
+  "white-space",
+  "word-break",
+];
+
+function copyComputedWechatStyles(source, target) {
+  const computed = window.getComputedStyle(source);
+  const styles = WECHAT_STYLE_PROPERTIES.map((property) => {
+    const value = computed.getPropertyValue(property);
+    return value ? `${property}:${value}` : "";
+  }).filter(Boolean);
+  if (source.tagName === "IMG") {
+    styles.push("display:block", "max-width:100%", "height:auto");
+    target.removeAttribute("width");
+    target.removeAttribute("height");
+  }
+  if (source.tagName === "H1") {
+    styles.push(`border-bottom:2px solid ${readForm().articleColor}`);
+  }
+  target.setAttribute("style", styles.join(";"));
+  target.removeAttribute("class");
+  target.removeAttribute("id");
+  for (const attribute of Array.from(target.attributes)) {
+    if (attribute.name.startsWith("data-")) target.removeAttribute(attribute.name);
+  }
+}
+
+function serializeArticleForWechat() {
+  let article = els.pages.querySelector(".article-preview");
+  if (!article || state.appMode !== "article") {
+    state.appMode = "article";
+    updateAppMode();
+    renderArticlePreview(readForm());
+    article = els.pages.querySelector(".article-preview");
+  }
+  if (!article || !readForm().content.trim()) {
+    throw new Error("长文内容为空，请先输入正文。");
+  }
+
+  const clone = article.cloneNode(true);
+  const sourceNodes = [article, ...article.querySelectorAll("*")];
+  const cloneNodes = [clone, ...clone.querySelectorAll("*")];
+  sourceNodes.forEach((source, index) => copyComputedWechatStyles(source, cloneNodes[index]));
+
+  const section = document.createElement("section");
+  const articleStyle = window.getComputedStyle(article);
+  section.setAttribute(
+    "style",
+    [
+      "margin:0 auto",
+      "padding:0",
+      `color:${articleStyle.color}`,
+      `background-color:${articleStyle.backgroundColor}`,
+      `font-family:${articleStyle.fontFamily}`,
+      `font-size:${articleStyle.fontSize}`,
+      `line-height:${articleStyle.lineHeight}`,
+      `letter-spacing:${articleStyle.letterSpacing}`,
+      "max-width:100%",
+      "overflow-wrap:break-word",
+    ].join(";"),
+  );
+  while (clone.firstChild) section.append(clone.firstChild);
+  return {
+    html: section.outerHTML,
+    text: article.innerText.trim(),
+    article,
+  };
+}
+
+async function writeRichClipboard(html, text) {
+  if (navigator.clipboard?.write && window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([
+        new window.ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ]);
+      return;
+    } catch {}
+  }
+
+  const holder = document.createElement("div");
+  holder.contentEditable = "true";
+  holder.style.position = "fixed";
+  holder.style.left = "-10000px";
+  holder.innerHTML = html;
+  document.body.append(holder);
+  const range = document.createRange();
+  range.selectNodeContents(holder);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  const copied = document.execCommand("copy");
+  selection.removeAllRanges();
+  holder.remove();
+  if (!copied) throw new Error("浏览器没有允许复制。");
+}
+
+async function copyArticleToWechat() {
+  try {
+    const serialized = serializeArticleForWechat();
+    await writeRichClipboard(serialized.html, serialized.text);
+    els.status.textContent = "已复制公众号富文本，可直接粘贴到公众号编辑器";
+  } catch (error) {
+    els.status.textContent = error?.message || "复制失败，请允许浏览器访问剪贴板。";
+  }
+}
+
+function wechatTitleFromContent() {
+  const line = String(els.content.value || "")
+    .split("\n")
+    .map((value) => value.trim())
+    .find((value) => value && !isMarkdownImageBlock(value));
+  const cleaned = String(line || "未命名长文")
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/\{\{(?:color|bg):#[0-9a-fA-F]{6}\|([^}]+)\}\}/g, "$1")
+    .replace(/[*_`>]/g, "")
+    .trim();
+  return cleaned.slice(0, 64) || "未命名长文";
+}
+
+function isWechatDataImage(source) {
+  return /^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(String(source || ""));
+}
+
+function setWechatCover(source = "", label = "") {
+  wechatCoverData = isWechatDataImage(source) ? source : "";
+  els.wechatCoverPreview.innerHTML = "";
+  if (wechatCoverData) {
+    const image = document.createElement("img");
+    image.src = wechatCoverData;
+    image.alt = "公众号封面预览";
+    els.wechatCoverPreview.append(image);
+    els.wechatCoverHint.textContent = label || "已选择封面，同步时会保留原图数据。";
+  } else {
+    els.wechatCoverPreview.innerHTML = '<i data-lucide="image"></i><span>请选择封面</span>';
+    els.wechatCoverHint.textContent = "正文没有可用图片，请单独上传一张封面。";
+  }
+  updateWechatConfirmState();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function setWechatServiceMessage(message, type = "") {
+  els.wechatServiceStatus.classList.toggle("ready", type === "ready");
+  els.wechatServiceStatus.classList.toggle("error", type === "error");
+  els.wechatServiceStatus.textContent = message;
+}
+
+function updateWechatConfirmState() {
+  const complete = wechatServiceReady && Boolean(els.wechatTitle.value.trim()) && Boolean(wechatCoverData) && !wechatSyncing;
+  els.wechatConfirm.disabled = !complete;
+}
+
+async function checkWechatService() {
+  wechatServiceReady = false;
+  setWechatServiceMessage("正在检查本机公众号同步服务…");
+  updateWechatConfirmState();
+  if (!/^https?:$/.test(window.location.protocol)) {
+    setWechatServiceMessage("请用 npm start 打开本地版，直接打开 HTML 无法访问安全同步服务。", "error");
+    return;
+  }
+  try {
+    const response = await fetch("/api/wechat/status", { cache: "no-store" });
+    if (!response.ok) throw new Error("服务不可用");
+    const status = await response.json();
+    wechatServiceReady = Boolean(status.ready);
+    if (wechatServiceReady) {
+      setWechatServiceMessage("本机同步服务已就绪。App Secret 仅保存在系统钥匙串中。", "ready");
+    } else {
+      setWechatServiceMessage(status.error || "本机公众号配置不完整，请检查 AppID、钥匙串和同步服务。", "error");
+    }
+  } catch {
+    setWechatServiceMessage("当前页面未连接本机同步服务，请在项目目录执行 npm start 后重试。", "error");
+  }
+  updateWechatConfirmState();
+}
+
+async function openWechatModal() {
+  let serialized;
+  try {
+    serialized = serializeArticleForWechat();
+  } catch (error) {
+    els.status.textContent = error?.message || "长文内容无法同步。";
+    return;
+  }
+  els.wechatTitle.value = wechatTitleFromContent();
+  els.wechatAuthor.value = "";
+  els.wechatCover.value = "";
+  const firstImage = serialized.article.querySelector("img[src]");
+  setWechatCover(firstImage?.getAttribute("src") || "", firstImage ? "已默认使用正文第一张图片。" : "");
+  els.wechatModal.classList.remove("hidden");
+  if (window.lucide) window.lucide.createIcons();
+  await checkWechatService();
+  els.wechatTitle.focus();
+  els.wechatTitle.select();
+}
+
+function closeWechatModal() {
+  if (wechatSyncing) return;
+  els.wechatModal.classList.add("hidden");
+}
+
+async function handleWechatCover(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (!/^image\/(?:png|jpeg|webp|gif)$/i.test(file.type)) {
+    setWechatServiceMessage("封面请使用 PNG、JPG、WebP 或 GIF。", "error");
+    event.target.value = "";
+    return;
+  }
+  const source = await readFileAsDataURL(file);
+  setWechatCover(source, `已选择 ${file.name}，保留原图数据。`);
+}
+
+async function syncArticleToWechatDraft() {
+  if (wechatSyncing) return;
+  let serialized;
+  try {
+    serialized = serializeArticleForWechat();
+  } catch (error) {
+    setWechatServiceMessage(error?.message || "长文内容无法同步。", "error");
+    return;
+  }
+  if (!wechatServiceReady || !els.wechatTitle.value.trim() || !wechatCoverData) {
+    setWechatServiceMessage("请确认本机服务、文章标题和封面都已准备好。", "error");
+    return;
+  }
+
+  wechatSyncing = true;
+  updateWechatConfirmState();
+  setWechatServiceMessage("正在上传正文图片并创建公众号草稿，请不要关闭页面…");
+  try {
+    const response = await fetch("/api/wechat/drafts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: els.wechatTitle.value.trim(),
+        author: els.wechatAuthor.value.trim(),
+        slug: state.currentProjectId || "write-then-publish",
+        html: serialized.html,
+        cover: wechatCoverData,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || "公众号草稿同步失败。");
+    const statusLabel = {
+      created: "已创建",
+      updated: "已更新",
+      recovered: "已恢复并更新",
+      unchanged: "内容未变化",
+    }[result.status] || "已同步";
+    wechatSyncing = false;
+    els.wechatModal.classList.add("hidden");
+    els.status.textContent = `${statusLabel}公众号草稿：${result.title || els.wechatTitle.value.trim()}`;
+  } catch (error) {
+    wechatSyncing = false;
+    setWechatServiceMessage(error?.message || "同步失败，未确认草稿写入。", "error");
+    updateWechatConfirmState();
+  }
+}
+
 async function render() {
   const settings = readForm();
   updateAppMode();
@@ -4318,6 +4629,14 @@ function bindEvents() {
   els.cropModal.addEventListener("click", (event) => {
     if (event.target === els.cropModal) closeCropper();
   });
+  els.wechatModal.addEventListener("click", (event) => {
+    if (event.target === els.wechatModal) closeWechatModal();
+  });
+  els.wechatClose.addEventListener("click", closeWechatModal);
+  els.wechatCancel.addEventListener("click", closeWechatModal);
+  els.wechatTitle.addEventListener("input", updateWechatConfirmState);
+  els.wechatCover.addEventListener("change", handleWechatCover);
+  els.wechatConfirm.addEventListener("click", syncArticleToWechatDraft);
   els.ratioButtons.forEach((button) => {
     button.addEventListener("click", () => setCropAspect(button.dataset.ratio));
   });
@@ -4326,6 +4645,7 @@ function bindEvents() {
   window.addEventListener("mouseup", stopCropDrag);
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.cropModal.classList.contains("hidden")) closeCropper();
+    if (event.key === "Escape" && !els.wechatModal.classList.contains("hidden")) closeWechatModal();
   });
   els.findNext.addEventListener("click", findNext);
   els.replaceOne.addEventListener("click", replaceCurrent);
@@ -4341,6 +4661,8 @@ function bindEvents() {
   els.themeToggle.addEventListener("click", toggleUiTheme);
   els.downloadZip.addEventListener("click", downloadAll);
   els.downloadArticle.addEventListener("click", downloadArticleImage);
+  els.copyWechat.addEventListener("click", copyArticleToWechat);
+  els.syncWechat.addEventListener("click", openWechatModal);
 }
 
 loadPanelLayout();
