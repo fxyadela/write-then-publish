@@ -1409,6 +1409,8 @@ body[data-app-mode="article"] .profile-inline {
 .page-shell {
   display: grid;
   gap: 10px;
+  width: min(100%, 864px);
+  justify-self: center;
 }
 
 .pages.scroll-mode .page-shell {

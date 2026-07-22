@@ -1,5 +1,8 @@
 const CANVAS_WIDTH = 864;
 const CANVAS_HEIGHT = 1152;
+const CANVAS_RENDER_SCALE = 2;
+const OUTPUT_CANVAS_WIDTH = CANVAS_WIDTH * CANVAS_RENDER_SCALE;
+const OUTPUT_CANVAS_HEIGHT = CANVAS_HEIGHT * CANVAS_RENDER_SCALE;
 const CARD_SIDE_PADDING = 42;
 const CARD_CONTENT_WIDTH = CANVAS_WIDTH - CARD_SIDE_PADDING * 2;
 const EXPORT_IMAGE_MIME = "image/png";
@@ -3024,13 +3027,14 @@ async function buildScrollPage(settings) {
 
 function renderPage(page, index, total) {
   const canvas = document.createElement("canvas");
-  canvas.width = CANVAS_WIDTH;
-  canvas.height = CANVAS_HEIGHT;
+  canvas.width = OUTPUT_CANVAS_WIDTH;
+  canvas.height = OUTPUT_CANVAS_HEIGHT;
   canvas.dataset.page = String(index + 1);
   canvas._page = page;
   canvas._scrollPage = false;
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingQuality = "high";
+  ctx.setTransform(CANVAS_RENDER_SCALE, 0, 0, CANVAS_RENDER_SCALE, 0, 0);
 
   drawPageToContext(ctx, page, false);
   canvas._textHits = collectTextHits(ctx, page, false);
@@ -3040,13 +3044,14 @@ function renderPage(page, index, total) {
 
 function renderScrollPage(page) {
   const canvas = document.createElement("canvas");
-  canvas.width = CANVAS_WIDTH;
-  canvas.height = CANVAS_HEIGHT;
+  canvas.width = OUTPUT_CANVAS_WIDTH;
+  canvas.height = OUTPUT_CANVAS_HEIGHT;
   canvas.dataset.page = "scroll";
   canvas._page = page;
   canvas._scrollPage = true;
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingQuality = "high";
+  ctx.setTransform(CANVAS_RENDER_SCALE, 0, 0, CANVAS_RENDER_SCALE, 0, 0);
 
   drawPageToContext(ctx, page, true);
   canvas._textHits = collectTextHits(ctx, page, true);
@@ -3571,7 +3576,7 @@ function drawPreview(canvases) {
   els.status.textContent =
     state.mode === "scroll"
       ? `滑动截图模式：在卡片上滚动，下载当前画面`
-      : `已生成 ${canvases.length} 张，尺寸 ${CANVAS_WIDTH}x${CANVAS_HEIGHT}`;
+      : `已生成 ${canvases.length} 张，高清尺寸 ${OUTPUT_CANVAS_WIDTH}x${OUTPUT_CANVAS_HEIGHT}`;
   if (window.lucide) window.lucide.createIcons();
 }
 
