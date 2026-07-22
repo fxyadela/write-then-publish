@@ -5,7 +5,9 @@ const OUTPUT_CANVAS_WIDTH = CANVAS_WIDTH * CANVAS_RENDER_SCALE;
 const OUTPUT_CANVAS_HEIGHT = CANVAS_HEIGHT * CANVAS_RENDER_SCALE;
 const CARD_SIDE_PADDING = 42;
 const CARD_CONTENT_WIDTH = CANVAS_WIDTH - CARD_SIDE_PADDING * 2;
+const CARD_MAX_IMAGE_HEIGHT = CANVAS_HEIGHT - CARD_SIDE_PADDING - 62;
 const EXPORT_IMAGE_MIME = "image/png";
+const DEFAULT_HANDLE = "@X: iamcora13";
 const EXPORT_IMAGE_EXTENSION = ".png";
 const EXPORT_ZIP_COMPRESSION = "STORE";
 const OBSIDIAN_VAULT_DB = "writeThenPublishObsidianVault";
@@ -258,7 +260,7 @@ function defaultFormState() {
   return {
     content: defaultText,
     displayName: "捏捏番茄（AI图文版）",
-    handle: "@heytomato",
+    handle: DEFAULT_HANDLE,
     textColor: "#202938",
     accentColor: "#2563eb",
     bgColor: "#ffffff",
@@ -266,7 +268,7 @@ function defaultFormState() {
     lineHeight: "1.65",
     zhFont: "zh-system",
     enFont: "en-system",
-    imageHeight: "520",
+    imageHeight: String(CARD_MAX_IMAGE_HEIGHT),
     headerMode: "every",
     appMode: "cards",
     articleTheme: "wechat",
@@ -501,7 +503,7 @@ function readForm() {
     lineHeight: clamp(Number(els.lineHeight.value) || 1.65, 1, 2.4),
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
-    imageHeight: clamp(Number(els.imageHeight.value) || 520, 220, 760),
+    imageHeight: clamp(Number(els.imageHeight.value) || CARD_MAX_IMAGE_HEIGHT, 220, CARD_MAX_IMAGE_HEIGHT),
     headerMode: state.headerMode === "first" ? "first" : "every",
     appMode: state.appMode === "article" ? "article" : "cards",
     articleTheme: normalizeArticleTheme(state.articleTheme),
@@ -518,7 +520,7 @@ function readForm() {
 function applyForm(data) {
   els.content.value = data.content ?? defaultText;
   els.displayName.value = data.displayName ?? "捏捏番茄（AI图文版）";
-  els.handle.value = data.handle ?? "@heytomato";
+  els.handle.value = data.handle ?? DEFAULT_HANDLE;
   els.textColor.value = data.textColor ?? "#202938";
   els.accentColor.value = data.accentColor ?? "#2563eb";
   els.bgColor.value = data.bgColor ?? "#ffffff";
@@ -526,7 +528,10 @@ function applyForm(data) {
   els.lineHeight.value = data.lineHeight ?? "1.65";
   els.zhFont.value = FONT_STACKS[data.zhFont] ? data.zhFont : "zh-system";
   els.enFont.value = FONT_STACKS[data.enFont] ? data.enFont : "en-system";
-  els.imageHeight.value = String(data.imageHeight ?? "520") === "380" ? "520" : data.imageHeight ?? "520";
+  const storedImageHeight = String(data.imageHeight ?? CARD_MAX_IMAGE_HEIGHT);
+  els.imageHeight.value = ["380", "520"].includes(storedImageHeight)
+    ? String(CARD_MAX_IMAGE_HEIGHT)
+    : storedImageHeight;
   state.headerMode = data.headerMode === "first" ? "first" : "every";
   state.appMode = data.appMode === "article" ? "article" : "cards";
   state.articleTheme = normalizeArticleTheme(data.articleTheme);
@@ -787,7 +792,8 @@ function migrateStoredState(data) {
     oldBoldQuote,
     "“请你从某个领域里，选择一个研究生水平的概念。然后写一个寓言故事，用间接的方式把这个概念讲清楚。不要一开始就说答案，尽量到故事快结束的时候，才让人意识到原来讲的是这个概念。故事结束后，再解释这个概念，以及故事里的隐喻分别对应什么。”",
   );
-  if (String(data.imageHeight) === "380") data.imageHeight = "520";
+  if (["380", "520"].includes(String(data.imageHeight))) data.imageHeight = String(CARD_MAX_IMAGE_HEIGHT);
+  if (!data.handle || data.handle === "@heytomato") data.handle = DEFAULT_HANDLE;
   if (!Number.isFinite(Number(data.lineHeight))) data.lineHeight = "1.65";
   if (Math.abs(Number(data.lineHeight) - 1.85) < 0.001) data.lineHeight = "1.65";
   data.headerMode = data.headerMode === "first" ? "first" : "every";
@@ -1895,7 +1901,7 @@ function updateImageList() {
 
 function defaultNewImageLayout() {
   const fixedWidth = normalizeFixedImageDimension(els.fixedImageWidth?.value, CARD_CONTENT_WIDTH);
-  const fixedHeight = normalizeFixedImageDimension(els.fixedImageHeight?.value, 760);
+  const fixedHeight = normalizeFixedImageDimension(els.fixedImageHeight?.value, CARD_MAX_IMAGE_HEIGHT);
   if (fixedWidth && fixedHeight) {
     return {
       fixedWidth,
@@ -1945,7 +1951,7 @@ function applyFixedImageSizeToAll() {
   }
 
   const fixedWidth = normalizeFixedImageDimension(els.fixedImageWidth?.value, CARD_CONTENT_WIDTH);
-  const fixedHeight = normalizeFixedImageDimension(els.fixedImageHeight?.value, 760);
+  const fixedHeight = normalizeFixedImageDimension(els.fixedImageHeight?.value, CARD_MAX_IMAGE_HEIGHT);
   if (!fixedWidth || !fixedHeight) {
     els.status.textContent = "请输入固定宽度和固定高度";
     return;
@@ -2764,7 +2770,7 @@ function normalizeImageLayout(layout = {}) {
   const rawFixedWidth = Number(value.fixedWidth);
   const rawFixedHeight = Number(value.fixedHeight);
   const fixedWidth = Number.isFinite(rawFixedWidth) && rawFixedWidth > 0 ? clamp(rawFixedWidth, 80, CARD_CONTENT_WIDTH) : null;
-  const fixedHeight = Number.isFinite(rawFixedHeight) && rawFixedHeight > 0 ? clamp(rawFixedHeight, 80, 760) : null;
+  const fixedHeight = Number.isFinite(rawFixedHeight) && rawFixedHeight > 0 ? clamp(rawFixedHeight, 80, CARD_MAX_IMAGE_HEIGHT) : null;
   return {
     widthScale: clamp(Number(value.widthScale) || 1, 0.25, 20),
     widthPercent,
@@ -2968,7 +2974,7 @@ async function buildScrollPage(settings) {
       const img = imageCache[block.id];
       if (!img) continue;
       const sourceRect = getImageSourceRect(img, data.crop);
-      const size = imageBlockSize(sourceRect, contentWidth, imageMaxHeightForLayout(data.layout, settings.imageHeight, 760), data.layout);
+      const size = imageBlockSize(sourceRect, contentWidth, imageMaxHeightForLayout(data.layout, Math.min(settings.imageHeight, viewportHeight), viewportHeight), data.layout);
       y += hasContent && previousBlockType !== "spacer" ? 24 : 0;
       page.items.push({
         type: "image",
