@@ -2702,9 +2702,18 @@ function blankLineGap(settings) {
   return Math.max(18, Math.ceil(settings.fontSize * 0.8));
 }
 
-function measureToken(ctx, token, style) {
+function tokenLetterSpacing(token, style) {
+  if (!token?.text || /^\s+$/.test(token.text)) return 0;
+  return Math.max(0.8, style.size * 0.025);
+}
+
+function glyphWidth(ctx, token, style) {
   ctx.font = fontString(style, token);
   return ctx.measureText(token.text).width;
+}
+
+function measureToken(ctx, token, style) {
+  return glyphWidth(ctx, token, style) + tokenLetterSpacing(token, style);
 }
 
 function getImageSourceRect(image, crop) {
@@ -3090,8 +3099,7 @@ function collectTextHits(ctx, page, scrollPage = false) {
     }
 
     for (const token of item.line) {
-      ctx.font = fontString(item.style, token);
-      const width = ctx.measureText(token.text).width;
+      const width = measureToken(ctx, token, item.style);
       if (!/^\s+$/.test(token.text) && Number.isFinite(token.sourceStart) && Number.isFinite(token.sourceEnd)) {
         const top = Math.max(y, scrollPage && bounds ? bounds.top : y);
         const bottom = Math.min(y + item.lineHeight, scrollPage && bounds ? bounds.bottom : y + item.lineHeight);
@@ -3268,7 +3276,7 @@ function drawTextLine(ctx, item, settings) {
   const baseline = y + Math.round(lineHeight * 0.75);
   for (const token of line) {
     ctx.font = fontString(style, token);
-    const width = ctx.measureText(token.text).width;
+    const width = glyphWidth(ctx, token, style);
     if (token.bgColor) {
       ctx.fillStyle = token.bgColor;
       roundedRect(ctx, cursor - 3, y + Math.round(lineHeight * 0.14), width + 6, Math.round(lineHeight * 0.72), 7);
@@ -3276,7 +3284,7 @@ function drawTextLine(ctx, item, settings) {
     }
     ctx.fillStyle = token.color || style.color;
     ctx.fillText(token.text, cursor, baseline);
-    cursor += width;
+    cursor += width + tokenLetterSpacing(token, style);
   }
 }
 
