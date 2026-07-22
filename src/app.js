@@ -2727,10 +2727,13 @@ function imageBlockSize(sourceRect, maxWidth, maxHeight, layout = null) {
   const legacyMaxScale = baseWidth > 0 ? maxWidth / baseWidth : 1;
   const fixedWidth = normalized.fixedWidth && normalized.fixedHeight ? clamp(normalized.fixedWidth, 80, maxWidth) : null;
   const fixedHeight = normalized.fixedWidth && normalized.fixedHeight ? clamp(normalized.fixedHeight, 80, maxHeight) : null;
-  const width = fixedWidth || (normalized.widthPercent
+  let width = fixedWidth || (normalized.widthPercent
     ? maxWidth * (normalized.widthPercent / 100)
     : baseWidth * clamp(normalized.widthScale, 0.25, legacyMaxScale));
-  const height = fixedHeight || width / aspect;
+  let height = fixedHeight || width / aspect;
+  const fitScale = Math.min(1, maxWidth / Math.max(1, width), maxHeight / Math.max(1, height));
+  width *= fitScale;
+  height *= fitScale;
   const maxOffset = Math.max(0, maxWidth - width);
   let offsetX = maxOffset / 2;
 
@@ -2746,6 +2749,7 @@ function imageBlockSize(sourceRect, maxWidth, maxHeight, layout = null) {
     offsetX,
     baseWidth,
     maxWidth,
+    resizeMaxWidth: baseWidth,
   };
 }
 
@@ -2870,6 +2874,7 @@ async function buildPages(settings) {
         width: size.width,
         height,
         radius: 13,
+        resizeMaxWidth: size.resizeMaxWidth,
       });
       y += height + 34;
       hasContent = true;
@@ -2974,6 +2979,7 @@ async function buildScrollPage(settings) {
         width: size.width,
         height: size.height,
         radius: 13,
+        resizeMaxWidth: size.resizeMaxWidth,
       });
       y += size.height + 34;
       hasContent = true;
@@ -3135,6 +3141,7 @@ function collectImageHits(page, scrollPage = false) {
         height: Math.max(0, bottom - top),
         baseWidth: item.baseWidth || item.width,
         maxWidth: item.maxWidth || CARD_CONTENT_WIDTH,
+        resizeMaxWidth: item.resizeMaxWidth || item.baseWidth || item.width,
       };
     })
     .filter((hit) => hit.height > 0 && hit.width > 0);
@@ -3578,6 +3585,7 @@ function createImageEditLayer(canvas) {
     box.dataset.imageId = hit.imageId;
     box.dataset.baseWidth = String(hit.baseWidth || hit.width);
     box.dataset.maxWidth = String(hit.maxWidth || CARD_CONTENT_WIDTH);
+    box.dataset.resizeMaxWidth = String(hit.resizeMaxWidth || hit.baseWidth || hit.width);
     box.title = "拖右下角调整图片大小；点击左/中/右按钮调整对齐";
     applyImageBoxStyle(box, hit);
 
@@ -3700,6 +3708,7 @@ function startPreviewImageResize(event) {
       height: (Number.parseFloat(box.style.height) / 100) * CANVAS_HEIGHT,
       baseWidth: Number(box.dataset.baseWidth) || (Number.parseFloat(box.style.width) / 100) * CANVAS_WIDTH,
       maxWidth: Number(box.dataset.maxWidth) || CARD_CONTENT_WIDTH,
+      resizeMaxWidth: Number(box.dataset.resizeMaxWidth) || Number(box.dataset.baseWidth) || (Number.parseFloat(box.style.width) / 100) * CANVAS_WIDTH,
     },
     canvasScaleX: CANVAS_WIDTH / frameRect.width,
     canvasScaleY: CANVAS_HEIGHT / frameRect.height,
@@ -3744,11 +3753,11 @@ function stopPreviewImageResize() {
 function resizeImageLayout(startLayout, startBox, dx, dy) {
   const heightDrivenDelta = dy * (startBox.width / Math.max(1, startBox.height));
   const deltaWidth = Math.abs(dx) >= Math.abs(heightDrivenDelta) ? dx : heightDrivenDelta;
-  const nextWidth = clamp(startBox.width + deltaWidth, startBox.maxWidth * 0.25, startBox.maxWidth);
+  const nextWidth = clamp(startBox.width + deltaWidth, startBox.resizeMaxWidth * 0.25, startBox.resizeMaxWidth);
   return {
     ...startLayout,
     widthScale: nextWidth / startBox.baseWidth,
-    widthPercent: (nextWidth / startBox.maxWidth) * 100,
+    widthPercent: null,
     fixedWidth: null,
     fixedHeight: null,
   };
