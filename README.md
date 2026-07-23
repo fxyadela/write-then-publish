@@ -5,7 +5,7 @@
 
 [在线体验：fawen.fun](https://fawen.fun) · [查看工作区](#两种工作区) · [本地运行](#本地运行) · [MIT License](LICENSE)
 
-![写了就发：图文卡片工作区](docs/screenshots/cards-mode.png)
+![写了就发：提示词技巧文章的图文卡片工作区](docs/screenshots/prompt-tips-case.png)
 
 ## 这是什么
 
