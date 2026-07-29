@@ -6,16 +6,42 @@ const OUTPUT_CANVAS_HEIGHT = CANVAS_HEIGHT * CANVAS_RENDER_SCALE;
 const CARD_SIDE_PADDING = 42;
 const CARD_CONTENT_WIDTH = CANVAS_WIDTH - CARD_SIDE_PADDING * 2;
 const CARD_MAX_IMAGE_HEIGHT = CANVAS_HEIGHT - CARD_SIDE_PADDING - 62;
+const DEFAULT_CARD_FONT_SIZE = 34;
+const CARD_BODY_FONT_WEIGHT = 400;
+const CARD_BODY_STROKE_WIDTH = 0.5;
 const EXPORT_IMAGE_MIME = "image/png";
 const DEFAULT_HANDLE = "@X: iamcora13";
 const EXPORT_IMAGE_EXTENSION = ".png";
 const EXPORT_ZIP_COMPRESSION = "STORE";
+const LIVE_PHOTO_API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:5173" : "";
 const OBSIDIAN_VAULT_DB = "writeThenPublishObsidianVault";
 const OBSIDIAN_VAULT_STORE = "settings";
 const OBSIDIAN_VAULT_KEY = "directoryHandle";
+const LIVE_MEDIA_DB = "writeThenPublishLiveMedia";
+const LIVE_MEDIA_STORE = "videos";
 const STORAGE_KEY = "graphicTextLayoutState.v1";
 const PROJECTS_STORAGE_KEY = "graphicTextLayoutProjects.v1";
+const AUTHOR_PROFILE_STORAGE_KEY = "writeThenPublishAuthorProfile.v1";
 const PANEL_LAYOUT_STORAGE_KEY = "writeThenPublishPanelLayout.v1";
+const ONBOARDING_STORAGE_KEY = "writeThenPublishOnboarding.v1";
+const ENTRY_MODE_SESSION_KEY = "writeThenPublishEntryMode.v1";
+const LAST_ACCOUNT_EMAIL_KEY = "writeThenPublishLastAccountEmail.v1";
+const EXPERIENCE_VERSION = "2026.07";
+const WELCOME_BACK_STORAGE_KEY = "writeThenPublishWelcomeBackVersion.v1";
+const WHATS_NEW_STORAGE_KEY = "writeThenPublishWhatsNewVersion.v1";
+let activeStorageScope = "guest";
+
+function scopedStorageKey(baseKey, scope = activeStorageScope) {
+  return scope === "local" ? baseKey : `${baseKey}.${scope}`;
+}
+
+function storageForScope(scope = activeStorageScope) {
+  return scope === "guest" ? sessionStorage : localStorage;
+}
+
+function livePhotoApiUrl(path) {
+  return `${LIVE_PHOTO_API_BASE}${path}`;
+}
 const MAX_PROJECTS = 24;
 const BUILT_IN_PROJECT_PREFIX = "guide_";
 const GUIDE_CARDS_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}cards`;
@@ -33,6 +59,12 @@ const els = {
   pages: $("#pages"),
   pageCount: $("#pageCount"),
   status: $("#statusText"),
+  exportProgress: $("#exportProgress"),
+  exportProgressTitle: $("#exportProgressTitle"),
+  exportProgressDetail: $("#exportProgressDetail"),
+  exportProgressMeta: $("#exportProgressMeta"),
+  exportProgressBar: $("#exportProgressBar"),
+  exportProgressFill: $("#exportProgressFill"),
   historySidebar: $("#historySidebar"),
   historyToggle: $("#historyToggleBtn"),
   historyClose: $("#historyCloseBtn"),
@@ -44,6 +76,49 @@ const els = {
   convertMode: $("#convertModeBtn"),
   headerModeToggle: $("#headerModeToggleBtn"),
   themeToggle: $("#themeToggleBtn"),
+  account: $("#accountBtn"),
+  accountLabel: $("#accountButtonLabel"),
+  accountDock: $("#accountDock"),
+  accountMenu: $("#accountMenu"),
+  accountMenuTitle: $("#accountMenuTitle"),
+  accountMenuDescription: $("#accountMenuDescription"),
+  accountMenuLogin: $("#accountMenuLoginBtn"),
+  accountMenuManage: $("#accountMenuManageBtn"),
+  accountMenuSignOut: $("#accountMenuSignOutBtn"),
+  accountMenuWhatsNew: $("#accountMenuWhatsNewBtn"),
+  accountMenuHint: $("#accountMenuHint"),
+  accountModal: $("#accountModal"),
+  accountClose: $("#accountCloseBtn"),
+  accountConfigNotice: $("#accountConfigNotice"),
+  accountResendConfirmation: $("#accountResendConfirmationBtn"),
+  accountAuthForm: $("#accountAuthForm"),
+  accountEmail: $("#accountEmailInput"),
+  accountPassword: $("#accountPasswordInput"),
+  accountPasswordToggle: $("#accountPasswordToggleBtn"),
+  accountPasswordConfirmField: $("#accountPasswordConfirmField"),
+  accountPasswordConfirm: $("#accountPasswordConfirmInput"),
+  accountSignInMode: $("#accountSignInModeBtn"),
+  accountSignIn: $("#accountSignInBtn"),
+  accountSignUp: $("#accountSignUpBtn"),
+  accountSignedIn: $("#accountSignedIn"),
+  accountAvatar: $("#accountAvatar"),
+  accountDisplayName: $("#accountDisplayName"),
+  accountEmailLabel: $("#accountEmail"),
+  accountSyncStatus: $("#accountSyncStatus"),
+  accountImportLocal: $("#accountImportLocalBtn"),
+  accountSignOut: $("#accountSignOutBtn"),
+  entryChoiceModal: $("#entryChoiceModal"),
+  entryChoiceLoading: $("#entryChoiceLoading"),
+  entryChoiceContent: $("#entryChoiceContent"),
+  entryChoiceNotice: $("#entryChoiceNotice"),
+  entryChoiceReturningHint: $("#entryChoiceReturningHint"),
+  chooseGuest: $("#chooseGuestBtn"),
+  chooseLogin: $("#chooseLoginBtn"),
+  welcomeBackModal: $("#welcomeBackModal"),
+  welcomeBackClose: $("#welcomeBackCloseBtn"),
+  welcomeBackAccountState: $("#welcomeBackAccountState"),
+  welcomeBackDirect: $("#welcomeBackDirectBtn"),
+  welcomeBackTour: $("#welcomeBackTourBtn"),
   downloadZip: $("#downloadZipBtn"),
   downloadArticle: $("#downloadArticleBtn"),
   copyWechat: $("#copyWechatBtn"),
@@ -55,6 +130,7 @@ const els = {
   articleSizeButtons: document.querySelectorAll("[data-article-size]"),
   articleColorButtons: document.querySelectorAll("[data-article-color]"),
   contentImage: $("#contentImageInput"),
+  contentVideo: $("#contentVideoInput"),
   obsidianImportMenu: $("#obsidianImportMenu"),
   connectObsidianVault: $("#connectObsidianVaultBtn"),
   syncObsidianVault: $("#syncObsidianVaultBtn"),
@@ -113,6 +189,55 @@ const els = {
   wechatCoverPreview: $("#wechatCoverPreview"),
   wechatCoverHint: $("#wechatCoverHint"),
   wechatServiceStatus: $("#wechatServiceStatus"),
+  livePhotoModal: $("#livePhotoModal"),
+  livePhotoClose: $("#livePhotoCloseBtn"),
+  livePhotoCancel: $("#livePhotoCancelBtn"),
+  livePhotoForm: $("#livePhotoForm"),
+  livePhotoPreview: $("#livePhotoPreview"),
+  livePhotoVideo: $("#livePhotoVideo"),
+  livePhotoCropCanvas: $("#livePhotoCropCanvas"),
+  livePhotoEmpty: $("#livePhotoEmpty"),
+  livePhotoVideoInput: $("#livePhotoVideoInput"),
+  livePhotoFileLabel: $("#livePhotoFileLabel"),
+  livePhotoVideoMeta: $("#livePhotoVideoMeta"),
+  livePhotoPlatformButtons: document.querySelectorAll("[data-live-platform]"),
+  livePhotoRatioButtons: document.querySelectorAll("[data-live-ratio]"),
+  livePhotoCustomRatioRow: $("#livePhotoCustomRatioRow"),
+  livePhotoCustomRatio: $("#livePhotoCustomRatioInput"),
+  livePhotoCustomRatioOutput: $("#livePhotoCustomRatioOutput"),
+  livePhotoDurationHint: $("#livePhotoDurationHint"),
+  livePhotoStart: $("#livePhotoStartInput"),
+  livePhotoCover: $("#livePhotoCoverInput"),
+  livePhotoServiceStatus: $("#livePhotoServiceStatus"),
+  livePhotoGenerate: $("#livePhotoGenerateBtn"),
+  livePhotoHandoffModal: $("#livePhotoHandoffModal"),
+  livePhotoHandoffTitle: $("#livePhotoHandoffTitle"),
+  livePhotoHandoffClose: $("#livePhotoHandoffCloseBtn"),
+  livePhotoHandoffReveal: $("#livePhotoHandoffRevealBtn"),
+  livePhotoHandoffAirdrop: $("#livePhotoHandoffAirdropBtn"),
+  livePhotoHandoffDownload: $("#livePhotoHandoffDownloadBtn"),
+  livePhotoHandoffSummary: $("#livePhotoHandoffSummary"),
+  livePhotoHandoffPreview: $("#livePhotoHandoffPreview"),
+  livePhotoHandoffThumbnails: $("#livePhotoHandoffThumbnails"),
+  livePhotoHandoffCount: $("#livePhotoHandoffCount"),
+  livePhotoHandoffDetail: $("#livePhotoHandoffDetail"),
+  livePhotoHandoffHint: $("#livePhotoHandoffHint"),
+  livePhotoHandoffProgress: $("#livePhotoHandoffProgress"),
+  livePhotoHandoffProgressTitle: $("#livePhotoHandoffProgressTitle"),
+  livePhotoHandoffProgressDetail: $("#livePhotoHandoffProgressDetail"),
+  livePhotoHandoffProgressMeta: $("#livePhotoHandoffProgressMeta"),
+  livePhotoHandoffProgressBar: $("#livePhotoHandoffProgressBar"),
+  livePhotoHandoffProgressFill: $("#livePhotoHandoffProgressFill"),
+  onboardingTour: $("#onboardingTour"),
+  onboardingFocus: $("#onboardingFocus"),
+  onboardingTooltip: $("#onboardingTooltip"),
+  onboardingTitle: $("#onboardingTitle"),
+  onboardingBody: $("#onboardingBody"),
+  onboardingProgress: $("#onboardingProgress"),
+  onboardingAction: $("#onboardingActionBtn"),
+  onboardingSkip: $("#onboardingSkipBtn"),
+  onboardingNext: $("#onboardingNextBtn"),
+  featureBadges: document.querySelectorAll("[data-feature-badge]"),
 };
 
 const sampleAvatar =
@@ -152,6 +277,10 @@ const sampleImage =
   <path d="M190 462h330" stroke="#ffffff" stroke-width="9" opacity=".65"/>
   <text x="600" y="598" text-anchor="middle" font-size="36" fill="#ffffff" font-family="Arial, sans-serif">Image placeholder</text>
 </svg>`);
+
+const GUIDE_STATIC_IMAGE_SRC = "docs/guide-assets/guide-static-image.jpg";
+const GUIDE_LIVE_POSTER_SRC = "docs/guide-assets/guide-live-poster.jpg";
+const GUIDE_LIVE_VIDEO_SRC = "docs/guide-assets/guide-live-demo.mp4";
 
 const verifiedBadgeSrc =
   "data:image/svg+xml;charset=utf-8," +
@@ -263,9 +392,66 @@ const cropper = {
 };
 
 let imageEditDrag = null;
+let previewImageDrag = null;
 let wechatCoverData = "";
 let wechatServiceReady = false;
 let wechatSyncing = false;
+const livePhotoState = {
+  file: null,
+  objectUrl: "",
+  sourceDuration: 0,
+  sourceWidth: 0,
+  sourceHeight: 0,
+  platform: "xhs",
+  aspect: "original",
+  customAspect: 0.75,
+  localReady: false,
+  generating: false,
+  editingId: "",
+  crop: null,
+  savedCrop: null,
+  cropDisplay: null,
+  cropDrag: null,
+  previewFrame: 0,
+};
+const liveMediaFiles = new Map();
+const livePhotoHandoffState = {
+  liveResults: [],
+  staticPages: [],
+  staticPackage: null,
+  selectedJobId: "",
+  selectedPageIndex: -1,
+  items: [],
+  isBatch: false,
+  batch: null,
+  batchPreparing: null,
+};
+const exportProgressState = {
+  main: { active: false, startedAt: 0, timer: 0, hideTimer: 0, current: null, total: null },
+  handoff: { active: false, startedAt: 0, timer: 0, hideTimer: 0, current: null, total: null },
+};
+const cloudState = {
+  session: null,
+  user: null,
+  profileAvatarUrl: "",
+  loadingWorkspace: false,
+  syncingProjects: false,
+  syncTimer: 0,
+  profileTimer: 0,
+  pendingProjects: new Map(),
+  pendingAvatarUpload: false,
+  localImportProjects: [],
+  initialized: false,
+  loadingUserId: "",
+  signingOut: false,
+};
+const entryState = {
+  mode: "pending",
+  resolved: false,
+  returning: false,
+};
+let onboardingStepIndex = 0;
+let onboardingMode = "first-run";
 const obsidianVault = {
   handle: null,
   fileLookup: null,
@@ -283,7 +469,7 @@ function defaultFormState() {
     textColor: "#202938",
     accentColor: "#2563eb",
     bgColor: "#ffffff",
-    fontSize: "34",
+    fontSize: String(DEFAULT_CARD_FONT_SIZE),
     lineHeight: "1.65",
     zhFont: "zh-system",
     enFont: "en-system",
@@ -303,8 +489,10 @@ function defaultFormState() {
 }
 
 function blankFormState() {
+  const profile = loadStoredAuthorProfile();
   return {
     ...defaultFormState(),
+    ...(profile || {}),
     content: "",
     images: {},
   };
@@ -312,62 +500,81 @@ function blankFormState() {
 
 const cardsGuideText = `# 图文卡片说明书
 
-这是一份内置说明书，用来快速看懂图文卡片模式。它不会被修改，也不能删除。
+这是一份内置说明书，用来直接体验图文卡片、普通图片、实况图片和 Obsidian 同步。它不会被修改，也不能删除。
 
-## 适合什么内容
+## 第一步：创建自己的内容
 
-- 小红书图文
-- X 长帖截图
-- 知识卡片
-- 长文拆条
-- 带图片的教程内容
+点击左上角“+”新建内容，再粘贴 Markdown 或普通文本。图文卡片适合小红书图文、X 长帖截图、知识卡片和长文拆条。
 
-## 基本流程
+## 第二步：插入普通图片
 
-1. 在左侧输入或粘贴正文。
-2. 使用 H1、H2、加粗、斜体、引用、颜色和文字背景色整理重点。
-3. 点击图片按钮插入正文图片。
-4. 选择“每页头像”或“仅首页头像”。
-5. 在右侧检查分页效果。
-6. 点击单张下载或批量下载。
+点击工具栏的图片按钮，上传后选择裁剪比例和画面范围。
 
-## 常用写法
+[[image:guide_static]]
 
-用 \`# 标题\` 生成大标题。
+上面是普通图片示例。在右侧可以拖动图片调整段落位置，也可以修改宽度、对齐和裁剪。
 
-用 \`## 小标题\` 生成段落标题。
+编辑框里的 \`[[image:图片编号]]\` 就是图片位置，把整行移动到其他段落之间即可重新排版。
 
-用 \`**重点文字**\` 加粗。
+## 第三步：制作实况图片
 
-用 \`*斜体文字*\` 倾斜。
+点击工具栏的视频按钮，上传 MP4、MOV 或 WebM。选择发布平台和画面比例后，拖动裁剪框决定保留区域，再插入图文。
 
-用 \`> 引用内容\` 做引用块。
+[[image:guide_live]]
 
-用颜色刷和背景色刷突出重点。
+上面是可播放的内置实况演示。新建内容后请换成自己的视频；右侧下载会自动识别实况页并生成完整 Live Photo 发布包。
 
-## 图片规则
+混合批量下载时，普通页面保留为高清 PNG，实况页面保留为完整 \`.pvt\`，不会混成同一种文件。
 
-插入图片后，编辑框里会出现类似：
+## 第四步：连接 Obsidian
 
-\`[[image:img_xxxxx]]\`
+点击工具栏的 Obsidian 按钮，选择仓库根目录。之后直接粘贴 Obsidian Markdown，页面会读取 \`![[图片.png]]\` 和标准 Markdown 图片。
 
-这行代表图片位置。你可以把它移动到任意段落之间。
+修改完成后点击“同步回 Obsidian”。浏览器允许写入时会保存到仓库的“写了就发”文件夹；无法直写时会下载 ZIP 导入包。
 
-在右侧预览里点击图片，可以调节图片宽度和对齐方式。
+## 第五步：排版与导出
 
-## 分页建议
+使用 H1、H2、加粗、斜体、引用、颜色和文字背景色整理重点。
 
-如果某一页太满，优先减少长段落，而不是缩小字号。图文卡片的重点是“读起来不累”，不是把所有字塞进去。
+选择“每页头像”或“仅首页头像”，在右侧检查自动分页，再下载单张或批量导出。
 
-单次回车会在同一段内手动换行。
+如果某一页太满，优先拆短段落，而不是一味缩小字号。空行会被保留，可以主动控制卡片节奏。
 
-空出来的行会在右侧图文卡片里保留为空白行。你想留几行，就在左侧留几行。
+## 常用 Markdown
 
-## 头像显示
+- \`# 标题\`：大标题
+- \`## 标题\`：段落标题
+- \`**文字**\`：加粗
+- \`*文字*\`：斜体
+- \`> 内容\`：引用块`;
 
-默认每一页都显示头像、名称和昵称。
-
-如果你只想第一张显示个人信息，点击“仅首页头像”。`;
+function cardsGuideImages() {
+  return {
+    guide_static: {
+      src: GUIDE_STATIC_IMAGE_SRC,
+      name: "普通图片示例",
+      layout: { widthPercent: 100, align: "center" },
+    },
+    guide_live: {
+      kind: "live",
+      src: GUIDE_LIVE_POSTER_SRC,
+      previewVideoSrc: GUIDE_LIVE_VIDEO_SRC,
+      videoKey: "guide_live",
+      videoName: "guide-live-demo.mp4",
+      name: "实况图片示例",
+      demoOnly: true,
+      layout: { widthPercent: 100, align: "center" },
+      liveSettings: {
+        platform: "xhs",
+        aspect: "1.777778",
+        start: 0,
+        coverOffset: 0.2,
+        focusX: 50,
+        focusY: 50,
+      },
+    },
+  };
+}
 
 const articleGuideText = `# 长文说明书
 
@@ -436,7 +643,7 @@ function builtInGuideProjects() {
     content: cardsGuideText,
     appMode: "cards",
     headerMode: "every",
-    images: {},
+    images: cardsGuideImages(),
   });
   const articleData = migrateStoredState({
     ...defaultFormState(),
@@ -519,7 +726,7 @@ function readForm() {
     textColor: els.textColor.value,
     accentColor: els.accentColor.value,
     bgColor: els.bgColor.value,
-    fontSize: clamp(Number(els.fontSize.value) || 34, 24, 40),
+    fontSize: clamp(Number(els.fontSize.value) || DEFAULT_CARD_FONT_SIZE, 24, 40),
     lineHeight: clamp(Number(els.lineHeight.value) || 1.65, 1, 2.4),
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
@@ -538,14 +745,57 @@ function readForm() {
   };
 }
 
+function normalizeAuthorProfile(data = {}) {
+  const displayName = String(data.displayName || "").trim().slice(0, 40) || "捏捏番茄（AI图文版）";
+  const avatarCrop = data.avatarCrop && typeof data.avatarCrop === "object"
+    ? {
+        x: finiteNumber(data.avatarCrop.x, 0),
+        y: finiteNumber(data.avatarCrop.y, 0),
+        width: finiteNumber(data.avatarCrop.width, 0),
+        height: finiteNumber(data.avatarCrop.height, 0),
+      }
+    : null;
+  return {
+    displayName,
+    handle: normalizeHandle(data.handle || DEFAULT_HANDLE),
+    avatar: typeof data.avatar === "string" && data.avatar ? data.avatar : sampleAvatar,
+    avatarCrop,
+  };
+}
+
+function loadStoredAuthorProfile() {
+  try {
+    const raw = storageForScope().getItem(scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY));
+    return raw ? normalizeAuthorProfile(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAuthorProfile(data = readForm()) {
+  if (isBuiltInProjectId(state.currentProjectId)) return false;
+  try {
+    storageForScope().setItem(scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY), JSON.stringify(normalizeAuthorProfile(data)));
+    scheduleCloudProfileSync();
+    return true;
+  } catch {
+    els.status.textContent = "头像文件过大，作者资料暂时无法写入本机缓存";
+    return false;
+  }
+}
+
 function applyForm(data) {
+  const projectProfile = normalizeAuthorProfile(data);
+  const profile = isBuiltInProjectId(state.currentProjectId)
+    ? projectProfile
+    : loadStoredAuthorProfile() || projectProfile;
   els.content.value = data.content ?? defaultText;
-  els.displayName.value = data.displayName ?? "捏捏番茄（AI图文版）";
-  els.handle.value = data.handle ?? DEFAULT_HANDLE;
+  els.displayName.value = profile.displayName;
+  els.handle.value = profile.handle;
   els.textColor.value = data.textColor ?? "#202938";
   els.accentColor.value = data.accentColor ?? "#2563eb";
   els.bgColor.value = data.bgColor ?? "#ffffff";
-  els.fontSize.value = data.fontSize ?? "34";
+  els.fontSize.value = data.fontSize ?? String(DEFAULT_CARD_FONT_SIZE);
   els.lineHeight.value = data.lineHeight ?? "1.65";
   els.zhFont.value = FONT_STACKS[data.zhFont] ? data.zhFont : "zh-system";
   els.enFont.value = FONT_STACKS[data.enFont] ? data.enFont : "en-system";
@@ -564,8 +814,8 @@ function applyForm(data) {
   updateHeaderModeButton();
   updateArticleControls();
   setUiTheme(data.uiTheme || "light", false, true);
-  state.avatar = data.avatar || sampleAvatar;
-  state.avatarCrop = data.avatarCrop || null;
+  state.avatar = profile.avatar;
+  state.avatarCrop = profile.avatarCrop;
   state.images = normalizeImagesForContent(data.content, data.images);
   updateAvatarPreview();
   document.documentElement.style.setProperty("--brush-color", els.inlineColor.value);
@@ -778,6 +1028,7 @@ function saveState() {
       updateProjectHistory();
       return;
     }
+    saveAuthorProfile(data);
 
     const now = Date.now();
     let current = state.projects.find((project) => project.id === state.currentProjectId);
@@ -793,8 +1044,9 @@ function saveState() {
       current,
       ...state.projects.filter((project) => project.id !== current.id),
     ].slice(0, MAX_PROJECTS);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    storageForScope().setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(data));
     saveProjectStore();
+    scheduleCloudProjectSync(current);
     updateProjectHistory();
   } catch {
     els.status.textContent = "本次内容较大，浏览器未写入本地缓存";
@@ -805,7 +1057,897 @@ function loadState() {
   const store = loadProjectStore();
   state.projects = store.projects;
   state.currentProjectId = store.activeId || store.projects[0]?.id || GUIDE_CARDS_PROJECT_ID;
-  return findHistoryProject(state.currentProjectId)?.data || findHistoryProject(GUIDE_CARDS_PROJECT_ID)?.data || defaultFormState();
+  const data = findHistoryProject(state.currentProjectId)?.data || findHistoryProject(GUIDE_CARDS_PROJECT_ID)?.data || defaultFormState();
+  if (!isBuiltInProjectId(state.currentProjectId) && !loadStoredAuthorProfile()) {
+    saveAuthorProfile(data);
+  }
+  return data;
+}
+
+function cloudApi() {
+  return window.WriteThenPublishCloud || null;
+}
+
+function cloudIsReady() {
+  return Boolean(cloudApi()?.configured && cloudState.user);
+}
+
+function accountScope(userId) {
+  return `user_${String(userId || "").replace(/[^a-z0-9_-]/gi, "")}`;
+}
+
+function loadProjectStoreForScope(scope) {
+  const previousScope = activeStorageScope;
+  activeStorageScope = scope;
+  const store = loadProjectStore();
+  activeStorageScope = previousScope;
+  return store;
+}
+
+function setAccountNotice(message = "", tone = "") {
+  if (!els.accountConfigNotice) return;
+  els.accountConfigNotice.hidden = !message;
+  els.accountConfigNotice.textContent = message;
+  els.accountConfigNotice.className = `account-notice${tone ? ` ${tone}` : ""}`;
+}
+
+let accountAuthMode = "signin";
+let pendingConfirmationEmail = "";
+
+function setPendingConfirmation(email = "") {
+  pendingConfirmationEmail = String(email || "").trim();
+}
+
+function setAccountPasswordVisible(visible) {
+  if (!els.accountPassword || !els.accountPasswordToggle) return;
+  els.accountPassword.type = visible ? "text" : "password";
+  els.accountPasswordToggle.title = visible ? "隐藏密码" : "显示密码";
+  els.accountPasswordToggle.setAttribute("aria-label", visible ? "隐藏密码" : "显示密码");
+  const icon = els.accountPasswordToggle.querySelector("[data-lucide]");
+  if (icon) icon.setAttribute("data-lucide", visible ? "eye-off" : "eye");
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function authRedirectErrorMessage() {
+  const rawParams = [window.location.search.slice(1), window.location.hash.slice(1)].filter(Boolean);
+  for (const raw of rawParams) {
+    const params = new URLSearchParams(raw);
+    const code = params.get("error_code") || "";
+    if (!code) continue;
+    if (code === "otp_expired") {
+      return "这封确认邮件已经失效。请重新发送确认邮件，并只点击最新收到的那一封。";
+    }
+    return params.get("error_description") || "邮箱确认失败，请重新发送确认邮件。";
+  }
+  return "";
+}
+
+function setAccountAuthMode(mode, { keepNotice = false } = {}) {
+  accountAuthMode = mode === "signup" ? "signup" : "signin";
+  const signingUp = accountAuthMode === "signup";
+  els.accountSignInMode?.classList.toggle("is-active", !signingUp);
+  els.accountSignInMode?.setAttribute("aria-selected", String(!signingUp));
+  els.accountSignUp?.classList.toggle("is-active", signingUp);
+  els.accountSignUp?.setAttribute("aria-selected", String(signingUp));
+  if (els.accountPasswordConfirmField) els.accountPasswordConfirmField.hidden = !signingUp;
+  if (els.accountPasswordConfirm) {
+    els.accountPasswordConfirm.required = signingUp;
+    if (!signingUp) els.accountPasswordConfirm.value = "";
+  }
+  if (els.accountPassword) els.accountPassword.autocomplete = signingUp ? "new-password" : "current-password";
+  if (els.accountSignIn) els.accountSignIn.textContent = signingUp ? "注册" : "登录";
+  if (els.accountResendConfirmation) {
+    els.accountResendConfirmation.hidden = signingUp || Boolean(cloudState.user) || !cloudApi()?.configured;
+  }
+  setAccountPasswordVisible(false);
+  if (!keepNotice && cloudApi()?.configured) setAccountNotice("");
+}
+
+function accountAuthErrorMessage(error, mode) {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
+  if (mode === "signin") {
+    if (code === "invalid_credentials" || message.includes("invalid login credentials")) {
+      return "登录失败：邮箱尚未注册，或密码不正确。第一次使用请先切换到“注册新账号”。";
+    }
+    if (code === "email_not_confirmed" || message.includes("email not confirmed")) {
+      return "账号已经创建，但邮箱还没有确认。请先打开确认邮件，再回来登录。";
+    }
+    return error?.message || "登录失败，请检查邮箱和密码。";
+  }
+  if (code === "user_already_exists" || message.includes("already registered")) {
+    return "这个邮箱已经注册过，请切换到“登录”并输入原密码。";
+  }
+  if (code === "email_address_not_authorized" || message.includes("email address not authorized")) {
+    return "当前邮件服务暂时无法向这个邮箱发送确认邮件，请稍后再试。";
+  }
+  return error?.message || "注册失败，请稍后再试。";
+}
+
+function setAccountBusy(busy) {
+  [
+    els.accountEmail,
+    els.accountPassword,
+    els.accountPasswordToggle,
+    els.accountPasswordConfirm,
+    els.accountSignInMode,
+    els.accountSignIn,
+    els.accountSignUp,
+    els.accountResendConfirmation,
+    els.accountSignOut,
+    els.accountImportLocal,
+  ]
+    .filter(Boolean)
+    .forEach((element) => {
+      element.disabled = busy;
+    });
+}
+
+function updateAccountUi() {
+  const api = cloudApi();
+  const configured = Boolean(api?.configured);
+  const signedIn = Boolean(cloudState.user);
+  els.account?.classList.toggle("is-online", signedIn);
+  els.account?.classList.toggle("is-guest", entryState.mode === "guest" && !signedIn);
+  if (els.accountLabel) {
+    els.accountLabel.textContent = signedIn
+      ? "已同步"
+      : entryState.mode === "guest"
+        ? "游客模式"
+        : "账号";
+  }
+  if (els.accountMenuTitle) {
+    els.accountMenuTitle.textContent = signedIn
+      ? els.displayName.value.trim() || "已登录"
+      : entryState.mode === "guest"
+        ? "游客模式"
+        : "账号";
+  }
+  if (els.accountMenuDescription) {
+    els.accountMenuDescription.textContent = signedIn
+      ? cloudState.user.email || "云端工作区已连接"
+      : "草稿仅临时保存在当前标签页";
+  }
+  if (els.accountMenuLogin) els.accountMenuLogin.hidden = signedIn;
+  if (els.accountMenuManage) els.accountMenuManage.hidden = !signedIn;
+  if (els.accountMenuSignOut) els.accountMenuSignOut.hidden = !signedIn;
+  if (els.accountMenuHint) {
+    els.accountMenuHint.textContent = signedIn
+      ? "图文、头像和素材会按当前账号同步保存。"
+      : "继续使用游客模式无需操作，点击菜单外即可关闭。";
+  }
+  if (els.accountAuthForm) els.accountAuthForm.hidden = signedIn;
+  if (els.accountSignedIn) els.accountSignedIn.hidden = !signedIn;
+  if (els.accountResendConfirmation) {
+    els.accountResendConfirmation.hidden = signedIn || !configured || accountAuthMode === "signup";
+  }
+
+  if (!configured) {
+    setAccountNotice(api?.configurationError || "Supabase 尚未配置。", "");
+    [els.accountEmail, els.accountPassword, els.accountPasswordConfirm, els.accountSignInMode, els.accountSignIn, els.accountSignUp]
+      .filter(Boolean)
+      .forEach((element) => {
+      element.disabled = true;
+      });
+  } else if (!signedIn && els.accountConfigNotice?.textContent?.includes("Supabase")) {
+    setAccountNotice("");
+  }
+
+  if (signedIn) {
+    els.accountAvatar.src = els.avatarPreview?.src || state.avatar || sampleAvatar;
+    els.accountDisplayName.textContent = els.displayName.value.trim() || "未命名作者";
+    els.accountEmailLabel.textContent = cloudState.user.email || "";
+    const localCount = cloudState.localImportProjects.length;
+    els.accountImportLocal.hidden = localCount < 1;
+    if (localCount) els.accountImportLocal.innerHTML = `<i data-lucide="cloud-upload"></i>导入 ${localCount} 条游客 / 旧本机草稿到此账号`;
+  }
+  updateFeatureBadges();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function openAccountModal() {
+  closeAccountMenu();
+  els.entryChoiceModal?.classList.add("hidden");
+  els.accountModal.classList.remove("hidden");
+  updateAccountUi();
+  if (!cloudState.user) setAccountAuthMode(accountAuthMode, { keepNotice: true });
+  const lastEmail = localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
+  if (!els.accountEmail.value && lastEmail) els.accountEmail.value = lastEmail;
+  if (!cloudState.user && cloudApi()?.configured) requestAnimationFrame(() => els.accountEmail.focus());
+}
+
+function closeAccountModal() {
+  els.accountModal.classList.add("hidden");
+  if (!entryState.resolved) showEntryChoice();
+}
+
+function accountMenuIsOpen() {
+  return Boolean(els.accountMenu && !els.accountMenu.classList.contains("hidden"));
+}
+
+function openAccountMenu() {
+  updateAccountUi();
+  els.accountMenu?.classList.remove("hidden");
+  els.account?.setAttribute("aria-expanded", "true");
+}
+
+function closeAccountMenu() {
+  els.accountMenu?.classList.add("hidden");
+  els.account?.setAttribute("aria-expanded", "false");
+}
+
+function toggleAccountMenu() {
+  if (accountMenuIsOpen()) closeAccountMenu();
+  else openAccountMenu();
+}
+
+function experienceSubject() {
+  return cloudState.user?.id ? accountScope(cloudState.user.id) : "guest";
+}
+
+function experienceStorageKey(baseKey) {
+  return `${baseKey}.${experienceSubject()}`;
+}
+
+function experienceVersionIsStored(baseKey) {
+  try {
+    return localStorage.getItem(experienceStorageKey(baseKey)) === EXPERIENCE_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+function storeExperienceVersion(baseKey) {
+  try {
+    localStorage.setItem(experienceStorageKey(baseKey), EXPERIENCE_VERSION);
+  } catch {
+    // The experience continues even if version memory is unavailable.
+  }
+}
+
+function experiencePreviewMode() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("welcome") === "1") return "welcome";
+    if (params.get("whatsnew") === "1") return "whats-new";
+  } catch {
+    // Ignore malformed preview URLs.
+  }
+  return "";
+}
+
+function firstRunTourIsForced() {
+  try {
+    return new URLSearchParams(window.location.search).get("tour") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function workspaceHasReturningData() {
+  if (state.projects.length) return true;
+  try {
+    if (localStorage.getItem(ONBOARDING_STORAGE_KEY) === "completed") return true;
+  } catch {
+    // Continue with project-store checks.
+  }
+  return loadProjectStoreForScope("guest").projects.length > 0
+    || loadProjectStoreForScope("local").projects.length > 0;
+}
+
+function loadAuthorProfileForScope(scope) {
+  const previousScope = activeStorageScope;
+  activeStorageScope = scope;
+  const profile = loadStoredAuthorProfile();
+  activeStorageScope = previousScope;
+  return profile;
+}
+
+async function activateGuestWorkspace({ restoreLegacy = true } = {}) {
+  const guestStore = loadProjectStoreForScope("guest");
+  const legacyStore = loadProjectStoreForScope("local");
+  if (restoreLegacy && !guestStore.projects.length && legacyStore.projects.length) {
+    const legacyProfile = loadAuthorProfileForScope("local");
+    const profileRow = legacyProfile
+      ? {
+          display_name: legacyProfile.displayName,
+          handle: legacyProfile.handle,
+          avatar_url: legacyProfile.avatar,
+          avatar_crop: legacyProfile.avatarCrop,
+        }
+      : null;
+    await activateWorkspaceScope("guest", legacyStore.projects, profileRow);
+    return;
+  }
+  await activateWorkspaceScope("guest");
+}
+
+function updateFeatureBadges() {
+  const acknowledged = experienceVersionIsStored(WHATS_NEW_STORAGE_KEY);
+  els.featureBadges.forEach((badge) => {
+    const accountOnly = badge.dataset.featureBadge === "account";
+    badge.hidden = !entryState.resolved || acknowledged || (accountOnly && Boolean(cloudState.user));
+  });
+}
+
+function welcomeBackIsOpen() {
+  return Boolean(els.welcomeBackModal && !els.welcomeBackModal.classList.contains("hidden"));
+}
+
+function openWelcomeBack() {
+  closeAccountMenu();
+  finishOnboarding({ remember: false });
+  if (els.welcomeBackAccountState) {
+    els.welcomeBackAccountState.textContent = cloudState.user ? "已开启" : "可选开启";
+  }
+  els.welcomeBackModal?.classList.remove("hidden");
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closeWelcomeBack({ startTour = false } = {}) {
+  if (!welcomeBackIsOpen() && !startTour) return;
+  storeExperienceVersion(WELCOME_BACK_STORAGE_KEY);
+  els.welcomeBackModal?.classList.add("hidden");
+  updateFeatureBadges();
+  if (startTour) window.setTimeout(startWhatsNewTour, 120);
+}
+
+async function showGuideProjectForDemo() {
+  const guideProject = findHistoryProject(GUIDE_CARDS_PROJECT_ID);
+  if (!guideProject) return;
+  state.currentProjectId = guideProject.id;
+  state.mode = "auto";
+  state.scrollOffset = 0;
+  applyForm(guideProject.data);
+  syncGuideReadOnlyMode();
+  resetTextHistory();
+  updateProjectHistory();
+  await render();
+  els.status.textContent = "演示模式：正在展示内置《图文卡片说明书》";
+}
+
+async function presentPostEntryExperience() {
+  if (!entryState.resolved) return;
+  const previewMode = experiencePreviewMode();
+  updateFeatureBadges();
+  if (firstRunTourIsForced()) {
+    await showGuideProjectForDemo();
+    onboardingMode = "first-run";
+    showOnboardingStep(0);
+    return;
+  }
+  if (previewMode === "whats-new") {
+    await showGuideProjectForDemo();
+    startWhatsNewTour();
+    return;
+  }
+  if (previewMode === "welcome" || (entryState.returning && !experienceVersionIsStored(WELCOME_BACK_STORAGE_KEY))) {
+    if (previewMode === "welcome") await showGuideProjectForDemo();
+    openWelcomeBack();
+    return;
+  }
+  if (!entryState.returning) maybeStartOnboarding();
+}
+
+function setEntryChoiceNotice(message = "", tone = "") {
+  if (!els.entryChoiceNotice) return;
+  els.entryChoiceNotice.hidden = !message;
+  els.entryChoiceNotice.textContent = message;
+  els.entryChoiceNotice.className = `entry-choice-notice${tone ? ` ${tone}` : ""}`;
+}
+
+function showEntryChoice(message = "", tone = "") {
+  closeAccountMenu();
+  entryState.mode = "pending";
+  entryState.resolved = false;
+  document.body.classList.add("entry-choice-pending");
+  els.entryChoiceModal?.classList.remove("hidden");
+  if (els.entryChoiceLoading) els.entryChoiceLoading.hidden = true;
+  if (els.entryChoiceContent) els.entryChoiceContent.hidden = false;
+  setEntryChoiceNotice(message, tone);
+  const lastEmail = localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
+  if (els.entryChoiceReturningHint) {
+    els.entryChoiceReturningHint.hidden = !lastEmail;
+    els.entryChoiceReturningHint.textContent = lastEmail ? `上次登录：${lastEmail}` : "";
+  }
+  updateAccountUi();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function finishEntryChoice(mode, { returning = null } = {}) {
+  entryState.mode = mode;
+  entryState.resolved = true;
+  entryState.returning = returning == null ? workspaceHasReturningData() : Boolean(returning);
+  els.entryChoiceModal?.classList.add("hidden");
+  els.accountModal?.classList.add("hidden");
+  document.body.classList.remove("entry-choice-pending", "cloud-session-checking");
+  updateAccountUi();
+  window.setTimeout(() => void presentPostEntryExperience(), 180);
+}
+
+async function chooseGuestMode() {
+  sessionStorage.setItem(ENTRY_MODE_SESSION_KEY, "guest");
+  await activateGuestWorkspace();
+  finishEntryChoice("guest");
+  els.status.textContent = "游客模式：内容仅临时保存在当前标签页";
+}
+
+function chooseLoginMode() {
+  if (!cloudApi()?.configured) {
+    openAccountModal();
+    setAccountNotice(cloudApi()?.configurationError || "站点管理员尚未启用登录功能。", "");
+    return;
+  }
+  openAccountModal();
+}
+
+function cloudProjectFromRow(row) {
+  const updatedAt = Date.parse(row.updated_at) || Date.now();
+  return normalizeProject({
+    id: row.id,
+    title: row.title,
+    updatedAt,
+    data: row.data,
+  });
+}
+
+async function hydrateCloudProject(project) {
+  const api = cloudApi();
+  const images = project?.data?.images;
+  if (!api?.configured || !images || typeof images !== "object") return project;
+  await Promise.all(
+    Object.entries(images).map(async ([id, image]) => {
+      if (!image || typeof image !== "object") return;
+      try {
+        if (image.storagePath && !image.src) {
+          const blob = await api.downloadProjectAsset(image.storagePath);
+          image.src = URL.createObjectURL(blob);
+        }
+        if (image.kind === "live" && image.videoStoragePath) {
+          const key = String(image.videoKey || id);
+          const videoBlob = await api.downloadProjectAsset(image.videoStoragePath);
+          await writeLiveMediaBlob(key, videoBlob);
+          replaceLiveMediaCache(key, videoBlob, image.videoName || "video.mov");
+        }
+      } catch (error) {
+        console.error("云端素材读取失败", error);
+      }
+    }),
+  );
+  return project;
+}
+
+async function activateWorkspaceScope(scope, projects = null, profile = null) {
+  cloudState.loadingWorkspace = true;
+  activeStorageScope = scope;
+  try {
+    if (profile) {
+      const normalizedProfile = normalizeAuthorProfile({
+        displayName: profile.display_name,
+        handle: profile.handle,
+        avatar: profile.avatar_url || sampleAvatar,
+        avatarCrop: profile.avatar_crop,
+      });
+      cloudState.profileAvatarUrl = profile.avatar_url || "";
+      storageForScope().setItem(scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY), JSON.stringify(normalizedProfile));
+    } else {
+      cloudState.profileAvatarUrl = "";
+    }
+
+    if (Array.isArray(projects)) {
+      const hydrated = await Promise.all(projects.map(hydrateCloudProject));
+      state.projects = hydrated.filter(Boolean).slice(0, MAX_PROJECTS);
+      state.currentProjectId = state.projects[0]?.id || GUIDE_CARDS_PROJECT_ID;
+      saveProjectStore();
+    } else {
+      const store = loadProjectStore();
+      state.projects = store.projects;
+      state.currentProjectId = store.activeId || store.projects[0]?.id || GUIDE_CARDS_PROJECT_ID;
+    }
+
+    const data = findHistoryProject(state.currentProjectId)?.data || findHistoryProject(GUIDE_CARDS_PROJECT_ID)?.data || defaultFormState();
+    state.mode = "auto";
+    state.scrollOffset = 0;
+    applyForm(data);
+    syncGuideReadOnlyMode();
+    resetTextHistory();
+    updateProjectHistory();
+    await render();
+  } finally {
+    cloudState.loadingWorkspace = false;
+  }
+}
+
+async function loadCloudWorkspace(session) {
+  const api = cloudApi();
+  const user = session?.user;
+  if (!api?.configured || !user) return;
+  if (cloudState.loadingUserId === user.id) return;
+  cloudState.loadingUserId = user.id;
+  cloudState.session = session;
+  cloudState.user = user;
+  const guestProjects = loadProjectStoreForScope("guest").projects;
+  const legacyProjects = loadProjectStoreForScope("local").projects;
+  cloudState.localImportProjects = [...guestProjects, ...legacyProjects]
+    .filter((project, index, projects) => projects.findIndex((item) => item.id === project.id) === index)
+    .slice(0, MAX_PROJECTS);
+  setAccountBusy(true);
+  if (els.accountSyncStatus) els.accountSyncStatus.textContent = "正在读取账号数据…";
+  updateAccountUi();
+  try {
+    const [profile, rows] = await Promise.all([api.getProfile(), api.listProjects()]);
+    let resolvedProfile = profile;
+    if (!resolvedProfile) {
+      const cached = loadStoredAuthorProfile() || normalizeAuthorProfile({
+        displayName: user.user_metadata?.full_name || user.email?.split("@")[0] || "未命名作者",
+        handle: user.email ? `@${user.email.split("@")[0]}` : "@profile",
+      });
+      resolvedProfile = await api.upsertProfile(cached);
+    }
+    const projects = rows.map(cloudProjectFromRow).filter(Boolean);
+    await activateWorkspaceScope(accountScope(user.id), projects, resolvedProfile);
+    els.accountSyncStatus.textContent = projects.length ? `已同步 ${projects.length} 条图文` : "云端还没有图文，可导入游客或旧本机草稿";
+    setAccountNotice("");
+  } catch (error) {
+    console.error(error);
+    if (activeStorageScope !== accountScope(user.id)) {
+      await activateWorkspaceScope(accountScope(user.id));
+    }
+    setAccountNotice(error?.message || "云端数据读取失败，请检查数据库初始化是否完成。", "error");
+    els.accountSyncStatus.textContent = "云端同步未完成";
+  } finally {
+    cloudState.loadingUserId = "";
+    setAccountBusy(false);
+    updateAccountUi();
+  }
+}
+
+async function handleCloudSession(session) {
+  const nextUserId = session?.user?.id || "";
+  if (nextUserId && cloudState.user?.id === nextUserId && activeStorageScope === accountScope(nextUserId)) {
+    cloudState.session = session;
+    updateAccountUi();
+    return;
+  }
+  if (session?.user) {
+    await loadCloudWorkspace(session);
+    return;
+  }
+
+  cloudState.session = null;
+  cloudState.user = null;
+  cloudState.profileAvatarUrl = "";
+  updateAccountUi();
+}
+
+async function initializeCloudAccount() {
+  const api = cloudApi();
+  const redirectError = authRedirectErrorMessage();
+  document.body.classList.toggle("cloud-session-checking", Boolean(api?.configured));
+  updateAccountUi();
+  cloudState.initialized = true;
+  if (experiencePreviewMode() || firstRunTourIsForced()) {
+    document.body.classList.remove("cloud-session-checking");
+    activeStorageScope = "guest";
+    await showGuideProjectForDemo();
+    finishEntryChoice("guest", { returning: true });
+    return;
+  }
+  if (!api?.configured) {
+    document.body.classList.remove("cloud-session-checking");
+    if (sessionStorage.getItem(ENTRY_MODE_SESSION_KEY) === "guest") {
+      await activateGuestWorkspace();
+      finishEntryChoice("guest");
+    } else if (experiencePreviewMode() || workspaceHasReturningData()) {
+      sessionStorage.setItem(ENTRY_MODE_SESSION_KEY, "guest");
+      await activateGuestWorkspace();
+      finishEntryChoice("guest", { returning: true });
+    } else {
+      showEntryChoice();
+    }
+    return;
+  }
+  api.onAuthStateChange((event, session) => {
+    if (!["SIGNED_IN", "SIGNED_OUT", "USER_UPDATED"].includes(event)) return;
+    if (event === "SIGNED_OUT") {
+      if (!cloudState.signingOut && entryState.mode === "account") {
+        window.setTimeout(async () => {
+          await handleCloudSession(null);
+          await activateWorkspaceScope("guest");
+          sessionStorage.removeItem(ENTRY_MODE_SESSION_KEY);
+          showEntryChoice("登录状态已结束，请重新选择使用方式。");
+        }, 0);
+      }
+      return;
+    }
+    window.setTimeout(async () => {
+      await handleCloudSession(session);
+      if (session?.user) finishEntryChoice("account");
+    }, 0);
+  });
+  try {
+    const session = await api.getSession();
+    if (session?.user) {
+      await handleCloudSession(session);
+      finishEntryChoice("account");
+    } else if (redirectError) {
+      const lastEmail = localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
+      setPendingConfirmation(lastEmail);
+      showEntryChoice();
+      window.setTimeout(() => {
+        openAccountModal();
+        setAccountNotice(redirectError, "error");
+      }, 0);
+    } else if (sessionStorage.getItem(ENTRY_MODE_SESSION_KEY) === "guest") {
+      await activateGuestWorkspace();
+      finishEntryChoice("guest");
+    } else if (experiencePreviewMode() || workspaceHasReturningData()) {
+      sessionStorage.setItem(ENTRY_MODE_SESSION_KEY, "guest");
+      await activateGuestWorkspace();
+      finishEntryChoice("guest", { returning: true });
+    } else {
+      showEntryChoice();
+    }
+  } catch (error) {
+    setAccountNotice(error?.message || "登录状态读取失败。", "error");
+    if (experiencePreviewMode() || firstRunTourIsForced()) {
+      sessionStorage.setItem(ENTRY_MODE_SESSION_KEY, "guest");
+      await activateGuestWorkspace();
+      finishEntryChoice("guest", { returning: true });
+    } else {
+      showEntryChoice("暂时无法检查登录状态，你仍可先使用游客模式。", "error");
+    }
+  } finally {
+    document.body.classList.remove("cloud-session-checking");
+  }
+}
+
+async function signInAccount() {
+  const email = els.accountEmail.value.trim();
+  const password = els.accountPassword.value;
+  if (!email || password.length < 8) {
+    setAccountNotice("请输入邮箱和至少 8 位密码。", "error");
+    return;
+  }
+  setAccountBusy(true);
+  setAccountNotice("正在登录…");
+  try {
+    const result = await cloudApi().signIn(email, password);
+    await handleCloudSession(result.session);
+    localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, email);
+    setPendingConfirmation("");
+    sessionStorage.removeItem(ENTRY_MODE_SESSION_KEY);
+    finishEntryChoice("account");
+    els.accountPassword.value = "";
+    setAccountNotice("登录成功，已切换到你的云端工作区。", "success");
+  } catch (error) {
+    setAccountNotice(accountAuthErrorMessage(error, "signin"), "error");
+  } finally {
+    setAccountBusy(false);
+  }
+}
+
+async function signUpAccount() {
+  const email = els.accountEmail.value.trim();
+  const password = els.accountPassword.value;
+  if (!email || password.length < 8) {
+    setAccountNotice("请输入邮箱和至少 8 位密码。", "error");
+    return;
+  }
+  if (password !== els.accountPasswordConfirm.value) {
+    setAccountNotice("两次输入的密码不一致，请重新确认。", "error");
+    els.accountPasswordConfirm.focus();
+    return;
+  }
+  setAccountBusy(true);
+  setAccountNotice("正在创建账号…");
+  try {
+    const result = await cloudApi().signUp(email, password);
+    localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, email);
+    if (result.session) {
+      await handleCloudSession(result.session);
+      localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, email);
+      sessionStorage.removeItem(ENTRY_MODE_SESSION_KEY);
+      finishEntryChoice("account");
+      setAccountNotice("注册成功，已登录。", "success");
+    } else {
+      setPendingConfirmation(email);
+      setAccountNotice("注册成功，请到邮箱点击确认链接后再登录。", "success");
+      setAccountAuthMode("signin", { keepNotice: true });
+    }
+    els.accountPassword.value = "";
+    els.accountPasswordConfirm.value = "";
+  } catch (error) {
+    setAccountNotice(accountAuthErrorMessage(error, "signup"), "error");
+  } finally {
+    setAccountBusy(false);
+  }
+}
+
+async function resendAccountConfirmation() {
+  const email = pendingConfirmationEmail || els.accountEmail.value.trim();
+  if (!email) {
+    setAccountNotice("请先输入注册时使用的邮箱。", "error");
+    els.accountEmail.focus();
+    return;
+  }
+  setAccountBusy(true);
+  setAccountNotice("正在重新发送确认邮件…");
+  try {
+    await cloudApi().resendSignUp(email);
+    localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, email);
+    setPendingConfirmation(email);
+    setAccountAuthMode("signin", { keepNotice: true });
+    setAccountNotice("新的确认邮件已经发送。请只点击最新收到的那一封。", "success");
+  } catch (error) {
+    const message = String(error?.message || "").toLowerCase();
+    setAccountNotice(
+      message.includes("rate limit")
+        ? "发送得太频繁，请稍等一会儿再试。"
+        : error?.message || "确认邮件发送失败，请稍后再试。",
+      "error",
+    );
+  } finally {
+    setAccountBusy(false);
+  }
+}
+
+async function submitAccountAuth(event) {
+  event.preventDefault();
+  if (accountAuthMode === "signup") await signUpAccount();
+  else await signInAccount();
+}
+
+async function signOutAccount() {
+  closeAccountMenu();
+  setAccountBusy(true);
+  cloudState.signingOut = true;
+  try {
+    document.body.classList.add("entry-choice-pending");
+    await cloudApi().signOut();
+    await handleCloudSession(null);
+    await activateWorkspaceScope("guest");
+    sessionStorage.removeItem(ENTRY_MODE_SESSION_KEY);
+    closeAccountModal();
+    showEntryChoice("已安全退出。你可以重新登录，或临时以游客身份使用。");
+  } catch (error) {
+    document.body.classList.remove("entry-choice-pending");
+    setAccountNotice(error?.message || "退出登录失败。", "error");
+  } finally {
+    cloudState.signingOut = false;
+    setAccountBusy(false);
+  }
+}
+
+function scheduleCloudProjectSync(project) {
+  if (!cloudIsReady() || cloudState.loadingWorkspace || !project || isBuiltInProject(project)) return;
+  cloudState.pendingProjects.set(project.id, project);
+  window.clearTimeout(cloudState.syncTimer);
+  cloudState.syncTimer = window.setTimeout(() => void flushCloudProjectSync(), 850);
+}
+
+async function prepareProjectForCloud(project) {
+  const api = cloudApi();
+  const cloudProject = JSON.parse(JSON.stringify(project));
+  const sourceImages = project.data?.images || {};
+  const cloudImages = cloudProject.data?.images || {};
+
+  for (const [id, sourceImage] of Object.entries(sourceImages)) {
+    const cloudImage = cloudImages[id];
+    if (!sourceImage || !cloudImage || typeof sourceImage !== "object") continue;
+    if (!sourceImage.storagePath && sourceImage.src && !/^https?:/i.test(sourceImage.src)) {
+      try {
+        const blob = await fetch(sourceImage.src).then((response) => response.blob());
+        sourceImage.storagePath = await api.uploadProjectAsset(project.id, `${id}-cover`, blob, sourceImage.name || `${id}.jpg`);
+      } catch (error) {
+        console.error("图片上传失败", error);
+      }
+    }
+    if (sourceImage.storagePath) {
+      cloudImage.storagePath = sourceImage.storagePath;
+      cloudImage.src = "";
+    }
+
+    if (sourceImage.kind === "live" && !sourceImage.videoStoragePath) {
+      const videoKey = String(sourceImage.videoKey || id);
+      try {
+        const cachedBlob = liveMediaFiles.get(videoKey)?.blob || await readLiveMediaBlob(videoKey);
+        if (cachedBlob) {
+          sourceImage.videoStoragePath = await api.uploadProjectAsset(
+            project.id,
+            `${id}-video`,
+            cachedBlob,
+            sourceImage.videoName || "video.mov",
+          );
+        }
+      } catch (error) {
+        console.error("实况视频上传失败", error);
+      }
+    }
+    if (sourceImage.videoStoragePath) cloudImage.videoStoragePath = sourceImage.videoStoragePath;
+    if (sourceImage.kind === "live" && !String(sourceImage.previewVideoSrc || "").startsWith("docs/")) {
+      delete cloudImage.previewVideoSrc;
+    }
+  }
+
+  return cloudProject;
+}
+
+async function flushCloudProjectSync() {
+  if (!cloudIsReady() || cloudState.loadingWorkspace || cloudState.syncingProjects) return;
+  const projects = Array.from(cloudState.pendingProjects.values());
+  if (!projects.length) return;
+  cloudState.pendingProjects.clear();
+  cloudState.syncingProjects = true;
+  if (els.accountSyncStatus) els.accountSyncStatus.textContent = "正在同步图文和素材…";
+  try {
+    const prepared = [];
+    for (const project of projects) prepared.push(await prepareProjectForCloud(project));
+    await cloudApi().upsertProjects(prepared);
+    saveProjectStore();
+    if (els.accountSyncStatus) els.accountSyncStatus.textContent = `刚刚已同步 ${prepared.length} 条更新`;
+  } catch (error) {
+    console.error(error);
+    projects.forEach((project) => cloudState.pendingProjects.set(project.id, project));
+    if (els.accountSyncStatus) els.accountSyncStatus.textContent = "同步失败，将在下次修改时重试";
+    els.status.textContent = error?.message || "云端同步失败，本机草稿仍已保存";
+  } finally {
+    cloudState.syncingProjects = false;
+  }
+}
+
+function scheduleCloudProfileSync(options = {}) {
+  if (!cloudIsReady() || cloudState.loadingWorkspace) return;
+  cloudState.pendingAvatarUpload ||= Boolean(options.uploadAvatar);
+  window.clearTimeout(cloudState.profileTimer);
+  cloudState.profileTimer = window.setTimeout(() => void flushCloudProfileSync(), 700);
+}
+
+async function flushCloudProfileSync() {
+  if (!cloudIsReady() || cloudState.loadingWorkspace) return;
+  const shouldUploadAvatar = cloudState.pendingAvatarUpload;
+  cloudState.pendingAvatarUpload = false;
+  try {
+    let avatarUrl = cloudState.profileAvatarUrl || (String(state.avatar).startsWith("http") ? state.avatar : "");
+    if (shouldUploadAvatar) {
+      await updateAvatarPreview();
+      const renderedAvatar = els.avatarPreview?.src || state.avatar;
+      if (renderedAvatar) avatarUrl = await cloudApi().uploadAvatar(renderedAvatar);
+      cloudState.profileAvatarUrl = avatarUrl;
+    }
+    const profile = await cloudApi().upsertProfile({
+      displayName: els.displayName.value.trim() || "未命名作者",
+      handle: normalizeHandle(els.handle.value),
+      avatarUrl: avatarUrl || undefined,
+      avatarCrop: avatarUrl ? null : state.avatarCrop,
+    });
+    cloudState.profileAvatarUrl = profile.avatar_url || avatarUrl || "";
+    updateAccountUi();
+  } catch (error) {
+    console.error(error);
+    cloudState.pendingAvatarUpload ||= shouldUploadAvatar;
+    els.status.textContent = error?.message || "账号资料同步失败，本机资料仍已保存";
+  }
+}
+
+async function importLocalProjectsToAccount() {
+  if (!cloudIsReady() || !cloudState.localImportProjects.length) return;
+  setAccountBusy(true);
+  els.accountSyncStatus.textContent = `正在导入 ${cloudState.localImportProjects.length} 条游客 / 本机草稿…`;
+  try {
+    const prepared = [];
+    for (const project of cloudState.localImportProjects) prepared.push(await prepareProjectForCloud(project));
+    await cloudApi().upsertProjects(prepared);
+    cloudState.localImportProjects = [];
+    await loadCloudWorkspace(cloudState.session);
+    setAccountNotice("游客 / 本机草稿已复制到当前账号，原数据仍然保留。", "success");
+  } catch (error) {
+    console.error(error);
+    setAccountNotice(error?.message || "本机草稿导入失败。", "error");
+  } finally {
+    setAccountBusy(false);
+    updateAccountUi();
+  }
 }
 
 function migrateStoredState(data) {
@@ -841,6 +1983,18 @@ function defaultImages() {
 
 function normalizeImagesForContent(content, images) {
   const nextImages = images && typeof images === "object" ? { ...images } : {};
+  Object.entries(nextImages).forEach(([id, image]) => {
+    if (!image || typeof image !== "object" || image.kind !== "live") return;
+    nextImages[id] = {
+      ...image,
+      kind: "live",
+      videoKey: String(image.videoKey || id),
+      liveSettings: normalizeLiveMediaSettings({
+        ...(image.liveSettings || {}),
+        aspect: image.liveSettings?.aspect ?? "0.75",
+      }),
+    };
+  });
   if (String(content || "").includes("[[image:sample]]") && !nextImages.sample) {
     nextImages.sample = defaultImages().sample;
   }
@@ -860,7 +2014,7 @@ function createProject(data = defaultFormState()) {
 
 function loadProjectStore() {
   try {
-    const raw = localStorage.getItem(PROJECTS_STORAGE_KEY);
+    const raw = storageForScope().getItem(scopedStorageKey(PROJECTS_STORAGE_KEY));
     if (raw) {
       const parsed = JSON.parse(raw);
       const projects = Array.isArray(parsed.projects)
@@ -874,7 +2028,7 @@ function loadProjectStore() {
       return { activeId, projects };
     }
 
-    const legacyRaw = localStorage.getItem(STORAGE_KEY);
+    const legacyRaw = activeStorageScope === "local" ? localStorage.getItem(STORAGE_KEY) : null;
     if (!legacyRaw) return { activeId: GUIDE_CARDS_PROJECT_ID, projects: [] };
 
     const legacyData = JSON.parse(legacyRaw);
@@ -899,8 +2053,8 @@ function normalizeProject(project) {
 }
 
 function saveProjectStore() {
-  localStorage.setItem(
-    PROJECTS_STORAGE_KEY,
+  storageForScope().setItem(
+    scopedStorageKey(PROJECTS_STORAGE_KEY),
     JSON.stringify({
       activeId: state.currentProjectId,
       projects: state.projects.filter((project) => !isBuiltInProject(project)).slice(0, MAX_PROJECTS),
@@ -1019,6 +2173,27 @@ async function deleteProject(projectId) {
   }
   const project = state.projects.find((item) => item.id === projectId);
   if (!project) return;
+  if (cloudIsReady() && activeStorageScope === accountScope(cloudState.user.id)) {
+    void Promise.all([cloudApi().deleteProject(projectId), cloudApi().deleteProjectAssets(projectId)]).catch((error) => {
+      console.error(error);
+      els.status.textContent = "本机已删除；云端删除失败，请稍后重试";
+    });
+  }
+  const liveKeys = Object.entries(project.data?.images || {})
+    .filter(([, image]) => image?.kind === "live")
+    .map(([id, image]) => String(image.videoKey || id));
+  await Promise.all(
+    liveKeys.map(async (key) => {
+      const cached = liveMediaFiles.get(key);
+      if (cached?.url) URL.revokeObjectURL(cached.url);
+      liveMediaFiles.delete(key);
+      try {
+        await deleteLiveMediaBlob(key);
+      } catch {
+        // The project can still be deleted when browser media cleanup is unavailable.
+      }
+    }),
+  );
   const deletingCurrent = project.id === state.currentProjectId;
   state.projects = state.projects.filter((item) => item.id !== project.id);
 
@@ -1070,6 +2245,171 @@ async function createNewProject() {
   updateProjectHistory();
   await render();
   els.status.textContent = "已新建图文，上一条已保存在历史记录";
+}
+
+const FIRST_RUN_ONBOARDING_STEPS = [
+  {
+    target: "#newProjectBtn",
+    title: "先创建自己的内容",
+    body: "左侧两个内容是示例模板。点击这里，新建你的图文卡片或公众号长文。",
+  },
+  {
+    target: "#appModeSwitch",
+    title: "选择发布形式",
+    body: "同一份内容可以在“图文卡片”和“长文”之间切换，不需要重新排版。",
+  },
+  {
+    target: "#obsidianImportMenu",
+    title: "连接并同步 Obsidian",
+    body: "点击这里选择仓库。粘贴笔记时会自动读取图片；修改完成后还能同步回 Obsidian，无法直写时会下载 ZIP。",
+  },
+  {
+    target: ".preview-topbar",
+    title: "边写边预览，完成后导出",
+    body: "在左侧编辑内容，右侧会实时生成效果。完成后点击这里下载图片或发布包。",
+  },
+];
+
+const WHATS_NEW_ONBOARDING_STEPS = [
+  {
+    target: "#accountBtn",
+    title: "账户同步",
+    body: () => cloudState.user
+      ? "你的账户同步已经开启。头像、昵称和图文草稿会按当前账号保存，换设备登录也能继续编辑。"
+      : "需要长期保存时，可以随时登录并同步；继续使用游客模式，也不影响原来的排版和下载流程。",
+    actionLabel: () => cloudState.user ? "查看同步状态" : "登录并同步",
+    action: () => {
+      if (cloudState.user) {
+        openAccountMenu();
+        return;
+      }
+      finishOnboarding({ remember: false });
+      openAccountModal();
+    },
+  },
+  {
+    target: "#livePhotoToolbarBtn",
+    title: "实况图片",
+    body: "从这里选择视频、裁剪画面并插入图文。导出时会自动识别实况页，单张和批量都按对应格式处理。",
+  },
+  {
+    target: "#obsidianImportMenu",
+    title: "连接 Obsidian",
+    body: "连接仓库后，可以读取笔记里的图片并同步修改后的 Markdown。暂不连接也不会影响普通编辑。",
+  },
+];
+
+function onboardingSteps() {
+  return onboardingMode === "whats-new" ? WHATS_NEW_ONBOARDING_STEPS : FIRST_RUN_ONBOARDING_STEPS;
+}
+
+function onboardingIsOpen() {
+  return Boolean(els.onboardingTour && !els.onboardingTour.classList.contains("hidden"));
+}
+
+function onboardingShouldStart() {
+  try {
+    return firstRunTourIsForced() || (!state.projects.length && localStorage.getItem(ONBOARDING_STORAGE_KEY) !== "completed");
+  } catch {
+    return !state.projects.length;
+  }
+}
+
+function positionOnboardingStep() {
+  if (!onboardingIsOpen()) return;
+  const step = onboardingSteps()[onboardingStepIndex];
+  const target = step ? document.querySelector(step.target) : null;
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  const padding = 7;
+  els.onboardingFocus.style.left = `${Math.max(4, rect.left - padding)}px`;
+  els.onboardingFocus.style.top = `${Math.max(4, rect.top - padding)}px`;
+  els.onboardingFocus.style.width = `${Math.min(window.innerWidth - 8, rect.width + padding * 2)}px`;
+  els.onboardingFocus.style.height = `${Math.min(window.innerHeight - 8, rect.height + padding * 2)}px`;
+
+  const tooltipRect = els.onboardingTooltip.getBoundingClientRect();
+  const gap = 18;
+  let placement = "bottom";
+  let top = rect.bottom + gap;
+  if (top + tooltipRect.height > window.innerHeight - 16) {
+    placement = "top";
+    top = rect.top - tooltipRect.height - gap;
+  }
+  top = clamp(top, 16, Math.max(16, window.innerHeight - tooltipRect.height - 16));
+  const left = clamp(rect.left, 16, Math.max(16, window.innerWidth - tooltipRect.width - 16));
+  els.onboardingTooltip.dataset.placement = placement;
+  els.onboardingTooltip.style.left = `${left}px`;
+  els.onboardingTooltip.style.top = `${top}px`;
+  const arrow = els.onboardingTooltip.querySelector(".onboarding-arrow");
+  if (arrow) arrow.style.left = `${clamp(rect.left + rect.width / 2 - left - 6, 18, tooltipRect.width - 30)}px`;
+}
+
+function showOnboardingStep(index) {
+  const steps = onboardingSteps();
+  onboardingStepIndex = clamp(index, 0, steps.length - 1);
+  const step = steps[onboardingStepIndex];
+  closeAccountMenu();
+  document.body.classList.toggle("onboarding-account-step", onboardingMode === "whats-new" && step.target === "#accountBtn");
+  els.onboardingTitle.textContent = step.title;
+  els.onboardingBody.textContent = typeof step.body === "function" ? step.body() : step.body;
+  els.onboardingProgress.textContent = `${onboardingStepIndex + 1} / ${steps.length}`;
+  els.onboardingNext.textContent = onboardingStepIndex === steps.length - 1
+    ? onboardingMode === "whats-new" ? "完成" : "开始使用"
+    : "下一步";
+  if (els.onboardingAction) {
+    const actionLabel = typeof step.actionLabel === "function" ? step.actionLabel() : step.actionLabel;
+    els.onboardingAction.hidden = !actionLabel;
+    els.onboardingAction.textContent = actionLabel || "";
+    els.onboardingAction.onclick = actionLabel && step.action ? step.action : null;
+  }
+  els.onboardingTour.classList.remove("hidden");
+  window.requestAnimationFrame(positionOnboardingStep);
+}
+
+function finishOnboarding({ remember = true } = {}) {
+  els.onboardingTour.classList.add("hidden");
+  document.body.classList.remove("onboarding-account-step");
+  closeAccountMenu();
+  if (els.onboardingAction) {
+    els.onboardingAction.hidden = true;
+    els.onboardingAction.onclick = null;
+  }
+  if (!remember) return;
+  try {
+    if (onboardingMode === "whats-new") {
+      storeExperienceVersion(WHATS_NEW_STORAGE_KEY);
+      updateFeatureBadges();
+    } else {
+      localStorage.setItem(ONBOARDING_STORAGE_KEY, "completed");
+    }
+  } catch {
+    // The guide still closes when storage is unavailable.
+  }
+}
+
+async function advanceOnboarding() {
+  const steps = onboardingSteps();
+  if (onboardingMode === "first-run" && onboardingStepIndex === 0 && isBuiltInProjectId(state.currentProjectId)) {
+    await createNewProject();
+  }
+  if (onboardingStepIndex >= steps.length - 1) {
+    finishOnboarding();
+    return;
+  }
+  showOnboardingStep(onboardingStepIndex + 1);
+}
+
+function maybeStartOnboarding() {
+  if (!onboardingShouldStart()) return;
+  onboardingMode = "first-run";
+  showOnboardingStep(0);
+}
+
+function startWhatsNewTour() {
+  storeExperienceVersion(WELCOME_BACK_STORAGE_KEY);
+  els.welcomeBackModal?.classList.add("hidden");
+  onboardingMode = "whats-new";
+  showOnboardingStep(0);
 }
 
 function escapeHtml(value) {
@@ -1178,16 +2518,21 @@ function handleTextShortcut(event) {
 }
 
 function insertAtSelection(textarea, value, selectOffset = null) {
+  return insertAtRange(textarea, value, textarea.selectionStart, textarea.selectionEnd, selectOffset);
+}
+
+function insertAtRange(textarea, value, start, end = start, selectOffset = null) {
   commitTextHistory();
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
   const current = textarea.value;
-  textarea.value = `${current.slice(0, start)}${value}${current.slice(end)}`;
-  const cursor = selectOffset === null ? start + value.length : start + selectOffset;
+  const safeStart = clamp(Number(start) || 0, 0, current.length);
+  const safeEnd = clamp(Number(end) || safeStart, safeStart, current.length);
+  textarea.value = `${current.slice(0, safeStart)}${value}${current.slice(safeEnd)}`;
+  const cursor = selectOffset === null ? safeStart + value.length : safeStart + selectOffset;
   textarea.focus();
   textarea.setSelectionRange(cursor, cursor);
   commitTextHistory();
   requestRender();
+  return cursor;
 }
 
 function wrapSelection(kind) {
@@ -1375,6 +2720,128 @@ async function readFileAsDataURL(file) {
   });
 }
 
+function openLiveMediaDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("当前浏览器不支持保存视频素材。"));
+      return;
+    }
+    const request = window.indexedDB.open(LIVE_MEDIA_DB, 1);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(LIVE_MEDIA_STORE)) {
+        database.createObjectStore(LIVE_MEDIA_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("视频素材数据库无法打开。"));
+  });
+}
+
+async function writeLiveMediaBlob(key, blob) {
+  const database = await openLiveMediaDatabase();
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(LIVE_MEDIA_STORE, "readwrite");
+      transaction.objectStore(LIVE_MEDIA_STORE).put(blob, key);
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error("视频素材保存失败。"));
+      transaction.onabort = () => reject(transaction.error || new Error("视频素材保存已取消。"));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function readLiveMediaBlob(key) {
+  const database = await openLiveMediaDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = database.transaction(LIVE_MEDIA_STORE, "readonly");
+      const request = transaction.objectStore(LIVE_MEDIA_STORE).get(key);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error("视频素材读取失败。"));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function deleteLiveMediaBlob(key) {
+  const database = await openLiveMediaDatabase();
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(LIVE_MEDIA_STORE, "readwrite");
+      transaction.objectStore(LIVE_MEDIA_STORE).delete(key);
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error("视频素材删除失败。"));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+function replaceLiveMediaCache(key, blob, name = "video.mov") {
+  const previous = liveMediaFiles.get(key);
+  if (previous?.url) URL.revokeObjectURL(previous.url);
+  const url = URL.createObjectURL(blob);
+  const cached = { blob, url, name: name || "video.mov", type: blob.type || "video/quicktime" };
+  liveMediaFiles.set(key, cached);
+  return cached;
+}
+
+async function hydrateLiveMediaForState() {
+  const liveImages = Object.entries(state.images).filter(([, image]) => image?.kind === "live");
+  await Promise.all(
+    liveImages.map(async ([id, image]) => {
+      if (image.previewVideoSrc) return;
+      const key = String(image.videoKey || id);
+      if (liveMediaFiles.has(key)) return;
+      try {
+        const blob = await readLiveMediaBlob(key);
+        if (blob) replaceLiveMediaCache(key, blob, image.videoName || "video.mov");
+      } catch {
+        // Keep the saved cover visible. Export will explain that the source video is missing.
+      }
+    }),
+  );
+}
+
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function normalizeLiveMediaSettings(settings = {}) {
+  const platform = settings.platform === "wechat" ? "wechat" : "xhs";
+  const duration = platform === "wechat" ? 3 : 5;
+  const allowedAspects = ["free", "original", "1", "1.333333", "1.777778", "0.75", "0.5625"];
+  const aspect = allowedAspects.includes(String(settings.aspect)) ? String(settings.aspect) : "original";
+  const rawCrop = settings.crop && typeof settings.crop === "object" ? settings.crop : null;
+  const crop = rawCrop
+    ? {
+        x: clamp(finiteNumber(rawCrop.x, 0), 0, 1),
+        y: clamp(finiteNumber(rawCrop.y, 0), 0, 1),
+        width: clamp(finiteNumber(rawCrop.width, 1), 0.01, 1),
+        height: clamp(finiteNumber(rawCrop.height, 1), 0.01, 1),
+      }
+    : null;
+  if (crop) {
+    crop.width = Math.min(crop.width, 1 - crop.x);
+    crop.height = Math.min(crop.height, 1 - crop.y);
+  }
+  return {
+    platform,
+    aspect,
+    customAspect: clamp(finiteNumber(settings.customAspect, 0.75), 0.4, 2.5),
+    start: clamp(finiteNumber(settings.start, 0), 0, 1800),
+    coverOffset: clamp(finiteNumber(settings.coverOffset, 0.2), 0, duration - 0.05),
+    focusX: clamp(finiteNumber(settings.focusX, 50), 0, 100),
+    focusY: clamp(finiteNumber(settings.focusY, 50), 0, 100),
+    crop,
+  };
+}
+
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -1420,9 +2887,9 @@ async function addImageFiles(files, sourcePaths = null) {
   return { ids, tags, skipped: Array.from(files || []).length - imageFiles.length };
 }
 
-function insertImageTagsAtCursor(tags) {
+function insertImageTagsAtCursor(tags, cursor = els.content.selectionStart) {
   if (!tags.length) return;
-  insertAtSelection(els.content, `\n${tags.join("\n\n")}\n`);
+  insertAtRange(els.content, `\n${tags.join("\n\n")}\n`, cursor, cursor);
   updateImageList();
 }
 
@@ -1883,12 +3350,18 @@ function closeObsidianImportMenu() {
   els.obsidianImportMenu.open = false;
 }
 
-async function importMarkdownFromConnectedVault(markdown) {
+function insertPastedMarkdown(markdown, cursor) {
+  insertAtRange(els.content, markdown, cursor, cursor);
+  updateImageList();
+}
+
+async function importMarkdownFromConnectedVault(markdown, cursor) {
   if (!hasConnectedObsidianVault() || obsidianVault.importing) return false;
   obsidianVault.importing = true;
   els.status.textContent = "正在从 Obsidian 仓库读取图片…";
   try {
     if (!(await ensureObsidianVaultPermission())) {
+      insertPastedMarkdown(markdown, cursor);
       els.status.textContent = "未获得仓库读取权限，请重新连接后再试。";
       return true;
     }
@@ -1915,7 +3388,7 @@ async function importMarkdownFromConnectedVault(markdown) {
     }
     if (missing.length) {
       const message = `仓库已连接，但没有找到 ${missing.length} 张图片：${missing.slice(0, 3).join("、")}。请确认选择的是包含这些路径的 Obsidian 仓库根目录。`;
-      replaceEditorContent(markdown);
+      insertPastedMarkdown(markdown, cursor);
       els.obsidianImportMenu.open = true;
       els.status.textContent = message;
       return true;
@@ -1923,16 +3396,17 @@ async function importMarkdownFromConnectedVault(markdown) {
     const imported = await addImageFiles(files, sourcePaths);
     const converted = convertObsidianImageReferences(markdown, state.images);
     if (converted.unresolved.length) {
+      insertPastedMarkdown(markdown, cursor);
       els.status.textContent = "发现重名图片，暂时无法自动判断该用哪一张。";
       return true;
     }
-    replaceEditorContent(markdown);
-    els.status.textContent = `已从仓库自动读取 ${imported.ids.length} 张图片并完成导入`;
+    insertPastedMarkdown(converted.content, cursor);
+    els.status.textContent = `已从仓库自动读取 ${imported.ids.length} 张图片并插入光标位置`;
     closeObsidianImportMenu();
     return true;
   } catch (error) {
     console.error(error);
-    replaceEditorContent(markdown);
+    insertPastedMarkdown(markdown, cursor);
     els.status.textContent = "读取 Obsidian 仓库失败，请重新连接仓库后再试。";
     return true;
   } finally {
@@ -1969,6 +3443,7 @@ async function getDroppedFiles(dataTransfer) {
 }
 
 async function handleEditorPaste(event) {
+  const cursor = event.currentTarget.selectionStart;
   const files = Array.from(event.clipboardData?.items || [])
     .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
     .map((item) => item.getAsFile())
@@ -1979,17 +3454,18 @@ async function handleEditorPaste(event) {
     if (!references) return;
     event.preventDefault();
     if (hasConnectedObsidianVault()) {
-      await importMarkdownFromConnectedVault(markdown);
+      await importMarkdownFromConnectedVault(markdown, cursor);
       return;
     }
+    insertPastedMarkdown(markdown, cursor);
     els.obsidianImportMenu.open = true;
-    els.status.textContent = `检测到 ${references} 个 Obsidian 图片引用。请先连接 Obsidian 仓库后再粘贴。`;
+    els.status.textContent = `已插入 ${references} 个图片引用；连接 Obsidian 仓库后可自动读取原图。`;
     requestAnimationFrame(() => positionToolPopover(els.obsidianImportMenu));
     return;
   }
   event.preventDefault();
   const imported = await addImageFiles(files);
-  insertImageTagsAtCursor(imported.tags);
+  insertImageTagsAtCursor(imported.tags, cursor);
   els.status.textContent = `已粘贴 ${imported.tags.length} 张图片`;
 }
 
@@ -2054,6 +3530,7 @@ function updateImageList() {
   for (const [id, image] of entries) {
     const row = document.createElement("div");
     row.className = "image-row";
+    row.classList.toggle("is-live", image.kind === "live");
 
     const thumb = document.createElement("img");
     thumb.className = "image-thumb";
@@ -2071,24 +3548,29 @@ function updateImageList() {
       : layout.widthPercent
         ? `${Math.round(layout.widthPercent)}%`
         : "自适应";
-    status.textContent = `${image.crop ? "已裁剪" : "原图比例"} · ${widthLabel}`;
+    const liveLabel = image.kind === "live"
+      ? `${image.liveSettings?.platform === "wechat" ? "公众号 3 秒" : "小红书 5 秒"} · ${livePhotoAspectLabel(image)} · 实况`
+      : image.crop
+        ? "已裁剪"
+        : "原图比例";
+    status.textContent = `${liveLabel} · ${widthLabel}`;
     meta.append(name, status);
 
     const actions = document.createElement("div");
     actions.className = "image-row-actions";
     const cropButton = document.createElement("button");
     cropButton.type = "button";
-    cropButton.title = "裁剪图片";
-    cropButton.setAttribute("aria-label", `裁剪 ${image.name || id}`);
-    cropButton.innerHTML = '<i data-lucide="crop"></i>';
-    cropButton.addEventListener("click", () => openCropper("image", id));
+    cropButton.title = image.kind === "live" ? "编辑实况" : "裁剪图片";
+    cropButton.setAttribute("aria-label", `${image.kind === "live" ? "编辑实况" : "裁剪"} ${image.name || id}`);
+    cropButton.innerHTML = `<i data-lucide="${image.kind === "live" ? "aperture" : "crop"}"></i>`;
+    cropButton.addEventListener("click", () => image.kind === "live" ? openLivePhotoEditor(id) : openCropper("image", id));
 
     const resetButton = document.createElement("button");
     resetButton.type = "button";
     resetButton.title = "恢复原图";
     resetButton.setAttribute("aria-label", `恢复 ${image.name || id}`);
     resetButton.innerHTML = '<i data-lucide="rotate-ccw"></i>';
-    resetButton.disabled = !image.crop;
+    resetButton.disabled = image.kind === "live" || !image.crop;
     resetButton.addEventListener("click", () => {
       image.crop = null;
       updateImageList();
@@ -2226,6 +3708,7 @@ function applyCropper() {
   if (cropper.target.kind === "avatar") {
     state.avatarCrop = crop;
     updateAvatarPreview();
+    scheduleCloudProfileSync({ uploadAvatar: true });
   } else if (state.images[cropper.target.id]) {
     state.images[cropper.target.id].crop = crop;
   }
@@ -2239,6 +3722,7 @@ function resetCropperTarget() {
   if (cropper.target.kind === "avatar") {
     state.avatarCrop = null;
     updateAvatarPreview();
+    scheduleCloudProfileSync({ uploadAvatar: true });
   } else if (state.images[cropper.target.id]) {
     state.images[cropper.target.id].crop = null;
   }
@@ -2494,12 +3978,20 @@ function resizeCropRect(handle, startRect, point, image, aspect) {
   let height = Math.max(20, Math.abs(point.y - anchorY));
 
   if (aspect) {
-    if (width / height > aspect) width = height * aspect;
-    else height = width / aspect;
+    const horizontalChange = Math.abs(width - startRect.width);
+    const verticalChange = Math.abs(height - startRect.height) * aspect;
+    if (horizontalChange >= verticalChange) height = width / aspect;
+    else width = height * aspect;
   }
 
-  width = Math.min(width, image.width);
-  height = Math.min(height, image.height);
+  if (aspect) {
+    const maxWidth = Math.min(image.width, image.height * aspect);
+    width = clamp(width, 20, maxWidth);
+    height = width / aspect;
+  } else {
+    width = Math.min(width, image.width);
+    height = Math.min(height, image.height);
+  }
   let x = handle.includes("w") ? anchorX - width : anchorX;
   let y = handle.includes("n") ? anchorY - height : anchorY;
 
@@ -2540,11 +4032,44 @@ function parseBlocks(content, images = {}) {
   });
   const blocks = [];
   let paragraphLines = [];
+  let paragraphStart = null;
+  let paragraphEnd = null;
 
   const flushParagraph = () => {
     if (!paragraphLines.length) return;
-    blocks.push({ type: "p", lines: paragraphLines });
+    blocks.push({ type: "p", lines: paragraphLines, sourceStart: paragraphStart, sourceEnd: paragraphEnd });
     paragraphLines = [];
+    paragraphStart = null;
+    paragraphEnd = null;
+  };
+
+  const appendParagraphLine = (tokens, index, line) => {
+    if (!tokens.length) return;
+    paragraphLines.push(tokens);
+    if (paragraphStart === null) paragraphStart = lineOffsets[index];
+    paragraphEnd = lineOffsets[index] + line.length;
+  };
+
+  const appendParagraphTokens = (tokens, index, line) => {
+    let textTokens = [];
+    for (const token of tokens) {
+      if (token.type !== "image") {
+        textTokens.push(token);
+        continue;
+      }
+      appendParagraphLine(textTokens, index, line);
+      flushParagraph();
+      textTokens = [];
+      if (images[token.imageId]) {
+        blocks.push({
+          type: "image",
+          id: token.imageId,
+          sourceStart: token.sourceStart,
+          sourceEnd: token.sourceEnd,
+        });
+      }
+    }
+    appendParagraphLine(textTokens, index, line);
   };
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -2559,7 +4084,14 @@ function parseBlocks(content, images = {}) {
       const imageId = resolveMarkdownImageBlock(trimmed, imageLookup);
       if (isMarkdownImageBlock(trimmed)) {
         flushParagraph();
-        if (imageId) blocks.push({ type: "image", id: imageId });
+        if (imageId) {
+          blocks.push({
+            type: "image",
+            id: imageId,
+            sourceStart: lineOffsets[index],
+            sourceEnd: lineOffsets[index] + line.length,
+          });
+        }
       } else if (isMarkdownTableHeader(trimmed, lines[index + 1])) {
         flushParagraph();
         const headerCells = splitMarkdownTableRow(trimmed);
@@ -2571,7 +4103,14 @@ function parseBlocks(content, images = {}) {
           rows.push(cells.map((cell) => parseInline(cell)));
           rowIndex += 1;
         }
-        blocks.push({ type: "table", header: headerCells.map((cell) => parseInline(cell)), rows });
+        const finalRowIndex = Math.max(index + 1, rowIndex - 1);
+        blocks.push({
+          type: "table",
+          header: headerCells.map((cell) => parseInline(cell)),
+          rows,
+          sourceStart: lineOffsets[index],
+          sourceEnd: lineOffsets[finalRowIndex] + lines[finalRowIndex].length,
+        });
         index = rowIndex - 1;
       } else {
         const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
@@ -2579,25 +4118,35 @@ function parseBlocks(content, images = {}) {
           flushParagraph();
           const level = heading[1].length;
           const contentStart = trimmedStart + heading[1].length + 1;
-          blocks.push({ type: level === 1 ? "h1" : level === 2 ? "h2" : "h3", tokens: parseInline(heading[2].trim(), contentStart) });
+          blocks.push({
+            type: level === 1 ? "h1" : level === 2 ? "h2" : "h3",
+            tokens: parseInline(heading[2].trim(), contentStart),
+            sourceStart: lineOffsets[index],
+            sourceEnd: lineOffsets[index] + line.length,
+          });
         } else if (trimmed.startsWith("> ")) {
           flushParagraph();
           const contentStart = trimmedStart + 2 + countLeadingSpaces(trimmed.slice(2));
-          blocks.push({ type: "quote", tokens: parseInline(trimmed.slice(2).trim(), contentStart) });
+          blocks.push({
+            type: "quote",
+            tokens: parseInline(trimmed.slice(2).trim(), contentStart),
+            sourceStart: lineOffsets[index],
+            sourceEnd: lineOffsets[index] + line.length,
+          });
         } else if (/^([-*+]\s+|\d+[.)]\s+)/.test(trimmed)) {
           const text = trimmed.replace(/^([-*+]\s+|\d+[.)]\s+)/, "• ");
-          paragraphLines.push(parseInline(text, trimmedStart));
+          appendParagraphTokens(parseInline(text, trimmedStart), index, line);
         } else if (/^([-*_])(?:\s*\1){2,}\s*$/.test(trimmed)) {
           flushParagraph();
-          blocks.push({ type: "spacer" });
+          blocks.push({ type: "spacer", sourceStart: lineOffsets[index], sourceEnd: lineOffsets[index] + line.length });
         } else {
-          paragraphLines.push(parseInline(trimmed, trimmedStart));
+          appendParagraphTokens(parseInline(trimmed, trimmedStart), index, line);
         }
       }
     } else {
       flushParagraph();
       if (hasContentBeforeLine) {
-        blocks.push({ type: "spacer" });
+        blocks.push({ type: "spacer", sourceStart: lineOffsets[index], sourceEnd: lineOffsets[index] });
       }
     }
   }
@@ -2641,6 +4190,18 @@ function parseInline(text, baseStart = 0) {
   let i = 0;
 
   while (i < text.length) {
+    const imageMatch = text.slice(i).match(/^\[\[image:([\w-]+)\]\]/);
+    if (imageMatch) {
+      tokens.push({
+        type: "image",
+        imageId: imageMatch[1],
+        sourceStart: baseStart + i,
+        sourceEnd: baseStart + i + imageMatch[0].length,
+      });
+      i += imageMatch[0].length;
+      continue;
+    }
+
     const colorMatch = text.slice(i).match(/^\{\{color:(#[0-9a-fA-F]{3,8})\|([\s\S]*?)\}\}/);
     if (colorMatch) {
       const textStart = baseStart + i + colorMatch[0].indexOf("|") + 1;
@@ -2675,7 +4236,7 @@ function parseInline(text, baseStart = 0) {
       }
     }
 
-    const nextMarkers = ["{{color:", "{{bg:", "**", "*"]
+    const nextMarkers = ["[[image:", "{{color:", "{{bg:", "**", "*"]
       .map((marker) => text.indexOf(marker, i + 1))
       .filter((index) => index !== -1);
     const next = nextMarkers.length ? Math.min(...nextMarkers) : text.length;
@@ -2683,7 +4244,7 @@ function parseInline(text, baseStart = 0) {
     i = next;
   }
 
-  return tokens.filter((token) => token.text.length > 0);
+  return tokens.filter((token) => token.type === "image" || token.text?.length > 0);
 }
 
 function styleForBlock(type, settings) {
@@ -2733,7 +4294,8 @@ function styleForBlock(type, settings) {
       ...fontSettings,
       size: baseSize,
       lineHeight: settings.lineHeight,
-      weight: 400,
+      weight: CARD_BODY_FONT_WEIGHT,
+      strokeWidth: CARD_BODY_STROKE_WIDTH,
       italic: false,
       marginTop: 18,
       marginBottom: 10,
@@ -2745,7 +4307,8 @@ function styleForBlock(type, settings) {
     ...fontSettings,
     size: baseSize,
     lineHeight: settings.lineHeight,
-    weight: 400,
+    weight: CARD_BODY_FONT_WEIGHT,
+    strokeWidth: CARD_BODY_STROKE_WIDTH,
     italic: false,
     marginTop: 5,
     marginBottom: 0,
@@ -3056,7 +4619,7 @@ async function buildPages(settings) {
     if (block.type === "table") {
       const table = buildTableLayout(ctx, block, settings, contentWidth);
       ensureSpace(table.height, hasContent && previousBlockType !== "spacer" ? 18 : 0);
-      page.items.push({ type: "table", x: page.bounds.left, y, width: contentWidth, table });
+      page.items.push({ type: "table", x: page.bounds.left, y, width: contentWidth, table, sourceStart: block.sourceStart, sourceEnd: block.sourceEnd });
       y += table.height + 18;
       hasContent = true;
       previousBlockType = "table";
@@ -3088,6 +4651,8 @@ async function buildPages(settings) {
         height,
         radius: 13,
         resizeMaxWidth: size.resizeMaxWidth,
+        sourceStart: block.sourceStart,
+        sourceEnd: block.sourceEnd,
       });
       y += height + 34;
       hasContent = true;
@@ -3112,6 +4677,8 @@ async function buildPages(settings) {
         x: page.bounds.left + (style.quote ? 28 : 0),
         y,
         lineHeight,
+        sourceStart: line.find((token) => Number.isFinite(token.sourceStart))?.sourceStart ?? block.sourceStart,
+        sourceEnd: [...line].reverse().find((token) => Number.isFinite(token.sourceEnd))?.sourceEnd ?? block.sourceEnd,
       });
       y += lineHeight;
       firstLine = false;
@@ -3162,7 +4729,7 @@ async function buildScrollPage(settings) {
     if (block.type === "table") {
       const table = buildTableLayout(ctx, block, settings, contentWidth);
       y += hasContent && previousBlockType !== "spacer" ? 18 : 0;
-      page.items.push({ type: "table", x: bounds.left, y, width: contentWidth, table });
+      page.items.push({ type: "table", x: bounds.left, y, width: contentWidth, table, sourceStart: block.sourceStart, sourceEnd: block.sourceEnd });
       y += table.height + 18;
       hasContent = true;
       previousBlockType = "table";
@@ -3193,6 +4760,8 @@ async function buildScrollPage(settings) {
         height: size.height,
         radius: 13,
         resizeMaxWidth: size.resizeMaxWidth,
+        sourceStart: block.sourceStart,
+        sourceEnd: block.sourceEnd,
       });
       y += size.height + 34;
       hasContent = true;
@@ -3216,6 +4785,8 @@ async function buildScrollPage(settings) {
         x: bounds.left + (style.quote ? 28 : 0),
         y,
         lineHeight,
+        sourceStart: line.find((token) => Number.isFinite(token.sourceStart))?.sourceStart ?? block.sourceStart,
+        sourceEnd: [...line].reverse().find((token) => Number.isFinite(token.sourceEnd))?.sourceEnd ?? block.sourceEnd,
       });
       y += lineHeight;
       firstLine = false;
@@ -3249,6 +4820,7 @@ function renderPage(page, index, total) {
   drawPageToContext(ctx, page, false);
   canvas._textHits = collectTextHits(ctx, page, false);
   canvas._imageHits = collectImageHits(page, false);
+  canvas._imageDropTargets = collectImageDropTargets(page, false);
   return canvas;
 }
 
@@ -3266,6 +4838,7 @@ function renderScrollPage(page) {
   drawPageToContext(ctx, page, true);
   canvas._textHits = collectTextHits(ctx, page, true);
   canvas._imageHits = collectImageHits(page, true);
+  canvas._imageDropTargets = collectImageDropTargets(page, true);
   return canvas;
 }
 
@@ -3357,9 +4930,32 @@ function collectImageHits(page, scrollPage = false) {
         baseWidth: item.baseWidth || item.width,
         maxWidth: item.maxWidth || CARD_CONTENT_WIDTH,
         resizeMaxWidth: item.resizeMaxWidth || item.baseWidth || item.width,
+        sourceStart: item.sourceStart,
+        sourceEnd: item.sourceEnd,
       };
     })
     .filter((hit) => hit.height > 0 && hit.width > 0);
+}
+
+function collectImageDropTargets(page, scrollPage = false) {
+  const bounds = page.bounds || null;
+  return page.items
+    .filter((item) => Number.isFinite(item.sourceStart) && Number.isFinite(item.sourceEnd))
+    .map((item) => {
+      const rawY = scrollPage ? (bounds?.top || 0) + item.y - page.scrollOffset : item.y;
+      const rawHeight = item.type === "table" ? item.table.height : item.type === "text" ? item.lineHeight : item.height;
+      const top = scrollPage && bounds ? Math.max(rawY, bounds.top) : rawY;
+      const bottom = scrollPage && bounds ? Math.min(rawY + rawHeight, bounds.bottom) : rawY + rawHeight;
+      return {
+        imageId: item.imageId || "",
+        targetKind: item.type === "text" && item.blockType === "p" ? "text-line" : "block",
+        y: top,
+        height: Math.max(0, bottom - top),
+        sourceStart: item.sourceStart,
+        sourceEnd: item.sourceEnd,
+      };
+    })
+    .filter((target) => target.height > 0);
 }
 
 function drawBackground(ctx, settings) {
@@ -3504,7 +5100,16 @@ function drawTextLine(ctx, item, settings) {
       roundedRect(ctx, cursor - 3, y + Math.round(lineHeight * 0.14), width + 6, Math.round(lineHeight * 0.72), 7);
       ctx.fill();
     }
-    ctx.fillStyle = token.color || style.color;
+    const textColor = token.color || style.color;
+    if (style.strokeWidth && !token.bold) {
+      ctx.save();
+      ctx.strokeStyle = textColor;
+      ctx.lineWidth = style.strokeWidth;
+      ctx.lineJoin = "round";
+      ctx.strokeText(token.text, cursor, baseline);
+      ctx.restore();
+    }
+    ctx.fillStyle = textColor;
     ctx.fillText(token.text, cursor, baseline);
     cursor += width + tokenLetterSpacing(token, style);
   }
@@ -3573,6 +5178,7 @@ function renderArticlePreview(settings) {
   article.className = `article-preview article-theme-${settings.articleTheme} article-font-${settings.articleFont} article-size-${settings.articleSize}`;
   article.style.setProperty("--article-accent", settings.articleColor);
   article.innerHTML = markdownToArticleHtml(settings.content, settings.images);
+  hydrateArticleLiveMedia(article, settings.images);
   els.pages.append(article);
 
   const wordCount = settings.content.replace(/\s/g, "").length;
@@ -3656,7 +5262,15 @@ function markdownToArticleHtml(markdown, images = {}) {
       flushParagraph();
       flushList();
       const image = images[imageId];
-      if (image?.src) html.push(`<figure><img src="${escapeAttribute(image.src)}" alt="${escapeAttribute(image.name || "图片")}" /></figure>`);
+      if (image?.src && image.kind === "live") {
+        html.push(
+          `<figure class="article-live-figure" data-live-image-id="${escapeAttribute(imageId)}">` +
+          `<div class="article-live-stage"><img src="${escapeAttribute(image.src)}" alt="${escapeAttribute(image.name || "实况图片")}" /></div>` +
+          `</figure>`,
+        );
+      } else if (image?.src) {
+        html.push(`<figure><img src="${escapeAttribute(image.src)}" alt="${escapeAttribute(image.name || "图片")}" /></figure>`);
+      }
       continue;
     }
 
@@ -3716,6 +5330,60 @@ function renderArticleInline(text) {
 
 function escapeAttribute(value) {
   return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
+function createLivePreviewVideo(image, imageId, className) {
+  const media = liveMediaFiles.get(String(image.videoKey || imageId));
+  const videoSource = media?.url || image.previewVideoSrc;
+  if (!videoSource) return null;
+  const settings = normalizeLiveMediaSettings(image.liveSettings);
+  const video = document.createElement("video");
+  video.className = className;
+  video.src = videoSource;
+  video.muted = true;
+  video.loop = false;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.setAttribute("muted", "");
+  video.setAttribute("playsinline", "");
+  if (settings.crop) {
+    video.style.objectFit = "fill";
+    video.style.width = `${100 / settings.crop.width}%`;
+    video.style.height = `${100 / settings.crop.height}%`;
+    video.style.left = `${(-settings.crop.x / settings.crop.width) * 100}%`;
+    video.style.top = `${(-settings.crop.y / settings.crop.height) * 100}%`;
+    video.style.right = "auto";
+    video.style.bottom = "auto";
+  } else {
+    video.style.objectPosition = `${settings.focusX}% ${settings.focusY}%`;
+  }
+  video.addEventListener("loadedmetadata", () => {
+    video.currentTime = Math.min(video.duration || settings.start, settings.start);
+    video.play().catch(() => {});
+  });
+  video.addEventListener("timeupdate", () => {
+    const duration = settings.platform === "wechat" ? 3 : 5;
+    if (video.currentTime >= settings.start + duration) {
+      video.currentTime = settings.start;
+      video.play().catch(() => {});
+    }
+  });
+  return video;
+}
+
+function hydrateArticleLiveMedia(article, images) {
+  article.querySelectorAll("[data-live-image-id]").forEach((figure) => {
+    const imageId = figure.dataset.liveImageId;
+    const image = images[imageId];
+    const stage = figure.querySelector(".article-live-stage");
+    if (!image || !stage) return;
+    const video = createLivePreviewVideo(image, imageId, "article-live-video");
+    if (!video) return;
+    const badge = document.createElement("span");
+    badge.className = "article-live-badge";
+    badge.innerHTML = '<i data-lucide="aperture"></i>LIVE';
+    stage.append(video, badge);
+  });
 }
 
 const WECHAT_STYLE_PROPERTIES = [
@@ -3793,6 +5461,10 @@ function serializeArticleForWechat() {
   const sourceNodes = [article, ...article.querySelectorAll("*")];
   const cloneNodes = [clone, ...clone.querySelectorAll("*")];
   sourceNodes.forEach((source, index) => copyComputedWechatStyles(source, cloneNodes[index]));
+  sourceNodes.forEach((source, index) => {
+    if (source.matches?.("video, .article-live-badge")) cloneNodes[index]?.remove();
+  });
+  clone.querySelectorAll("[data-live-image-id]").forEach((node) => node.removeAttribute("data-live-image-id"));
 
   const section = document.createElement("section");
   const articleStyle = window.getComputedStyle(article);
@@ -4012,7 +5684,581 @@ async function syncArticleToWechatDraft() {
   }
 }
 
+function livePhotoDuration() {
+  return livePhotoState.platform === "wechat" ? 3 : 5;
+}
+
+function livePhotoAspectRatio() {
+  if (livePhotoState.aspect === "free") return clamp(finiteNumber(livePhotoState.customAspect, 0.75), 0.4, 2.5);
+  if (livePhotoState.aspect === "original") {
+    if (livePhotoState.sourceWidth > 0 && livePhotoState.sourceHeight > 0) {
+      return livePhotoState.sourceWidth / livePhotoState.sourceHeight;
+    }
+    return 0.75;
+  }
+  return clamp(finiteNumber(livePhotoState.aspect, 0.75), 0.4, 2.5);
+}
+
+function fitLivePhotoCropToAspect(ratio, preserveSize = false) {
+  const source = livePhotoSourceBounds();
+  if (!source.width || !source.height) return;
+  const current = clampCropRect(livePhotoState.crop, source);
+  if (preserveSize) {
+    livePhotoState.crop = fitRectToAspect(current, source, ratio);
+    return;
+  }
+
+  const centerX = current.x + current.width / 2;
+  const centerY = current.y + current.height / 2;
+  const largest = fitRectToAspect(fullCropRect(source), source, ratio);
+  livePhotoState.crop = {
+    x: clamp(centerX - largest.width / 2, 0, source.width - largest.width),
+    y: clamp(centerY - largest.height / 2, 0, source.height - largest.height),
+    width: largest.width,
+    height: largest.height,
+  };
+}
+
+function setLivePhotoAspect(value, options = {}) {
+  const allowed = ["free", "original", "1", "1.333333", "1.777778", "0.75", "0.5625"];
+  livePhotoState.aspect = allowed.includes(String(value)) ? String(value) : "original";
+  els.livePhotoRatioButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.liveRatio === livePhotoState.aspect);
+  });
+  const customRatioVisible = livePhotoState.aspect === "free";
+  els.livePhotoCustomRatioRow.hidden = false;
+  els.livePhotoCustomRatioRow.classList.toggle("is-visible", customRatioVisible);
+  els.livePhotoCustomRatioRow.setAttribute("aria-hidden", customRatioVisible ? "false" : "true");
+  const ratio = livePhotoAspectRatio();
+  els.livePhotoCustomRatioOutput.value = ratio.toFixed(2);
+  fitLivePhotoCropToAspect(ratio, Boolean(options.preserveCropSize));
+  drawLivePhotoCropper();
+}
+
+function livePhotoAspectLabel(image) {
+  const settings = normalizeLiveMediaSettings(image?.liveSettings);
+  const labels = {
+    original: "原视频",
+    "1": "1:1",
+    "1.333333": "4:3",
+    "1.777778": "16:9",
+    "0.75": "3:4",
+    "0.5625": "9:16",
+  };
+  if (settings.aspect === "free") return `自由 ${settings.customAspect.toFixed(2)}`;
+  return labels[settings.aspect] || "原视频";
+}
+
+function formatLivePhotoDuration(value) {
+  const seconds = Math.max(0, Number(value) || 0);
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds - minutes * 60;
+  return minutes ? `${minutes}:${remainder.toFixed(1).padStart(4, "0")}` : `${seconds.toFixed(1)} 秒`;
+}
+
+function formatLivePhotoFileSize(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function setLivePhotoServiceMessage(message, type = "") {
+  els.livePhotoServiceStatus.classList.toggle("ready", type === "ready");
+  els.livePhotoServiceStatus.classList.toggle("error", type === "error");
+  els.livePhotoServiceStatus.textContent = message;
+}
+
+function livePhotoSelectionIsValid() {
+  if (!livePhotoState.file || !livePhotoState.sourceDuration) return false;
+  const start = Number(els.livePhotoStart.value) || 0;
+  return start >= 0 && start + livePhotoDuration() <= livePhotoState.sourceDuration + 0.03;
+}
+
+function updateLivePhotoGenerateState() {
+  els.livePhotoGenerate.disabled = !livePhotoSelectionIsValid() || livePhotoState.generating;
+}
+
+function updateLivePhotoPreview() {
+  drawLivePhotoCropper();
+  updateLivePhotoGenerateState();
+}
+
+function livePhotoSourceBounds() {
+  return { width: livePhotoState.sourceWidth, height: livePhotoState.sourceHeight };
+}
+
+function livePhotoCropFromNormalized(crop) {
+  const source = livePhotoSourceBounds();
+  if (!source.width || !source.height || !crop) return null;
+  return clampCropRect(
+    {
+      x: crop.x * source.width,
+      y: crop.y * source.height,
+      width: crop.width * source.width,
+      height: crop.height * source.height,
+    },
+    source,
+  );
+}
+
+function normalizedLivePhotoCrop() {
+  const source = livePhotoSourceBounds();
+  const crop = livePhotoState.crop;
+  if (!source.width || !source.height || !crop) return null;
+  return {
+    x: clamp(crop.x / source.width, 0, 1),
+    y: clamp(crop.y / source.height, 0, 1),
+    width: clamp(crop.width / source.width, 0.01, 1),
+    height: clamp(crop.height / source.height, 0.01, 1),
+  };
+}
+
+function getLivePhotoCropDisplay() {
+  const canvas = els.livePhotoCropCanvas;
+  const source = livePhotoSourceBounds();
+  const padding = 28;
+  const scale = Math.min((canvas.width - padding * 2) / source.width, (canvas.height - padding * 2) / source.height);
+  const width = source.width * scale;
+  const height = source.height * scale;
+  return {
+    x: (canvas.width - width) / 2,
+    y: (canvas.height - height) / 2,
+    width,
+    height,
+    scale,
+  };
+}
+
+function livePhotoSourceToCanvasRect(rect) {
+  const display = livePhotoState.cropDisplay;
+  return {
+    x: display.x + rect.x * display.scale,
+    y: display.y + rect.y * display.scale,
+    width: rect.width * display.scale,
+    height: rect.height * display.scale,
+  };
+}
+
+function livePhotoCanvasPoint(event) {
+  const canvas = els.livePhotoCropCanvas;
+  const bounds = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
+    y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
+  };
+}
+
+function livePhotoSourcePoint(point) {
+  const source = livePhotoSourceBounds();
+  const display = livePhotoState.cropDisplay;
+  return {
+    x: clamp((point.x - display.x) / display.scale, 0, source.width),
+    y: clamp((point.y - display.y) / display.scale, 0, source.height),
+  };
+}
+
+function drawLivePhotoCropper() {
+  if (!els.livePhotoCropCanvas || !livePhotoState.sourceWidth || !livePhotoState.sourceHeight || !livePhotoState.crop) return;
+  const canvas = els.livePhotoCropCanvas;
+  const context = canvas.getContext("2d");
+  livePhotoState.cropDisplay = getLivePhotoCropDisplay();
+  const display = livePhotoState.cropDisplay;
+  const crop = livePhotoSourceToCanvasRect(livePhotoState.crop);
+  canvas.dataset.cropX = livePhotoState.crop.x.toFixed(3);
+  canvas.dataset.cropY = livePhotoState.crop.y.toFixed(3);
+  canvas.dataset.cropWidth = livePhotoState.crop.width.toFixed(3);
+  canvas.dataset.cropHeight = livePhotoState.crop.height.toFixed(3);
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#090d17";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  if (els.livePhotoVideo.readyState >= 2) {
+    context.drawImage(els.livePhotoVideo, display.x, display.y, display.width, display.height);
+  }
+  context.fillStyle = "rgba(2, 6, 23, 0.62)";
+  context.fillRect(display.x, display.y, display.width, Math.max(0, crop.y - display.y));
+  context.fillRect(display.x, crop.y + crop.height, display.width, Math.max(0, display.y + display.height - crop.y - crop.height));
+  context.fillRect(display.x, crop.y, Math.max(0, crop.x - display.x), crop.height);
+  context.fillRect(crop.x + crop.width, crop.y, Math.max(0, display.x + display.width - crop.x - crop.width), crop.height);
+
+  context.strokeStyle = "#fff";
+  context.lineWidth = 3;
+  context.strokeRect(crop.x, crop.y, crop.width, crop.height);
+  context.strokeStyle = "rgba(255, 255, 255, 0.74)";
+  context.lineWidth = 1;
+  for (let i = 1; i < 3; i += 1) {
+    context.beginPath();
+    context.moveTo(crop.x + (crop.width * i) / 3, crop.y);
+    context.lineTo(crop.x + (crop.width * i) / 3, crop.y + crop.height);
+    context.moveTo(crop.x, crop.y + (crop.height * i) / 3);
+    context.lineTo(crop.x + crop.width, crop.y + (crop.height * i) / 3);
+    context.stroke();
+  }
+  context.fillStyle = "#fff";
+  [[crop.x, crop.y], [crop.x + crop.width, crop.y], [crop.x, crop.y + crop.height], [crop.x + crop.width, crop.y + crop.height]].forEach(([x, y]) => {
+    context.beginPath();
+    context.arc(x, y, 11, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = "rgba(23, 32, 47, 0.62)";
+    context.lineWidth = 2;
+    context.stroke();
+  });
+}
+
+function animateLivePhotoCropper() {
+  drawLivePhotoCropper();
+  if (!els.livePhotoVideo.paused && !els.livePhotoVideo.ended) {
+    livePhotoState.previewFrame = requestAnimationFrame(animateLivePhotoCropper);
+  } else {
+    livePhotoState.previewFrame = 0;
+  }
+}
+
+function detectLivePhotoCropHit(point) {
+  const crop = livePhotoSourceToCanvasRect(livePhotoState.crop);
+  const corners = {
+    nw: [crop.x, crop.y], ne: [crop.x + crop.width, crop.y],
+    sw: [crop.x, crop.y + crop.height], se: [crop.x + crop.width, crop.y + crop.height],
+  };
+  for (const [handle, [x, y]] of Object.entries(corners)) {
+    if (Math.hypot(point.x - x, point.y - y) <= 48) return handle;
+  }
+  if (point.x >= crop.x && point.x <= crop.x + crop.width && point.y >= crop.y && point.y <= crop.y + crop.height) return "move";
+  return "move-new";
+}
+
+function startLivePhotoCropDrag(event) {
+  if (!livePhotoState.crop || !livePhotoState.sourceWidth) return;
+  livePhotoState.cropDisplay = getLivePhotoCropDisplay();
+  const canvasPoint = livePhotoCanvasPoint(event);
+  const display = livePhotoState.cropDisplay;
+  if (canvasPoint.x < display.x || canvasPoint.x > display.x + display.width || canvasPoint.y < display.y || canvasPoint.y > display.y + display.height) return;
+  event.preventDefault();
+  const sourcePoint = livePhotoSourcePoint(canvasPoint);
+  const source = livePhotoSourceBounds();
+  let action = detectLivePhotoCropHit(canvasPoint);
+  if (action === "move-new") {
+    livePhotoState.crop = clampMovedRect({
+      ...livePhotoState.crop,
+      x: sourcePoint.x - livePhotoState.crop.width / 2,
+      y: sourcePoint.y - livePhotoState.crop.height / 2,
+    }, source);
+    action = "move";
+  }
+  livePhotoState.cropDrag = {
+    action,
+    startX: sourcePoint.x,
+    startY: sourcePoint.y,
+    startRect: { ...livePhotoState.crop },
+    pointerId: event.pointerId,
+  };
+  els.livePhotoCropCanvas.setPointerCapture?.(event.pointerId);
+  drawLivePhotoCropper();
+}
+
+function moveLivePhotoCropDrag(event) {
+  if (!livePhotoState.cropDrag) return;
+  event.preventDefault();
+  const point = livePhotoSourcePoint(livePhotoCanvasPoint(event));
+  const drag = livePhotoState.cropDrag;
+  const source = livePhotoSourceBounds();
+  if (drag.action === "move") {
+    livePhotoState.crop = clampMovedRect({
+      ...drag.startRect,
+      x: drag.startRect.x + point.x - drag.startX,
+      y: drag.startRect.y + point.y - drag.startY,
+    }, source);
+  } else {
+    livePhotoState.crop = resizeCropRect(drag.action, drag.startRect, point, source, livePhotoAspectRatio());
+  }
+  drawLivePhotoCropper();
+}
+
+function stopLivePhotoCropDrag(event) {
+  if (!livePhotoState.cropDrag) return;
+  els.livePhotoCropCanvas.releasePointerCapture?.(livePhotoState.cropDrag.pointerId);
+  livePhotoState.cropDrag = null;
+  drawLivePhotoCropper();
+}
+
+function seekLivePhotoPreview(toCover = false) {
+  if (!livePhotoState.sourceDuration) return;
+  const start = Math.max(0, Number(els.livePhotoStart.value) || 0);
+  const offset = toCover ? Math.max(0, Number(els.livePhotoCover.value) || 0) : 0;
+  els.livePhotoVideo.currentTime = Math.min(livePhotoState.sourceDuration, start + offset);
+}
+
+function normalizeLivePhotoTiming() {
+  const target = livePhotoDuration();
+  const availableStart = Math.max(0, livePhotoState.sourceDuration - target);
+  const currentStart = Math.max(0, Number(els.livePhotoStart.value) || 0);
+  const normalizedStart = Math.min(currentStart, availableStart);
+  els.livePhotoStart.max = String(Math.max(0, availableStart).toFixed(1));
+  els.livePhotoStart.value = String(Number(normalizedStart.toFixed(1)));
+  const latestCover = Math.max(0, target - 0.05);
+  els.livePhotoCover.max = String(latestCover);
+  const cover = Math.min(latestCover, Math.max(0, finiteNumber(els.livePhotoCover.value, 0.2)));
+  els.livePhotoCover.value = String(Number(cover.toFixed(1)));
+  if (livePhotoState.file && livePhotoState.sourceDuration < target) {
+    setLivePhotoServiceMessage(`当前视频只有 ${formatLivePhotoDuration(livePhotoState.sourceDuration)}，不足以生成 ${target} 秒版本。`, "error");
+  } else if (livePhotoState.file) {
+    setLivePhotoServiceMessage("设置会跟随视频插入图文；右侧下载时自动生成 Live Photo 发布包。", "ready");
+  }
+  updateLivePhotoGenerateState();
+}
+
+function setLivePhotoPlatform(platform) {
+  livePhotoState.platform = platform === "wechat" ? "wechat" : "xhs";
+  els.livePhotoPlatformButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.livePlatform === livePhotoState.platform);
+  });
+  const duration = livePhotoDuration();
+  els.livePhotoDurationHint.textContent = livePhotoState.platform === "wechat" ? "公众号版本固定生成 3 秒" : "小红书版本固定生成 5 秒";
+  els.livePhotoCover.max = String(Math.max(0, duration - 0.05));
+  normalizeLivePhotoTiming();
+  seekLivePhotoPreview(true);
+}
+
+function releaseLivePhotoObjectUrl() {
+  if (!livePhotoState.objectUrl) return;
+  URL.revokeObjectURL(livePhotoState.objectUrl);
+  livePhotoState.objectUrl = "";
+}
+
+function handleLivePhotoVideo(event) {
+  const file = event.target.files?.[0] || null;
+  if (!file) return;
+  if (file.size > 350 * 1024 * 1024) {
+    setLivePhotoServiceMessage("视频超过 350MB，请先裁短或压缩后再试。", "error");
+    event.target.value = "";
+    return;
+  }
+  if (!/^video\/(?:mp4|quicktime|webm)$/i.test(file.type) && !/\.(?:mp4|mov|webm)$/i.test(file.name)) {
+    setLivePhotoServiceMessage("请选择 MP4、MOV 或 WebM 视频。", "error");
+    event.target.value = "";
+    return;
+  }
+  releaseLivePhotoObjectUrl();
+  if (event.target === els.contentVideo) {
+    livePhotoState.editingId = "";
+    els.livePhotoGenerate.innerHTML = '<i data-lucide="image-plus"></i>插入图文';
+    resetLivePhotoForm();
+  }
+  livePhotoState.file = file;
+  livePhotoState.sourceDuration = 0;
+  livePhotoState.sourceWidth = 0;
+  livePhotoState.sourceHeight = 0;
+  livePhotoState.objectUrl = URL.createObjectURL(file);
+  els.livePhotoVideo.src = livePhotoState.objectUrl;
+  els.livePhotoPreview.classList.add("has-video");
+  els.livePhotoFileLabel.textContent = file.name;
+  els.livePhotoVideoMeta.textContent = `${formatLivePhotoFileSize(file.size)} · 正在读取视频…`;
+  updateLivePhotoGenerateState();
+  els.livePhotoModal.classList.remove("hidden");
+  if (window.lucide) window.lucide.createIcons();
+  els.livePhotoVideo.load();
+}
+
+function handleLivePhotoMetadata() {
+  const duration = Number(els.livePhotoVideo.duration) || 0;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    setLivePhotoServiceMessage("浏览器无法读取这个视频，请转换为 MP4 或 MOV 后再试。", "error");
+    return;
+  }
+  livePhotoState.sourceDuration = duration;
+  livePhotoState.sourceWidth = Number(els.livePhotoVideo.videoWidth) || 0;
+  livePhotoState.sourceHeight = Number(els.livePhotoVideo.videoHeight) || 0;
+  const source = livePhotoSourceBounds();
+  livePhotoState.crop = livePhotoCropFromNormalized(livePhotoState.savedCrop) || fullCropRect(source);
+  els.livePhotoVideoMeta.textContent = `${formatLivePhotoFileSize(livePhotoState.file?.size)} · ${formatLivePhotoDuration(duration)}`;
+  normalizeLivePhotoTiming();
+  setLivePhotoAspect(livePhotoState.aspect, { preserveCropSize: Boolean(livePhotoState.savedCrop) });
+  seekLivePhotoPreview(false);
+  els.livePhotoVideo.play().catch(() => drawLivePhotoCropper());
+}
+
+function keepLivePhotoPreviewInRange() {
+  if (!livePhotoState.sourceDuration || els.livePhotoVideo.paused) return;
+  const start = Math.max(0, Number(els.livePhotoStart.value) || 0);
+  if (els.livePhotoVideo.currentTime >= start + livePhotoDuration()) {
+    els.livePhotoVideo.currentTime = start;
+    els.livePhotoVideo.play().catch(() => {});
+  }
+  drawLivePhotoCropper();
+}
+
+async function ensureLivePhotoServiceReady() {
+  livePhotoState.localReady = false;
+  if (!/^(?:https?:|file:)$/.test(window.location.protocol)) return false;
+  try {
+    const response = await fetch(livePhotoApiUrl("/api/live-photo/status"), { cache: "no-store" });
+    if (!response.ok) return false;
+    const status = await response.json();
+    livePhotoState.localReady = Boolean(status.ready);
+  } catch {
+    livePhotoState.localReady = false;
+  }
+  return livePhotoState.localReady;
+}
+
+function resetLivePhotoForm(settings = {}) {
+  const normalized = normalizeLiveMediaSettings(settings);
+  livePhotoState.savedCrop = normalized.crop;
+  livePhotoState.crop = livePhotoCropFromNormalized(normalized.crop);
+  livePhotoState.customAspect = normalized.customAspect;
+  els.livePhotoCustomRatio.value = String(normalized.customAspect);
+  els.livePhotoCustomRatioOutput.value = normalized.customAspect.toFixed(2);
+  setLivePhotoPlatform(normalized.platform);
+  setLivePhotoAspect(normalized.aspect, { preserveCropSize: Boolean(normalized.crop) });
+  els.livePhotoStart.value = String(normalized.start);
+  els.livePhotoCover.value = String(normalized.coverOffset);
+  updateLivePhotoPreview();
+}
+
+async function openLivePhotoEditor(imageId) {
+  const image = state.images[imageId];
+  if (!image || image.kind !== "live") return;
+  await hydrateLiveMediaForState();
+  const media = liveMediaFiles.get(String(image.videoKey || imageId));
+  if (!media?.blob) {
+    els.status.textContent = "这张实况的原视频已经丢失，请重新上传视频。";
+    return;
+  }
+  releaseLivePhotoObjectUrl();
+  livePhotoState.editingId = imageId;
+  livePhotoState.file = media.blob;
+  livePhotoState.sourceDuration = Number(image.videoDuration) || 0;
+  livePhotoState.sourceWidth = Number(image.videoWidth) || 0;
+  livePhotoState.sourceHeight = Number(image.videoHeight) || 0;
+  livePhotoState.objectUrl = URL.createObjectURL(media.blob);
+  els.livePhotoFileLabel.textContent = image.videoName || media.name || "视频素材";
+  els.livePhotoVideoMeta.textContent = `${formatLivePhotoFileSize(media.blob.size)} · ${formatLivePhotoDuration(livePhotoState.sourceDuration)}`;
+  els.livePhotoVideo.src = livePhotoState.objectUrl;
+  els.livePhotoPreview.classList.add("has-video");
+  els.livePhotoGenerate.innerHTML = '<i data-lucide="check"></i>保存修改';
+  resetLivePhotoForm(image.liveSettings);
+  els.livePhotoModal.classList.remove("hidden");
+  els.livePhotoVideo.load();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closeLivePhotoModal() {
+  if (livePhotoState.generating) return;
+  els.livePhotoVideo.pause();
+  els.livePhotoModal.classList.add("hidden");
+  releaseLivePhotoObjectUrl();
+  livePhotoState.file = null;
+  livePhotoState.sourceDuration = 0;
+  livePhotoState.sourceWidth = 0;
+  livePhotoState.sourceHeight = 0;
+  livePhotoState.crop = null;
+  livePhotoState.savedCrop = null;
+  livePhotoState.cropDrag = null;
+  if (livePhotoState.previewFrame) cancelAnimationFrame(livePhotoState.previewFrame);
+  livePhotoState.previewFrame = 0;
+  livePhotoState.editingId = "";
+  els.contentVideo.value = "";
+  els.livePhotoVideoInput.value = "";
+  els.livePhotoGenerate.innerHTML = '<i data-lucide="image-plus"></i>插入图文';
+}
+
+function waitForLivePhotoSeek(video, target) {
+  if (Math.abs(video.currentTime - target) < 0.03) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error("封面帧读取超时。")), 8000);
+    const done = () => {
+      window.clearTimeout(timeout);
+      video.removeEventListener("seeked", done);
+      resolve();
+    };
+    video.addEventListener("seeked", done, { once: true });
+    video.currentTime = target;
+  });
+}
+
+async function captureLivePhotoCover() {
+  const start = Math.max(0, Number(els.livePhotoStart.value) || 0);
+  const coverOffset = Math.max(0, Number(els.livePhotoCover.value) || 0);
+  await waitForLivePhotoSeek(els.livePhotoVideo, Math.min(livePhotoState.sourceDuration, start + coverOffset));
+  const canvas = document.createElement("canvas");
+  const videoWidth = els.livePhotoVideo.videoWidth;
+  const videoHeight = els.livePhotoVideo.videoHeight;
+  const crop = livePhotoState.crop || fullCropRect({ width: videoWidth, height: videoHeight });
+  const sx = clamp(crop.x, 0, videoWidth - 1);
+  const sy = clamp(crop.y, 0, videoHeight - 1);
+  const sw = clamp(crop.width, 1, videoWidth - sx);
+  const sh = clamp(crop.height, 1, videoHeight - sy);
+  const targetAspect = sw / sh;
+  let outputWidth;
+  let outputHeight;
+  if (targetAspect >= 1) {
+    outputWidth = Math.max(1, Math.min(1440, Math.round(sw)));
+    outputHeight = Math.max(1, Math.round(outputWidth / targetAspect));
+  } else {
+    outputHeight = Math.max(1, Math.min(1440, Math.round(sh)));
+    outputWidth = Math.max(1, Math.round(outputHeight * targetAspect));
+  }
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+  const resizedContext = canvas.getContext("2d");
+  resizedContext.imageSmoothingEnabled = true;
+  resizedContext.imageSmoothingQuality = "high";
+  resizedContext.drawImage(els.livePhotoVideo, sx, sy, sw, sh, 0, 0, outputWidth, outputHeight);
+  return canvas.toDataURL("image/jpeg", 0.95);
+}
+
+async function applyLivePhotoAsset(event) {
+  event.preventDefault();
+  if (!livePhotoSelectionIsValid() || livePhotoState.generating) return;
+  livePhotoState.generating = true;
+  updateLivePhotoGenerateState();
+  setLivePhotoServiceMessage("正在保存视频素材并生成封面帧…");
+  try {
+    const editing = Boolean(livePhotoState.editingId);
+    const id = livePhotoState.editingId || createImportedImageId();
+    const videoKey = String(state.images[id]?.videoKey || id);
+    const cover = await captureLivePhotoCover();
+    const settings = normalizeLiveMediaSettings({
+      platform: livePhotoState.platform,
+      aspect: livePhotoState.aspect,
+      customAspect: livePhotoState.customAspect,
+      start: Number(els.livePhotoStart.value) || 0,
+      coverOffset: Number(els.livePhotoCover.value) || 0,
+      crop: normalizedLivePhotoCrop(),
+    });
+    await writeLiveMediaBlob(videoKey, livePhotoState.file);
+    replaceLiveMediaCache(videoKey, livePhotoState.file, livePhotoState.file.name || state.images[id]?.videoName || "video.mov");
+    state.images[id] = {
+      ...(state.images[id] || {}),
+      kind: "live",
+      src: cover,
+      name: state.images[id]?.name || `${livePhotoState.file.name || "视频"} · 实况`,
+      videoKey,
+      videoName: livePhotoState.file.name || state.images[id]?.videoName || "video.mov",
+      videoType: livePhotoState.file.type || "video/quicktime",
+      videoDuration: livePhotoState.sourceDuration,
+      videoWidth: livePhotoState.sourceWidth,
+      videoHeight: livePhotoState.sourceHeight,
+      liveSettings: settings,
+      crop: null,
+      layout: state.images[id]?.layout || defaultNewImageLayout(),
+    };
+    if (!livePhotoState.editingId) insertImageTagsAtCursor([`[[image:${id}]]`]);
+    updateImageList();
+    livePhotoState.generating = false;
+    closeLivePhotoModal();
+    await render();
+    els.status.textContent = editing ? "已更新实况素材" : "已插入实况图片；右侧下载会自动生成发布包";
+  } catch (error) {
+    setLivePhotoServiceMessage(error?.message || "实况素材保存失败。", "error");
+  } finally {
+    livePhotoState.generating = false;
+    updateLivePhotoGenerateState();
+  }
+}
+
 async function render() {
+  await hydrateLiveMediaForState();
   const settings = readForm();
   updateAppMode();
   updateArticleControls();
@@ -4048,8 +6294,10 @@ function drawPreview(canvases) {
   }
 
   canvases.forEach((canvas, index) => {
+    const liveHits = liveImageHitsForCanvas(canvas);
     const shell = document.createElement("article");
     shell.className = "page-shell";
+    shell.classList.toggle("has-live", liveHits.length > 0);
     const frame = document.createElement("div");
     frame.className = "page-frame";
     if (state.mode === "scroll") {
@@ -4059,28 +6307,31 @@ function drawPreview(canvases) {
     frame.append(canvas);
     frame.append(createImageEditLayer(canvas));
     frame.append(createTextHitLayer(canvas));
+    attachPreviewImageDropHandlers(frame);
 
     const actions = document.createElement("div");
     actions.className = "page-actions";
     const label = document.createElement("span");
-    label.textContent = state.mode === "scroll" ? "滑动截图" : `图片 ${String(index + 1).padStart(2, "0")}`;
+    label.textContent = state.mode === "scroll" ? "滑动截图" : `${liveHits.length ? "实况" : "图片"} ${String(index + 1).padStart(2, "0")}`;
     const button = document.createElement("button");
     button.type = "button";
-    button.title = "下载单张";
-    button.setAttribute("aria-label", `下载第 ${index + 1} 张`);
-    button.innerHTML = '<i data-lucide="download"></i>';
+    button.dataset.pageExport = "true";
+    button.title = liveHits.length ? "自动生成 Live Photo 发布包" : "下载单张 PNG";
+    button.setAttribute("aria-label", liveHits.length ? `导出第 ${index + 1} 张实况` : `下载第 ${index + 1} 张`);
+    button.innerHTML = `<i data-lucide="${liveHits.length ? "aperture" : "download"}"></i>`;
     const filename = state.mode === "scroll" ? "layout-scroll-shot.png" : `layout-page-${String(index + 1).padStart(2, "0")}.png`;
-    button.addEventListener("click", () => downloadCanvas(canvas, filename));
+    button.addEventListener("click", () => exportCanvasAutomatically(canvas, filename, index));
     actions.append(label, button);
     shell.append(frame, actions);
     els.pages.append(shell);
   });
 
-  els.pageCount.textContent = state.mode === "scroll" ? "滑动截图模式" : `${canvases.length} 张图片`;
+  const livePageCount = canvases.filter((canvas) => liveImageHitsForCanvas(canvas).length).length;
+  els.pageCount.textContent = state.mode === "scroll" ? "滑动截图模式" : `${canvases.length} 张图片${livePageCount ? ` · ${livePageCount} 张实况` : ""}`;
   els.status.textContent =
     state.mode === "scroll"
       ? `滑动截图模式：在卡片上滚动，下载当前画面`
-      : `已生成 ${canvases.length} 张，高清尺寸 ${OUTPUT_CANVAS_WIDTH}x${OUTPUT_CANVAS_HEIGHT}`;
+      : `已生成 ${canvases.length} 张${livePageCount ? `，其中 ${livePageCount} 张会自动导出 Live Photo` : ""}，高清尺寸 ${OUTPUT_CANVAS_WIDTH}x${OUTPUT_CANVAS_HEIGHT}`;
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -4089,18 +6340,33 @@ function createImageEditLayer(canvas) {
   layer.className = "preview-image-edit-layer";
 
   for (const hit of canvas._imageHits || []) {
+    const image = state.images[hit.imageId];
+    const isLive = image?.kind === "live";
     const box = document.createElement("div");
     box.className = "preview-image-box";
+    box.classList.toggle("is-live", isLive);
     box.dataset.imageId = hit.imageId;
     box.dataset.baseWidth = String(hit.baseWidth || hit.width);
     box.dataset.maxWidth = String(hit.maxWidth || CARD_CONTENT_WIDTH);
     box.dataset.resizeMaxWidth = String(hit.resizeMaxWidth || hit.baseWidth || hit.width);
+    box.dataset.sourceStart = String(hit.sourceStart);
+    box.dataset.sourceEnd = String(hit.sourceEnd);
     box.tabIndex = 0;
-    box.title = "点击选择图片；右上角裁剪，顶部调整对齐，右下角缩放";
+    box.title = isLive ? "拖动可调整位置；右上角编辑，顶部调整对齐，右下角缩放" : "拖动可调整位置；右上角裁剪，顶部调整对齐，右下角缩放";
     applyImageBoxStyle(box, hit);
+    box.addEventListener("pointerdown", startPreviewImageMove);
     box.addEventListener("click", (event) => {
       if (event.target === box) box.focus({ preventScroll: true });
     });
+
+    if (isLive) {
+      const video = createLivePreviewVideo(image, hit.imageId, "preview-live-video");
+      if (video) box.append(video);
+      const badge = document.createElement("span");
+      badge.className = "preview-live-badge";
+      badge.innerHTML = '<i data-lucide="aperture"></i>LIVE';
+      box.append(badge);
+    }
 
     const alignBar = document.createElement("div");
     alignBar.className = "preview-image-align";
@@ -4122,13 +6388,17 @@ function createImageEditLayer(canvas) {
     const cropButton = document.createElement("button");
     cropButton.type = "button";
     cropButton.className = "preview-image-crop";
-    cropButton.title = "裁剪当前图片";
-    cropButton.setAttribute("aria-label", "裁剪当前图片");
-    cropButton.innerHTML = '<i data-lucide="crop"></i>';
+    cropButton.title = isLive ? "编辑当前实况" : "裁剪当前图片";
+    cropButton.setAttribute("aria-label", isLive ? "编辑当前实况" : "裁剪当前图片");
+    cropButton.innerHTML = `<i data-lucide="${isLive ? "aperture" : "crop"}"></i>`;
     cropButton.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      openCropper("image", hit.imageId);
+      if (isLive) {
+        openLivePhotoEditor(hit.imageId);
+      } else {
+        openCropper("image", hit.imageId);
+      }
     });
 
     const resize = document.createElement("span");
@@ -4141,6 +6411,258 @@ function createImageEditLayer(canvas) {
   }
 
   return layer;
+}
+
+function attachPreviewImageDropHandlers(frame) {
+  const indicator = document.createElement("div");
+  indicator.className = "preview-image-drop-line";
+  indicator.hidden = true;
+  frame.append(indicator);
+}
+
+function startPreviewImageMove(event) {
+  if (event.button !== 0 || event.target.closest("button, .preview-image-resize")) return;
+  const box = event.currentTarget;
+  const sourceStart = Number(box.dataset.sourceStart);
+  const sourceEnd = Number(box.dataset.sourceEnd);
+  if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceEnd)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const boxRect = box.getBoundingClientRect();
+  previewImageDrag = {
+    imageId: box.dataset.imageId,
+    sourceStart,
+    sourceEnd,
+    box,
+    pointerId: event.pointerId,
+    dropFrame: null,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    lastClientY: event.clientY,
+    grabOffsetY: event.clientY - boxRect.top,
+    boxHeight: boxRect.height,
+    direction: 0,
+    active: false,
+  };
+  box.setPointerCapture?.(event.pointerId);
+  document.addEventListener("pointermove", movePreviewImagePointer);
+  document.addEventListener("pointerup", stopPreviewImagePointer, { once: true });
+  document.addEventListener("pointercancel", stopPreviewImagePointer, { once: true });
+}
+
+function movePreviewImagePointer(event) {
+  if (!previewImageDrag) return;
+  event.preventDefault();
+  const dx = event.clientX - previewImageDrag.startClientX;
+  const dy = event.clientY - previewImageDrag.startClientY;
+  if (!previewImageDrag.active && Math.hypot(dx, dy) < 5) return;
+  previewImageDrag.active = true;
+  previewImageDrag.totalDeltaY = dy;
+  previewImageDrag.direction = event.clientY > previewImageDrag.lastClientY + 1
+    ? 1
+    : event.clientY < previewImageDrag.lastClientY - 1
+      ? -1
+      : previewImageDrag.direction || (dy >= 0 ? 1 : -1);
+  previewImageDrag.lastClientY = event.clientY;
+  previewImageDrag.box.classList.add("is-dragging");
+  previewImageDrag.box.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+  autoScrollPreviewDuringImageDrag(event.clientY);
+
+  const frame = previewFrameAtPoint(event.clientX, event.clientY);
+  if (!frame) {
+    if (previewImageDrag.dropFrame) clearPreviewImageDropFrame(previewImageDrag.dropFrame);
+    previewImageDrag.dropFrame = null;
+    return;
+  }
+  if (previewImageDrag.dropFrame && previewImageDrag.dropFrame !== frame) {
+    clearPreviewImageDropFrame(previewImageDrag.dropFrame);
+  }
+  previewImageDrag.dropFrame = frame;
+  const canvas = frame.querySelector("canvas");
+  setPreviewImageDropTarget(frame, canvas, event.clientY, previewImageDrag.direction);
+}
+
+function stopPreviewImagePointer(event) {
+  document.removeEventListener("pointermove", movePreviewImagePointer);
+  document.removeEventListener("pointerup", stopPreviewImagePointer);
+  document.removeEventListener("pointercancel", stopPreviewImagePointer);
+  if (!previewImageDrag) return;
+  const frame = previewImageDrag.dropFrame;
+  const drag = previewImageDrag;
+  drag.box?.releasePointerCapture?.(drag.pointerId);
+  let moved = false;
+  if (drag.active && frame?._imageDropTarget) {
+    moved = movePreviewImageMarkdown(drag.imageId, drag.sourceStart, drag.sourceEnd, frame._imageDropTarget);
+  }
+  stopPreviewImageDrag();
+  if (drag.active && !moved) els.status.textContent = "图片位置没有变化，拖过蓝色落点线后松手即可移动";
+  event?.preventDefault();
+}
+
+function stopPreviewImageDrag() {
+  if (previewImageDrag?.box) {
+    previewImageDrag.box.classList.remove("is-dragging");
+    previewImageDrag.box.style.removeProperty("transform");
+  }
+  previewImageDrag = null;
+  document.querySelectorAll(".page-frame.is-image-drop-target").forEach(clearPreviewImageDropFrame);
+}
+
+function previewFrameAtPoint(clientX, clientY) {
+  const direct = document.elementFromPoint(clientX, clientY)?.closest(".page-frame");
+  if (direct) return direct;
+  let closest = null;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (const frame of document.querySelectorAll(".page-frame")) {
+    const rect = frame.getBoundingClientRect();
+    const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
+    const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+    if (dx > 36 || dy > 44) continue;
+    const distance = Math.hypot(dx, dy);
+    if (distance < closestDistance) {
+      closest = frame;
+      closestDistance = distance;
+    }
+  }
+  return closest;
+}
+
+function autoScrollPreviewDuringImageDrag(clientY) {
+  const panel = document.querySelector(".preview-panel");
+  if (!panel || panel.scrollHeight <= panel.clientHeight) return;
+  const rect = panel.getBoundingClientRect();
+  const edge = 64;
+  if (clientY < rect.top + edge) panel.scrollTop -= Math.ceil((rect.top + edge - clientY) / 3);
+  if (clientY > rect.bottom - edge) panel.scrollTop += Math.ceil((clientY - (rect.bottom - edge)) / 3);
+}
+
+function clearPreviewImageDropFrame(frame) {
+  frame.classList.remove("is-image-drop-target");
+  frame._imageDropTarget = null;
+  const indicator = frame.querySelector(".preview-image-drop-line");
+  if (indicator) indicator.hidden = true;
+}
+
+function setPreviewImageDropTarget(frame, canvas, clientY, direction = 0) {
+  if (!previewImageDrag || !canvas) return;
+  const rect = frame.getBoundingClientRect();
+  const leadingEdgeOffset = direction > 0
+    ? previewImageDrag.boxHeight - previewImageDrag.grabOffsetY
+    : direction < 0
+      ? -previewImageDrag.grabOffsetY
+      : 0;
+  const probeClientY = clientY + leadingEdgeOffset * 0.4;
+  const logicalY = clamp(((probeClientY - rect.top) / rect.height) * CANVAS_HEIGHT, 0, CANVAS_HEIGHT);
+  const rawTargets = (canvas._imageDropTargets || []).filter((target) => {
+    return target.sourceEnd <= previewImageDrag.sourceStart || target.sourceStart >= previewImageDrag.sourceEnd;
+  });
+  const targets = rawTargets;
+  let dropTarget = null;
+  const shortDirectionalMove = direction && Math.abs(previewImageDrag.totalDeltaY || 0) <= 96;
+  if (shortDirectionalMove) {
+    const adjacent = direction > 0
+      ? targets
+          .filter((target) => target.sourceStart >= previewImageDrag.sourceEnd)
+          .sort((a, b) => a.sourceStart - b.sourceStart)[0]
+      : targets
+          .filter((target) => target.sourceEnd <= previewImageDrag.sourceStart)
+          .sort((a, b) => b.sourceEnd - a.sourceEnd)[0];
+    if (adjacent) {
+      dropTarget = {
+        ...adjacent,
+        after: direction > 0,
+        indicatorY: direction > 0 ? adjacent.y + adjacent.height : adjacent.y,
+      };
+    }
+  }
+  for (const target of dropTarget ? [] : targets) {
+    if (logicalY < target.y + target.height / 2) {
+      dropTarget = { ...target, after: false, indicatorY: target.y };
+      break;
+    }
+  }
+  if (!dropTarget && targets.length) {
+    const target = targets[targets.length - 1];
+    dropTarget = { ...target, after: true, indicatorY: target.y + target.height };
+  }
+  if (!dropTarget) {
+    const bounds = canvas._page?.bounds || { top: CARD_SIDE_PADDING, bottom: CANVAS_HEIGHT - 62 };
+    dropTarget = {
+      sourceStart: els.content.value.length,
+      sourceEnd: els.content.value.length,
+      after: true,
+      indicatorY: bounds.bottom,
+    };
+  }
+  frame._imageDropTarget = dropTarget;
+  frame.classList.add("is-image-drop-target");
+  const indicator = frame.querySelector(".preview-image-drop-line");
+  indicator.hidden = false;
+  indicator.style.top = `${(clamp(dropTarget.indicatorY, 0, CANVAS_HEIGHT) / CANVAS_HEIGHT) * 100}%`;
+}
+
+function markdownLineStart(content, index) {
+  if (index <= 0) return 0;
+  return content.lastIndexOf("\n", index - 1) + 1;
+}
+
+function markdownLineEnd(content, index) {
+  const newline = content.indexOf("\n", clamp(index, 0, content.length));
+  return newline === -1 ? content.length : newline + 1;
+}
+
+function imageRemovalRange(content, sourceStart, sourceEnd) {
+  const lineStart = markdownLineStart(content, sourceStart);
+  const lineEnd = markdownLineEnd(content, sourceEnd);
+  const line = content.slice(lineStart, lineEnd).replace(/\n$/, "");
+  if (isMarkdownImageBlock(line.trim())) {
+    let end = lineEnd;
+    if (end < content.length) {
+      const followingLineEnd = markdownLineEnd(content, end);
+      if (!content.slice(end, followingLineEnd).trim()) end = followingLineEnd;
+    }
+    return { start: lineStart, end };
+  }
+  return {
+    start: clamp(sourceStart, 0, content.length),
+    end: clamp(sourceEnd, sourceStart, content.length),
+  };
+}
+
+function movePreviewImageMarkdown(imageId, sourceStart, sourceEnd, target) {
+  const content = els.content.value;
+  const removal = imageRemovalRange(content, sourceStart, sourceEnd);
+  const moveStart = removal.start;
+  const moveEnd = removal.end;
+  const lineLevelTarget = target.targetKind === "text-line";
+  const targetIndex = lineLevelTarget
+    ? (target.after ? target.sourceEnd : target.sourceStart)
+    : target.after
+      ? markdownLineEnd(content, target.sourceEnd)
+      : markdownLineStart(content, target.sourceStart);
+  if (targetIndex >= moveStart && targetIndex <= moveEnd) return false;
+
+  commitTextHistory();
+  let chunk = `[[image:${imageId}]]`;
+  const withoutSource = `${content.slice(0, moveStart)}${content.slice(moveEnd)}`;
+  let insertionIndex = targetIndex > moveEnd ? targetIndex - (moveEnd - moveStart) : targetIndex;
+  insertionIndex = clamp(insertionIndex, 0, withoutSource.length);
+  if (!lineLevelTarget) {
+    if (insertionIndex > 0 && withoutSource[insertionIndex - 1] !== "\n") chunk = `\n${chunk}`;
+    if (insertionIndex < withoutSource.length && withoutSource[insertionIndex] !== "\n") chunk = `${chunk}\n`;
+    if (!chunk.endsWith("\n")) chunk = `${chunk}\n`;
+  }
+  els.content.value = `${withoutSource.slice(0, insertionIndex)}${chunk}${withoutSource.slice(insertionIndex)}`;
+  els.content.focus({ preventScroll: true });
+  els.content.setSelectionRange(insertionIndex, insertionIndex + chunk.length);
+  scrollTextareaToRange(insertionIndex);
+  commitTextHistory();
+  updateImageList();
+  requestRender();
+  window.setTimeout(() => {
+    els.status.textContent = "图片已移动，左侧 Markdown 顺序已同步";
+  }, 320);
+  return true;
 }
 
 function applyImageBoxStyle(box, hit) {
@@ -4328,19 +6850,532 @@ function setScrollOffset(value) {
   render();
 }
 
+function liveImageHitsForCanvas(canvas) {
+  return (canvas?._imageHits || []).filter((hit) => state.images[hit.imageId]?.kind === "live");
+}
+
+function createLiveWellMaskBlob(width, height, radius = 16) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#fff";
+  roundedRect(context, 0, 0, width, height, Math.min(radius, width / 2, height / 2));
+  context.fill();
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
+function exportProgressElements(scope = "main") {
+  if (scope === "handoff") {
+    return {
+      root: els.livePhotoHandoffProgress,
+      title: els.livePhotoHandoffProgressTitle,
+      detail: els.livePhotoHandoffProgressDetail,
+      meta: els.livePhotoHandoffProgressMeta,
+      bar: els.livePhotoHandoffProgressBar,
+      fill: els.livePhotoHandoffProgressFill,
+    };
+  }
+  return {
+    root: els.exportProgress,
+    title: els.exportProgressTitle,
+    detail: els.exportProgressDetail,
+    meta: els.exportProgressMeta,
+    bar: els.exportProgressBar,
+    fill: els.exportProgressFill,
+  };
+}
+
+function syncExportBusyState() {
+  const mainBusy = exportProgressState.main.active;
+  document.body.classList.toggle("export-busy", mainBusy || exportProgressState.handoff.active);
+  [els.downloadZip, els.downloadArticle].filter(Boolean).forEach((button) => {
+    button.disabled = mainBusy;
+  });
+  document.querySelectorAll("[data-page-export]").forEach((button) => {
+    button.disabled = mainBusy;
+  });
+}
+
+function exportElapsedSeconds(scope) {
+  const startedAt = exportProgressState[scope]?.startedAt || Date.now();
+  return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+}
+
+function refreshExportProgressMeta(scope) {
+  const stateForScope = exportProgressState[scope];
+  const elements = exportProgressElements(scope);
+  if (!stateForScope.active || !elements.meta) return;
+  const count = Number.isFinite(stateForScope.current) && Number.isFinite(stateForScope.total)
+    ? `${stateForScope.current}/${stateForScope.total} · `
+    : "";
+  elements.meta.textContent = `${count}已用时 ${exportElapsedSeconds(scope)} 秒`;
+}
+
+function beginExportProgress(scope, options = {}) {
+  const stateForScope = exportProgressState[scope];
+  const elements = exportProgressElements(scope);
+  if (!stateForScope || !elements.root || stateForScope.active) return false;
+  window.clearTimeout(stateForScope.hideTimer);
+  window.clearInterval(stateForScope.timer);
+  stateForScope.active = true;
+  stateForScope.startedAt = Date.now();
+  stateForScope.current = Number.isFinite(options.current) ? options.current : null;
+  stateForScope.total = Number.isFinite(options.total) ? options.total : null;
+  elements.root.hidden = false;
+  elements.root.className = `export-progress${scope === "handoff" ? " export-progress-compact" : ""} is-indeterminate`;
+  elements.root.querySelector(".export-progress-icon").innerHTML = '<i data-lucide="loader-circle"></i>';
+  elements.title.textContent = options.title || "正在准备导出";
+  elements.detail.textContent = options.detail || "系统正在处理，请不要关闭页面。";
+  elements.fill.style.width = "";
+  elements.bar.removeAttribute("aria-valuenow");
+  elements.bar.setAttribute("aria-valuetext", elements.detail.textContent);
+  refreshExportProgressMeta(scope);
+  stateForScope.timer = window.setInterval(() => refreshExportProgressMeta(scope), 1000);
+  syncExportBusyState();
+  if (window.lucide) window.lucide.createIcons();
+  return true;
+}
+
+function updateExportProgress(scope, options = {}) {
+  const stateForScope = exportProgressState[scope];
+  const elements = exportProgressElements(scope);
+  if (!stateForScope?.active || !elements.root) return;
+  if (options.title) elements.title.textContent = options.title;
+  if (options.detail) elements.detail.textContent = options.detail;
+  if (Number.isFinite(options.current)) stateForScope.current = options.current;
+  if (Number.isFinite(options.total)) stateForScope.total = options.total;
+
+  const hasCount = Number.isFinite(stateForScope.current) && Number.isFinite(stateForScope.total) && stateForScope.total > 0;
+  const hasValue = Number.isFinite(options.value);
+  const determinate = options.indeterminate === true ? false : options.indeterminate === false || hasCount || hasValue;
+  elements.root.classList.toggle("is-indeterminate", !determinate);
+  if (determinate) {
+    const value = hasValue
+      ? clamp(options.value, 0, 100)
+      : clamp((stateForScope.current / stateForScope.total) * 100, 0, 100);
+    elements.fill.style.width = `${value}%`;
+    elements.bar.setAttribute("aria-valuemin", "0");
+    elements.bar.setAttribute("aria-valuemax", "100");
+    elements.bar.setAttribute("aria-valuenow", String(Math.round(value)));
+    elements.bar.setAttribute("aria-valuetext", hasCount ? `已完成 ${stateForScope.current}/${stateForScope.total}` : `已完成 ${Math.round(value)}%`);
+  } else {
+    stateForScope.current = null;
+    stateForScope.total = null;
+    elements.fill.style.width = "";
+    elements.bar.removeAttribute("aria-valuenow");
+    elements.bar.setAttribute("aria-valuetext", elements.detail.textContent || "正在处理");
+  }
+  refreshExportProgressMeta(scope);
+}
+
+function finishExportProgress(scope, options = {}) {
+  const stateForScope = exportProgressState[scope];
+  const elements = exportProgressElements(scope);
+  if (!stateForScope || !elements.root) return;
+  const success = options.success !== false;
+  const elapsed = exportElapsedSeconds(scope);
+  stateForScope.active = false;
+  window.clearInterval(stateForScope.timer);
+  stateForScope.timer = 0;
+  elements.root.classList.remove("is-indeterminate", "is-success", "is-error");
+  elements.root.classList.add(success ? "is-success" : "is-error");
+  elements.root.querySelector(".export-progress-icon").innerHTML = `<i data-lucide="${success ? "check" : "circle-alert"}"></i>`;
+  elements.title.textContent = options.title || (success ? "导出处理完成" : "导出没有完成");
+  elements.detail.textContent = options.detail || (success ? "文件已经准备好。" : "请根据提示处理后重试。");
+  if (success) elements.fill.style.width = "100%";
+  elements.meta.textContent = `${success ? "完成" : "已停止"} · 用时 ${elapsed} 秒`;
+  elements.bar.setAttribute("aria-valuetext", elements.detail.textContent);
+  if (success) elements.bar.setAttribute("aria-valuenow", "100");
+  syncExportBusyState();
+  if (window.lucide) window.lucide.createIcons();
+  const delay = Number.isFinite(options.hideAfter) ? options.hideAfter : success ? 2400 : 5200;
+  stateForScope.hideTimer = window.setTimeout(() => resetExportProgress(scope), delay);
+}
+
+function resetExportProgress(scope) {
+  const stateForScope = exportProgressState[scope];
+  const elements = exportProgressElements(scope);
+  if (!stateForScope || !elements.root) return;
+  window.clearInterval(stateForScope.timer);
+  window.clearTimeout(stateForScope.hideTimer);
+  stateForScope.active = false;
+  stateForScope.timer = 0;
+  stateForScope.hideTimer = 0;
+  stateForScope.current = null;
+  stateForScope.total = null;
+  elements.root.hidden = true;
+  elements.root.className = `export-progress${scope === "handoff" ? " export-progress-compact" : ""}`;
+  syncExportBusyState();
+}
+
+async function generateLivePackageForCanvas(canvas, pageIndex, reveal = true, serviceChecked = false, onStage = null) {
+  onStage?.("validate", "正在检查实况素材和页面设置…");
+  if (state.mode === "scroll") throw new Error("实况素材暂不支持滑动截图，请切回自动分页后导出。");
+  const hits = liveImageHitsForCanvas(canvas);
+  if (!hits.length) return null;
+  if (hits.length > 1) throw new Error(`第 ${pageIndex + 1} 页包含多段实况，稳妥首版请把它们拆到不同页面。`);
+  const hit = hits[0];
+  const image = state.images[hit.imageId];
+  if (image?.demoOnly) {
+    throw new Error("这是内置实况演示。请点击左上角“+”新建内容，再上传自己的视频后导出。");
+  }
+  if (!serviceChecked && !(await ensureLivePhotoServiceReady())) {
+    throw new Error("本机实况服务没有运行。请双击项目里的「启动写了就发.command」，保留终端窗口后再试。");
+  }
+  const media = liveMediaFiles.get(String(image.videoKey || hit.imageId));
+  if (!media?.blob) throw new Error("实况原视频已经丢失，请在左侧重新上传这段视频。");
+  onStage?.("page", `正在生成第 ${pageIndex + 1} 页高清卡片…`);
+  const pageBlob = await canvasToLosslessPngBlob(canvas);
+  if (!pageBlob) throw new Error("卡片页面生成失败，请调整内容后再试。");
+  const scale = 1080 / CANVAS_WIDTH;
+  const wellX = clamp(Math.round(hit.x * scale), 0, 1080);
+  const wellY = clamp(Math.round(hit.y * scale), 0, 1440);
+  const wellWidth = clamp(Math.round(hit.width * scale), 40, 1080 - wellX);
+  const wellHeight = clamp(Math.round(hit.height * scale), 40, 1440 - wellY);
+  const maskBlob = await createLiveWellMaskBlob(wellWidth, wellHeight, Math.round(13 * scale));
+  if (!maskBlob) throw new Error("实况圆角遮罩生成失败。");
+  const settings = normalizeLiveMediaSettings(image.liveSettings);
+  const payload = new FormData();
+  payload.append("video", media.blob, image.videoName || media.name || "video.mov");
+  payload.append("page", pageBlob, `page-${String(pageIndex + 1).padStart(2, "0")}.png`);
+  payload.append("mask", maskBlob, "live-well-mask.png");
+  payload.append("platform", settings.platform);
+  payload.append("start", String(settings.start));
+  payload.append("cover_offset", String(settings.coverOffset));
+  payload.append("focus_x", String(settings.focusX));
+  payload.append("focus_y", String(settings.focusY));
+  if (settings.crop) {
+    payload.append("crop_x", String(settings.crop.x));
+    payload.append("crop_y", String(settings.crop.y));
+    payload.append("crop_width", String(settings.crop.width));
+    payload.append("crop_height", String(settings.crop.height));
+  }
+  payload.append("well_x", String(wellX));
+  payload.append("well_y", String(wellY));
+  payload.append("well_width", String(wellWidth));
+  payload.append("well_height", String(wellHeight));
+  payload.append("title", `${projectTitleFromData(readForm())}-第${pageIndex + 1}页`);
+  payload.append("reveal", reveal ? "1" : "0");
+  onStage?.("package", "正在合成 JPG、MOV 与 .pvt，这一步可能需要一些时间…");
+  const response = await fetch(livePhotoApiUrl("/api/live-photo/render"), { method: "POST", body: payload });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.ok) throw new Error(result.error || `第 ${pageIndex + 1} 页实况发布包生成失败。`);
+  result.pageIndex = pageIndex;
+  return result;
+}
+
+function closeLivePhotoHandoff() {
+  resetExportProgress("handoff");
+  els.livePhotoHandoffModal.classList.add("hidden");
+  els.livePhotoHandoffPreview.innerHTML = "";
+  els.livePhotoHandoffThumbnails.innerHTML = "";
+}
+
+function createLivePhotoHandoffPreviewFrame(pageIndex, compact = false) {
+  const sourceCanvas = state.canvases[pageIndex];
+  if (!sourceCanvas) return document.createElement("div");
+  const frame = document.createElement("div");
+  frame.className = "live-photo-handoff-preview-frame";
+  const previewCanvas = document.createElement("canvas");
+  previewCanvas.width = sourceCanvas.width;
+  previewCanvas.height = sourceCanvas.height;
+  previewCanvas.getContext("2d").drawImage(sourceCanvas, 0, 0);
+  frame.append(previewCanvas);
+
+  liveImageHitsForCanvas(sourceCanvas).forEach((hit) => {
+    const image = state.images[hit.imageId];
+    if (!image) return;
+    const well = document.createElement("div");
+    well.className = "live-photo-handoff-video-well";
+    well.style.left = `${(hit.x / CANVAS_WIDTH) * 100}%`;
+    well.style.top = `${(hit.y / CANVAS_HEIGHT) * 100}%`;
+    well.style.width = `${(hit.width / CANVAS_WIDTH) * 100}%`;
+    well.style.height = `${(hit.height / CANVAS_HEIGHT) * 100}%`;
+    const video = createLivePreviewVideo(image, hit.imageId, "live-photo-handoff-video");
+    if (video) well.append(video);
+    if (!compact) {
+      const badge = document.createElement("span");
+      badge.className = "live-photo-handoff-live-badge";
+      badge.innerHTML = '<i data-lucide="aperture"></i>LIVE';
+      well.append(badge);
+    }
+    frame.append(well);
+  });
+  return frame;
+}
+
+function selectLivePhotoHandoffPage(pageIndex) {
+  const item = livePhotoHandoffState.items.find((entry) => entry.pageIndex === pageIndex) || livePhotoHandoffState.items[0] || null;
+  if (!item) return;
+  livePhotoHandoffState.selectedPageIndex = item.pageIndex;
+  const result = item.type === "live" ? item.result : null;
+  livePhotoHandoffState.selectedJobId = result?.job_id || "";
+  els.livePhotoHandoffPreview.innerHTML = "";
+  els.livePhotoHandoffPreview.append(createLivePhotoHandoffPreviewFrame(item.pageIndex));
+  els.livePhotoHandoffThumbnails.querySelectorAll("[data-handoff-page]").forEach((button) => {
+    button.classList.toggle("active", Number(button.dataset.handoffPage) === item.pageIndex);
+  });
+  if (!livePhotoHandoffState.isBatch) {
+    els.livePhotoHandoffReveal.disabled = !result;
+    els.livePhotoHandoffAirdrop.disabled = !result;
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function ensureLivePhotoBatchPrepared() {
+  if (livePhotoHandoffState.batch) return livePhotoHandoffState.batch;
+  if (livePhotoHandoffState.batchPreparing) return livePhotoHandoffState.batchPreparing;
+  const prepare = async () => {
+    const payload = new FormData();
+    payload.append("title", projectTitleFromData(readForm()));
+    payload.append(
+      "jobs",
+      JSON.stringify(livePhotoHandoffState.liveResults.map((result) => ({ job_id: result.job_id, page_index: result.pageIndex }))),
+    );
+    for (const file of livePhotoHandoffState.staticPackage?.files || []) {
+      payload.append(`static_${file.pageIndex}`, file.blob, file.filename);
+    }
+    const response = await fetch(livePhotoApiUrl("/api/live-photo/batch"), { method: "POST", body: payload });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || "批量发布包整理失败。");
+    livePhotoHandoffState.batch = result;
+    return result;
+  };
+  livePhotoHandoffState.batchPreparing = prepare().finally(() => {
+    livePhotoHandoffState.batchPreparing = null;
+  });
+  return livePhotoHandoffState.batchPreparing;
+}
+
+async function responseBlobWithProgress(response, onProgress = null) {
+  const total = Number(response.headers.get("content-length")) || 0;
+  if (!response.body?.getReader || total <= 0) return response.blob();
+  const reader = response.body.getReader();
+  const chunks = [];
+  let loaded = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.byteLength;
+    onProgress?.(loaded, total);
+  }
+  return new Blob(chunks, { type: response.headers.get("content-type") || "application/octet-stream" });
+}
+
+async function revealLivePhotoHandoff() {
+  const isBatch = livePhotoHandoffState.isBatch;
+  if (!isBatch && !livePhotoHandoffState.selectedJobId) return;
+  let path = "/api/live-photo/reveal";
+  let payload = { job_id: livePhotoHandoffState.selectedJobId };
+  if (isBatch) {
+    const batch = await ensureLivePhotoBatchPrepared();
+    path = "/api/live-photo/batch-reveal";
+    payload = { batch_id: batch.batch_id };
+  }
+  const response = await fetch(livePhotoApiUrl(path), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.ok) {
+    els.status.textContent = result.error || "无法在 Finder 中显示导出内容。";
+    return;
+  }
+  els.status.textContent = isBatch ? "已在 Finder 中显示本次批量导出。" : "已在 Finder 中显示这个实况包。";
+}
+
+async function airdropLivePhotoHandoff() {
+  const isBatch = livePhotoHandoffState.isBatch;
+  if (!isBatch && !livePhotoHandoffState.selectedJobId) return;
+  els.livePhotoHandoffAirdrop.disabled = true;
+  els.livePhotoHandoffAirdrop.innerHTML = '<i data-lucide="loader-circle"></i>正在打开 AirDrop…';
+  if (window.lucide) window.lucide.createIcons();
+  try {
+    let path = "/api/live-photo/airdrop";
+    let payload = { job_id: livePhotoHandoffState.selectedJobId };
+    if (isBatch) {
+      const batch = await ensureLivePhotoBatchPrepared();
+      path = "/api/live-photo/batch-airdrop";
+      payload = { batch_id: batch.batch_id };
+    }
+    const response = await fetch(livePhotoApiUrl(path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || "无法打开 AirDrop 分享面板。");
+    els.status.textContent = isBatch ? "整批内容已加入 AirDrop，请选择你的 iPhone。" : "AirDrop 分享面板已打开，请选择你的 iPhone。";
+  } catch (error) {
+    els.status.textContent = error?.message || "无法打开 AirDrop 分享面板。";
+  } finally {
+    els.livePhotoHandoffAirdrop.disabled = false;
+    els.livePhotoHandoffAirdrop.innerHTML = `<i data-lucide="share"></i>${isBatch ? "AirDrop 到手机" : "AirDrop"}`;
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+async function downloadLivePhotoBatch() {
+  if (!beginExportProgress("handoff", {
+    title: "正在整理批量下载",
+    detail: "系统正在合并 Live Photo 与普通图片…",
+  })) return;
+  els.livePhotoHandoffDownload.disabled = true;
+  els.livePhotoHandoffAirdrop.disabled = true;
+  els.livePhotoHandoffReveal.disabled = true;
+  els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="loader-circle"></i>正在整理并下载…';
+  if (window.lucide) window.lucide.createIcons();
+  try {
+    updateExportProgress("handoff", { title: "正在整理批量发布包", detail: "正在核对实况文件和普通 PNG…", indeterminate: true });
+    const batch = await ensureLivePhotoBatchPrepared();
+    updateExportProgress("handoff", { title: "正在下载批量文件", detail: "发布包已经整理完成，正在传输 ZIP…", indeterminate: true });
+    const response = await fetch(livePhotoApiUrl(batch.archive_url));
+    if (!response.ok) throw new Error("批量压缩包下载失败。");
+    const archiveBlob = await responseBlobWithProgress(response, (loaded, total) => {
+      updateExportProgress("handoff", {
+        title: "正在下载批量文件",
+        detail: `已传输 ${(loaded / 1024 / 1024).toFixed(1)} MB / ${(total / 1024 / 1024).toFixed(1)} MB`,
+        value: (loaded / total) * 100,
+        indeterminate: false,
+      });
+    });
+    updateExportProgress("handoff", { title: "正在保存下载文件", detail: "传输完成，正在交给浏览器保存…", indeterminate: true });
+    await saveBlob(archiveBlob, batch.archive_name || "写了就发-批量导出.zip");
+    els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="check"></i>已直接下载';
+    els.livePhotoHandoffReveal.hidden = false;
+    els.livePhotoHandoffHint.textContent = "下载已完成；点击“在电脑中找到”可打开本次整理好的全部文件。";
+    els.status.textContent = `已下载 ${livePhotoHandoffState.items.length} 页内容，并在电脑中保留可查找的导出文件夹。`;
+    finishExportProgress("handoff", { title: "批量下载完成", detail: `已处理并下载 ${livePhotoHandoffState.items.length} 页内容。` });
+  } catch (error) {
+    els.livePhotoHandoffDownload.disabled = false;
+    els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="download"></i>直接下载';
+    els.status.textContent = error?.message || "批量下载失败。";
+    finishExportProgress("handoff", { success: false, title: "批量下载失败", detail: els.status.textContent });
+  }
+  els.livePhotoHandoffAirdrop.disabled = false;
+  els.livePhotoHandoffReveal.disabled = livePhotoHandoffState.isBatch ? !livePhotoHandoffState.batch : !livePhotoHandoffState.selectedJobId;
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function showLivePhotoHandoff(liveResults, staticEntries = [], staticPackage = null) {
+  resetExportProgress("handoff");
+  livePhotoHandoffState.liveResults = [...liveResults].sort((a, b) => a.pageIndex - b.pageIndex);
+  livePhotoHandoffState.staticPages = staticEntries.map(([index]) => index).sort((a, b) => a - b);
+  livePhotoHandoffState.staticPackage = staticPackage;
+  livePhotoHandoffState.items = [
+    ...livePhotoHandoffState.liveResults.map((result) => ({ type: "live", pageIndex: result.pageIndex, result })),
+    ...livePhotoHandoffState.staticPages.map((pageIndex) => ({ type: "static", pageIndex })),
+  ].sort((a, b) => a.pageIndex - b.pageIndex);
+  livePhotoHandoffState.isBatch = livePhotoHandoffState.items.length > 1;
+  livePhotoHandoffState.batch = null;
+  livePhotoHandoffState.batchPreparing = null;
+  els.livePhotoHandoffThumbnails.innerHTML = "";
+  for (const item of livePhotoHandoffState.items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "live-photo-handoff-thumbnail";
+    button.dataset.handoffPage = String(item.pageIndex);
+    button.append(createLivePhotoHandoffPreviewFrame(item.pageIndex, true));
+    const label = document.createElement("span");
+    label.textContent = `${item.type === "live" ? "实况" : "图片"} ${String(item.pageIndex + 1).padStart(2, "0")}`;
+    button.append(label);
+    button.addEventListener("click", () => selectLivePhotoHandoffPage(item.pageIndex));
+    els.livePhotoHandoffThumbnails.append(button);
+  }
+  const liveCount = livePhotoHandoffState.liveResults.length;
+  const staticCount = livePhotoHandoffState.staticPages.length;
+  const total = livePhotoHandoffState.items.length;
+  if (livePhotoHandoffState.isBatch) {
+    els.livePhotoHandoffTitle.textContent = "批量导出";
+    els.livePhotoHandoffSummary.textContent = "系统已自动识别普通图片和 Live Photo，并按正确格式整理。";
+    els.livePhotoHandoffCount.textContent = `共 ${total} 页 · ${liveCount} 页实况 · ${staticCount} 张图片`;
+    els.livePhotoHandoffDetail.textContent = "实况保留为 .pvt，普通页面保留为高清 PNG。";
+    els.livePhotoHandoffAirdrop.innerHTML = '<i data-lucide="share"></i>AirDrop 到手机';
+    els.livePhotoHandoffDownload.hidden = false;
+    els.livePhotoHandoffDownload.disabled = false;
+    els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="download"></i>直接下载';
+    els.livePhotoHandoffReveal.hidden = true;
+    els.livePhotoHandoffReveal.innerHTML = '<i data-lucide="folder-open"></i>在电脑中找到';
+    els.livePhotoHandoffHint.textContent = "直接下载完成后，可以在电脑中找到本次整理好的全部文件。";
+    els.livePhotoHandoffThumbnails.hidden = false;
+  } else {
+    const result = livePhotoHandoffState.liveResults[0];
+    els.livePhotoHandoffTitle.textContent = "实况导出";
+    els.livePhotoHandoffSummary.textContent = "Live Photo 已生成，可以直接交接到手机。";
+    els.livePhotoHandoffCount.textContent = `第 ${result.pageIndex + 1} 页实况已生成`;
+    els.livePhotoHandoffDetail.textContent = `${result.platform_label} · ${result.duration} 秒 · .pvt + JPG + MOV`;
+    els.livePhotoHandoffAirdrop.innerHTML = '<i data-lucide="share"></i>AirDrop';
+    els.livePhotoHandoffDownload.hidden = true;
+    els.livePhotoHandoffReveal.hidden = false;
+    els.livePhotoHandoffReveal.innerHTML = '<i data-lucide="folder-open"></i>在电脑中显示';
+    els.livePhotoHandoffHint.textContent = "AirDrop 整个 .pvt 到 iPhone，照片会保留“实况”标识。";
+    els.livePhotoHandoffThumbnails.hidden = true;
+  }
+  els.livePhotoHandoffModal.classList.remove("hidden");
+  selectLivePhotoHandoffPage(livePhotoHandoffState.items[0]?.pageIndex ?? -1);
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function exportCanvasAutomatically(canvas, filename, pageIndex) {
+  if (!beginExportProgress("main", {
+    title: liveImageHitsForCanvas(canvas).length ? `正在处理第 ${pageIndex + 1} 页实况` : `正在导出第 ${pageIndex + 1} 张图片`,
+    detail: "正在准备页面素材…",
+  })) return;
+  const hits = liveImageHitsForCanvas(canvas);
+  if (!hits.length) {
+    updateExportProgress("main", { title: `正在导出第 ${pageIndex + 1} 张图片`, detail: "请选择保存位置，随后会生成高清 PNG。" });
+    const saved = await downloadCanvas(canvas, filename);
+    finishExportProgress("main", {
+      success: saved,
+      title: saved ? "图片导出完成" : "图片导出已取消",
+      detail: saved ? filename : "没有写入或下载任何文件。",
+    });
+    return;
+  }
+  els.status.textContent = `正在生成第 ${pageIndex + 1} 页 Live Photo 发布包…`;
+  try {
+    const result = await generateLivePackageForCanvas(canvas, pageIndex, false, false, (_stage, detail) => {
+      updateExportProgress("main", {
+        title: `正在处理第 ${pageIndex + 1} 页实况`,
+        detail,
+        indeterminate: true,
+      });
+    });
+    showLivePhotoHandoff([result]);
+    els.status.textContent = `第 ${pageIndex + 1} 页实况包已生成，可在电脑中显示或直接 AirDrop。`;
+    finishExportProgress("main", {
+      title: "Live Photo 已生成",
+      detail: "导出面板已经打开，可以在电脑中显示或 AirDrop。",
+    });
+  } catch (error) {
+    els.status.textContent = error?.message || "Live Photo 发布包生成失败。";
+    finishExportProgress("main", {
+      success: false,
+      title: "Live Photo 生成失败",
+      detail: error?.message || "请检查本机实况服务后重试。",
+    });
+  }
+}
+
 async function downloadCanvas(canvas, filename) {
   const writable = await chooseSaveTarget(filename, EXPORT_IMAGE_MIME, EXPORT_IMAGE_EXTENSION);
   if (writable === false) {
     els.status.textContent = "已取消下载";
-    return;
+    return false;
   }
   const blob = await canvasToLosslessPngBlob(canvas);
   if (!blob) {
     els.status.textContent = "图片生成失败，请调整内容后再试";
-    return;
+    return false;
   }
   await saveBlob(blob, filename, writable);
   els.status.textContent = writable ? `已保存 ${filename}` : `已交给浏览器下载 ${filename}`;
+  return true;
 }
 
 async function chooseSaveTarget(filename, mimeType, extension) {
@@ -4435,19 +7470,141 @@ async function isZipBlob(blob) {
   return header[0] === 0x50 && header[1] === 0x4b && (header[2] === 0x03 || header[2] === 0x05 || header[2] === 0x07);
 }
 
-async function downloadCanvasesIndividually() {
+async function downloadCanvasesIndividually(onProgress = null) {
   for (const [index, canvas] of state.canvases.entries()) {
     const filename = state.mode === "scroll" ? "layout-scroll-shot.png" : `layout-page-${String(index + 1).padStart(2, "0")}.png`;
-    window.setTimeout(() => downloadCanvas(canvas, filename), index * 180);
+    await downloadCanvas(canvas, filename);
+    onProgress?.(index + 1, state.canvases.length);
   }
+}
+
+async function prepareStaticCanvasSubset(entries, onProgress = null) {
+  if (!entries.length) return null;
+  const files = [];
+  for (const [index, canvas] of entries) {
+    const blob = await canvasToLosslessPngBlob(canvas);
+    if (!blob) throw new Error(`第 ${index + 1} 页 PNG 生成失败。`);
+    files.push({ blob, filename: `layout-page-${String(index + 1).padStart(2, "0")}.png`, pageIndex: index });
+    onProgress?.({ type: "page", pageIndex: index, completed: files.length, total: entries.length });
+  }
+  if (!window.JSZip) {
+    return { type: "files", files, count: entries.length };
+  }
+  const zip = new window.JSZip();
+  for (const file of files) {
+    zip.file(file.filename, file.blob);
+  }
+  onProgress?.({ type: "archive", completed: files.length, total: entries.length });
+  const blob = await zip.generateAsync({
+    type: "blob",
+    compression: EXPORT_ZIP_COMPRESSION,
+    mimeType: "application/zip",
+  });
+  if (!(await isZipBlob(blob))) throw new Error("普通图片压缩包生成异常。");
+  return { type: "zip", blob, filename: "graphic-layout-static-pages.zip", files, count: entries.length };
 }
 
 async function downloadAll() {
   if (!state.canvases.length) return;
+  if (!beginExportProgress("main", {
+    title: "正在准备批量导出",
+    detail: "正在识别普通图片和 Live Photo…",
+  })) return;
+
+  const entries = state.canvases.map((canvas, index) => [index, canvas]);
+  const liveEntries = entries.filter(([, canvas]) => liveImageHitsForCanvas(canvas).length);
+  if (liveEntries.length) {
+    if (state.mode === "scroll") {
+      els.status.textContent = "实况素材暂不支持滑动截图，请切回自动分页后导出。";
+      finishExportProgress("main", { success: false, title: "无法批量导出", detail: els.status.textContent });
+      return;
+    }
+    updateExportProgress("main", { title: "正在检查实况服务", detail: "正在确认本机可以生成 Live Photo…", indeterminate: true });
+    if (!(await ensureLivePhotoServiceReady())) {
+      els.status.textContent = "本机实况服务没有运行。请双击项目里的「启动写了就发.command」，保留终端窗口后再试。";
+      finishExportProgress("main", { success: false, title: "实况服务尚未运行", detail: els.status.textContent });
+      return;
+    }
+    const invalid = liveEntries.find(([, canvas]) => liveImageHitsForCanvas(canvas).length > 1);
+    if (invalid) {
+      els.status.textContent = `第 ${invalid[0] + 1} 页包含多段实况，稳妥首版请把它们拆到不同页面。`;
+      finishExportProgress("main", { success: false, title: "需要先调整实况分页", detail: els.status.textContent });
+      return;
+    }
+    const staticEntries = entries.filter(([, canvas]) => !liveImageHitsForCanvas(canvas).length);
+    try {
+      const liveResults = [];
+      for (const [position, [index, canvas]] of liveEntries.entries()) {
+        els.status.textContent = `正在生成实况发布包 ${position + 1}/${liveEntries.length}…`;
+        updateExportProgress("main", {
+          title: `正在生成实况 ${position + 1}/${liveEntries.length}`,
+          detail: `正在处理第 ${index + 1} 页的 Live Photo 发布包…`,
+          current: position,
+          total: entries.length,
+          indeterminate: false,
+        });
+        liveResults.push(await generateLivePackageForCanvas(canvas, index, false, true, (_stage, detail) => {
+          updateExportProgress("main", {
+            title: `正在生成实况 ${position + 1}/${liveEntries.length}`,
+            detail,
+            current: position,
+            total: entries.length,
+            indeterminate: false,
+          });
+        }));
+        updateExportProgress("main", {
+          title: `已生成实况 ${position + 1}/${liveEntries.length}`,
+          detail: `第 ${index + 1} 页实况已经处理完成。`,
+          current: position + 1,
+          total: entries.length,
+          indeterminate: false,
+        });
+      }
+      els.status.textContent = staticEntries.length ? "正在单独打包普通 PNG…" : "实况发布包已生成。";
+      const staticPackage = await prepareStaticCanvasSubset(staticEntries, (progress) => {
+        const completed = liveEntries.length + progress.completed;
+        if (progress.type === "archive") {
+          updateExportProgress("main", {
+            title: "正在整理批量发布包",
+            detail: "全部页面已经生成，正在整理下载文件…",
+            indeterminate: true,
+          });
+          return;
+        }
+        updateExportProgress("main", {
+          title: `正在生成普通图片 ${progress.completed}/${progress.total}`,
+          detail: `第 ${progress.pageIndex + 1} 页高清 PNG 已处理。`,
+          current: completed,
+          total: entries.length,
+          indeterminate: false,
+        });
+      });
+      updateExportProgress("main", { title: "正在打开导出面板", detail: "所有页面均已处理完成。", indeterminate: true });
+      showLivePhotoHandoff(liveResults, staticEntries, staticPackage);
+      els.status.textContent = `已分流完成：${liveEntries.length} 个 Live Photo${staticEntries.length ? `，${staticEntries.length} 张普通 PNG` : ""}。`;
+      finishExportProgress("main", {
+        title: "批量内容已处理完成",
+        detail: `已生成 ${liveEntries.length} 个 Live Photo${staticEntries.length ? `和 ${staticEntries.length} 张普通图片` : ""}。`,
+      });
+    } catch (error) {
+      els.status.textContent = error?.message || "批量导出失败。";
+      finishExportProgress("main", { success: false, title: "批量导出失败", detail: els.status.textContent });
+    }
+    return;
+  }
 
   if (!window.JSZip) {
     els.status.textContent = "当前环境不支持打包，将逐张下载";
-    await downloadCanvasesIndividually();
+    await downloadCanvasesIndividually((current, total) => {
+      updateExportProgress("main", {
+        title: `正在逐张下载 ${current}/${total}`,
+        detail: `已处理 ${current} 张图片。`,
+        current,
+        total,
+        indeterminate: false,
+      });
+    });
+    finishExportProgress("main", { title: "图片已逐张处理", detail: `共处理 ${state.canvases.length} 张图片。` });
     return;
   }
 
@@ -4456,14 +7613,30 @@ async function downloadAll() {
   try {
     const zip = new window.JSZip();
     for (const [index, canvas] of state.canvases.entries()) {
+      updateExportProgress("main", {
+        title: `正在生成高清图片 ${index + 1}/${state.canvases.length}`,
+        detail: `正在处理第 ${index + 1} 页…`,
+        current: index,
+        total: state.canvases.length,
+        indeterminate: false,
+      });
       const blob = await canvasToLosslessPngBlob(canvas);
       if (!blob) {
         els.status.textContent = "图片生成失败，请调整内容后再试";
+        finishExportProgress("main", { success: false, title: "图片生成失败", detail: els.status.textContent });
         return;
       }
       const filename = state.mode === "scroll" ? "layout-scroll-shot.png" : `layout-page-${String(index + 1).padStart(2, "0")}.png`;
       zip.file(filename, blob);
+      updateExportProgress("main", {
+        title: `已生成高清图片 ${index + 1}/${state.canvases.length}`,
+        detail: `第 ${index + 1} 页已经处理完成。`,
+        current: index + 1,
+        total: state.canvases.length,
+        indeterminate: false,
+      });
     }
+    updateExportProgress("main", { title: "正在压缩下载文件", detail: "所有图片已经生成，正在创建 ZIP 压缩包…", indeterminate: true });
     const blob = await zip.generateAsync({
       type: "blob",
       compression: EXPORT_ZIP_COMPRESSION,
@@ -4473,15 +7646,19 @@ async function downloadAll() {
     if (!(await isZipBlob(blob))) {
       els.status.textContent = "打包文件异常，已改为逐张下载";
       await downloadCanvasesIndividually();
+      finishExportProgress("main", { success: false, title: "ZIP 打包异常", detail: "已改为逐张下载图片。" });
       return;
     }
 
+    updateExportProgress("main", { title: "正在保存批量文件", detail: "ZIP 已生成，正在交给浏览器下载…", indeterminate: true });
     await saveBlob(blob, zipFilename);
     els.status.textContent = state.mode === "scroll" ? "已下载当前滑动截图压缩包" : `已下载 ${state.canvases.length} 张图片压缩包`;
+    finishExportProgress("main", { title: "批量下载完成", detail: els.status.textContent });
   } catch (error) {
     console.error(error);
     els.status.textContent = "打包失败，已改为逐张下载";
     await downloadCanvasesIndividually();
+    finishExportProgress("main", { success: false, title: "批量打包失败", detail: "已尝试改为逐张下载图片。" });
   }
 }
 
@@ -4611,6 +7788,7 @@ function bindEvents() {
     }
   });
   els.contentImage.addEventListener("change", handleContentImage);
+  els.contentVideo.addEventListener("change", handleLivePhotoVideo);
   els.connectObsidianVault?.addEventListener("click", connectObsidianVault);
   els.syncObsidianVault?.addEventListener("click", syncCurrentNoteToObsidian);
   els.obsidianVaultFolder?.addEventListener("change", handleObsidianVaultFolder);
@@ -4632,11 +7810,102 @@ function bindEvents() {
   els.wechatModal.addEventListener("click", (event) => {
     if (event.target === els.wechatModal) closeWechatModal();
   });
+  els.livePhotoModal.addEventListener("click", (event) => {
+    if (event.target === els.livePhotoModal) closeLivePhotoModal();
+  });
+  els.accountModal.addEventListener("click", (event) => {
+    if (event.target === els.accountModal) closeAccountModal();
+  });
+  els.welcomeBackModal?.addEventListener("click", (event) => {
+    if (event.target === els.welcomeBackModal) closeWelcomeBack();
+  });
+  els.livePhotoHandoffModal.addEventListener("click", (event) => {
+    if (event.target === els.livePhotoHandoffModal) closeLivePhotoHandoff();
+  });
   els.wechatClose.addEventListener("click", closeWechatModal);
   els.wechatCancel.addEventListener("click", closeWechatModal);
   els.wechatTitle.addEventListener("input", updateWechatConfirmState);
   els.wechatCover.addEventListener("change", handleWechatCover);
   els.wechatConfirm.addEventListener("click", syncArticleToWechatDraft);
+  els.livePhotoClose.addEventListener("click", closeLivePhotoModal);
+  els.livePhotoCancel.addEventListener("click", closeLivePhotoModal);
+  els.livePhotoHandoffClose.addEventListener("click", closeLivePhotoHandoff);
+  els.livePhotoHandoffReveal.addEventListener("click", revealLivePhotoHandoff);
+  els.livePhotoHandoffAirdrop.addEventListener("click", airdropLivePhotoHandoff);
+  els.livePhotoHandoffDownload.addEventListener("click", downloadLivePhotoBatch);
+  els.onboardingSkip.addEventListener("click", finishOnboarding);
+  els.onboardingNext.addEventListener("click", advanceOnboarding);
+  els.welcomeBackClose?.addEventListener("click", () => closeWelcomeBack());
+  els.welcomeBackDirect?.addEventListener("click", () => closeWelcomeBack());
+  els.welcomeBackTour?.addEventListener("click", () => closeWelcomeBack({ startTour: true }));
+  els.account.addEventListener("click", toggleAccountMenu);
+  els.accountMenuLogin?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openAccountModal();
+  });
+  els.accountMenuManage?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openAccountModal();
+  });
+  els.accountMenuSignOut?.addEventListener("click", signOutAccount);
+  els.accountMenuWhatsNew?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeAccountMenu();
+    startWhatsNewTour();
+  });
+  els.chooseGuest?.addEventListener("click", () => void chooseGuestMode());
+  els.chooseLogin?.addEventListener("click", chooseLoginMode);
+  els.accountClose.addEventListener("click", closeAccountModal);
+  els.accountAuthForm.addEventListener("submit", submitAccountAuth);
+  els.accountSignInMode.addEventListener("click", () => setAccountAuthMode("signin"));
+  els.accountSignUp.addEventListener("click", () => setAccountAuthMode("signup"));
+  els.accountPasswordToggle?.addEventListener("click", () => {
+    setAccountPasswordVisible(els.accountPassword.type === "password");
+    els.accountPassword.focus();
+  });
+  els.accountResendConfirmation.addEventListener("click", resendAccountConfirmation);
+  els.accountSignOut.addEventListener("click", signOutAccount);
+  els.accountImportLocal.addEventListener("click", importLocalProjectsToAccount);
+  document.addEventListener("pointerdown", (event) => {
+    if (accountMenuIsOpen() && !els.accountDock?.contains(event.target)) closeAccountMenu();
+  });
+  window.addEventListener("resize", positionOnboardingStep);
+  window.addEventListener("scroll", positionOnboardingStep, true);
+  els.livePhotoForm.addEventListener("submit", applyLivePhotoAsset);
+  els.livePhotoVideoInput.addEventListener("change", handleLivePhotoVideo);
+  els.livePhotoVideo.addEventListener("loadedmetadata", handleLivePhotoMetadata);
+  els.livePhotoVideo.addEventListener("timeupdate", keepLivePhotoPreviewInRange);
+  els.livePhotoVideo.addEventListener("play", animateLivePhotoCropper);
+  els.livePhotoVideo.addEventListener("seeked", drawLivePhotoCropper);
+  els.livePhotoCropCanvas.addEventListener("pointerdown", startLivePhotoCropDrag);
+  els.livePhotoCropCanvas.addEventListener("pointermove", moveLivePhotoCropDrag);
+  els.livePhotoCropCanvas.addEventListener("pointerup", stopLivePhotoCropDrag);
+  els.livePhotoCropCanvas.addEventListener("pointercancel", stopLivePhotoCropDrag);
+  els.livePhotoPlatformButtons.forEach((button) => {
+    button.addEventListener("click", () => setLivePhotoPlatform(button.dataset.livePlatform));
+  });
+  els.livePhotoRatioButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      setLivePhotoAspect(button.dataset.liveRatio);
+      updateLivePhotoPreview();
+    });
+  });
+  els.livePhotoCustomRatio.addEventListener("input", () => {
+    livePhotoState.customAspect = clamp(finiteNumber(els.livePhotoCustomRatio.value, 0.75), 0.4, 2.5);
+    els.livePhotoCustomRatioOutput.value = livePhotoState.customAspect.toFixed(2);
+    if (livePhotoState.aspect === "free") {
+      setLivePhotoAspect("free");
+      updateLivePhotoPreview();
+    }
+  });
+  els.livePhotoStart.addEventListener("input", () => {
+    normalizeLivePhotoTiming();
+    seekLivePhotoPreview(false);
+  });
+  els.livePhotoCover.addEventListener("input", () => seekLivePhotoPreview(true));
   els.ratioButtons.forEach((button) => {
     button.addEventListener("click", () => setCropAspect(button.dataset.ratio));
   });
@@ -4646,6 +7915,11 @@ function bindEvents() {
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.cropModal.classList.contains("hidden")) closeCropper();
     if (event.key === "Escape" && !els.wechatModal.classList.contains("hidden")) closeWechatModal();
+    if (event.key === "Escape" && !els.livePhotoModal.classList.contains("hidden")) closeLivePhotoModal();
+    if (event.key === "Escape" && !els.livePhotoHandoffModal.classList.contains("hidden")) closeLivePhotoHandoff();
+    if (event.key === "Escape" && !els.accountModal.classList.contains("hidden")) closeAccountModal();
+    if (event.key === "Escape" && welcomeBackIsOpen()) closeWelcomeBack();
+    if (event.key === "Escape" && accountMenuIsOpen()) closeAccountMenu();
   });
   els.findNext.addEventListener("click", findNext);
   els.replaceOne.addEventListener("click", replaceCurrent);
@@ -4655,7 +7929,10 @@ function bindEvents() {
   els.historyFilterButtons.forEach((button) => {
     button.addEventListener("click", () => setHistoryFilter(button.dataset.historyFilter));
   });
-  els.newProject.addEventListener("click", createNewProject);
+  els.newProject.addEventListener("click", async () => {
+    await createNewProject();
+    if (onboardingMode === "first-run" && onboardingIsOpen() && onboardingStepIndex === 0) showOnboardingStep(1);
+  });
   els.convertMode.addEventListener("click", convertCurrentMode);
   els.headerModeToggle.addEventListener("click", toggleHeaderMode);
   els.themeToggle.addEventListener("click", toggleUiTheme);
@@ -4665,6 +7942,7 @@ function bindEvents() {
   els.syncWechat.addEventListener("click", openWechatModal);
 }
 
+if (cloudApi()?.configured) document.body.classList.add("cloud-session-checking");
 loadPanelLayout();
 applyPanelLayout();
 const initialFormState = loadState();
@@ -4673,8 +7951,8 @@ syncGuideReadOnlyMode();
 resetTextHistory();
 updateProjectHistory();
 bindEvents();
-render();
 void loadObsidianVaultConnection();
+void initializeCloudAccount();
 if (window.lucide) {
   window.lucide.createIcons();
 }

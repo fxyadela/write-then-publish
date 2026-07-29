@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>写了就发 | Write Then Publish</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317202f'/%3E%3Cpath d='M18 17h28v7H18zm0 13h20v6H18zm0 12h28v6H18z' fill='%23fff'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="src/styles.css?v=20260723-wechat-sync" />
+    <link rel="stylesheet" href="src/styles.css?v=20260730-auth-split-sheet" />
   </head>
-  <body>
+  <body class="entry-choice-pending">
     <main class="workspace">
       <aside id="historySidebar" class="history-sidebar" aria-label="历史记录">
         <button id="historyToggleBtn" class="history-tab" type="button" title="打开历史记录" aria-label="打开历史记录">
@@ -38,7 +38,7 @@
             <span class="brand-english">Write Then Publish</span>
             <p id="pageCount">0 张图片</p>
           </div>
-          <div class="mode-switch" aria-label="切换工作区">
+          <div id="appModeSwitch" class="mode-switch" aria-label="切换工作区">
             <button type="button" class="active" data-app-mode="cards">图文卡片</button>
             <button type="button" data-app-mode="article">长文</button>
           </div>
@@ -83,9 +83,15 @@
               <i data-lucide="image-plus"></i>
               <input id="contentImageInput" type="file" accept="image/*" multiple />
             </label>
+            <label id="livePhotoToolbarBtn" class="tool-button file-tool feature-anchor" title="插入实况图片" aria-label="插入实况图片">
+              <i data-lucide="video"></i>
+              <span class="feature-new-badge" data-feature-badge="live" aria-label="新功能">新</span>
+              <input id="contentVideoInput" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" />
+            </label>
             <details id="obsidianImportMenu" class="tool-menu obsidian-import-menu">
-              <summary class="tool-button" title="Obsidian 双向同步" aria-label="Obsidian 双向同步">
+              <summary class="tool-button feature-anchor" title="Obsidian 双向同步" aria-label="Obsidian 双向同步">
                 <i data-lucide="clipboard-paste"></i>
+                <span class="feature-new-badge" data-feature-badge="obsidian" aria-label="新功能">新</span>
               </summary>
               <div class="tool-popover obsidian-import-popover">
                 <div class="obsidian-import-heading">
@@ -273,7 +279,7 @@
       </aside>
       <button class="panel-resizer" data-panel-resize="editor" type="button" aria-label="拖动调整编辑区宽度"></button>
 
-      <section class="preview-panel" aria-label="图片预览">
+      <section id="previewPanel" class="preview-panel" aria-label="图片预览">
         <div class="preview-topbar">
           <div>
             <h2>预览与下载</h2>
@@ -301,6 +307,17 @@
               同步草稿箱
             </button>
           </div>
+          <section id="exportProgress" class="export-progress" aria-live="polite" hidden>
+            <span class="export-progress-icon" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
+            <div class="export-progress-copy">
+              <strong id="exportProgressTitle">正在准备导出</strong>
+              <span id="exportProgressDetail">系统正在处理，请不要关闭页面。</span>
+            </div>
+            <span id="exportProgressMeta" class="export-progress-meta">已用时 0 秒</span>
+            <div id="exportProgressBar" class="export-progress-track" role="progressbar" aria-label="导出进度" aria-valuetext="正在处理">
+              <span id="exportProgressFill" class="export-progress-fill"></span>
+            </div>
+          </section>
         </div>
         <div class="preview-body">
           <div id="pages" class="pages"></div>
@@ -346,7 +363,215 @@
       </section>
     </main>
 
-    <footer class="site-credit" aria-label="作者署名">Made by 捏捏番茄</footer>
+    <footer class="site-footer">
+      <div id="accountDock" class="account-dock">
+        <div id="accountMenu" class="account-menu hidden" role="dialog" aria-label="账号菜单">
+          <div class="account-menu-summary">
+            <span class="account-menu-avatar"><i data-lucide="circle-user-round"></i></span>
+            <div>
+              <strong id="accountMenuTitle">游客模式</strong>
+              <span id="accountMenuDescription">草稿仅临时保存在当前标签页</span>
+            </div>
+          </div>
+          <div class="account-menu-actions">
+            <button id="accountMenuLoginBtn" class="primary-button" type="button">
+              <i data-lucide="log-in"></i>登录并同步
+            </button>
+            <button id="accountMenuManageBtn" class="secondary-button" type="button" hidden>
+              <i data-lucide="settings"></i>账号与云同步
+            </button>
+            <button id="accountMenuWhatsNewBtn" class="account-menu-text-button" type="button">
+              <i data-lucide="sparkles"></i>本次更新
+              <span class="account-menu-new-dot" data-feature-badge="updates" aria-label="有新功能"></span>
+            </button>
+            <button id="accountMenuSignOutBtn" class="account-menu-text-button danger" type="button" hidden>
+              <i data-lucide="log-out"></i>退出登录
+            </button>
+          </div>
+          <p id="accountMenuHint" class="account-menu-hint">继续使用游客模式无需操作，点击菜单外即可关闭。</p>
+        </div>
+        <button class="account-dock-button feature-anchor" id="accountBtn" type="button" title="账号与登录" aria-label="打开账号菜单" aria-controls="accountMenu" aria-expanded="false">
+          <span class="account-status-dot" aria-hidden="true"></span>
+          <i data-lucide="circle-user-round"></i>
+          <span id="accountButtonLabel">账号</span>
+          <span class="feature-new-badge compact" data-feature-badge="account" aria-label="新功能">新</span>
+          <i class="account-dock-chevron" data-lucide="chevron-up"></i>
+        </button>
+      </div>
+      <span class="site-credit" aria-label="作者署名">Made by 捏捏番茄</span>
+    </footer>
+
+    <div id="entryChoiceModal" class="entry-choice-modal" role="dialog" aria-modal="true" aria-labelledby="entryChoiceTitle">
+      <section class="entry-choice-card">
+        <div id="entryChoiceLoading" class="entry-choice-loading" aria-live="polite">
+          <span class="entry-choice-spinner" aria-hidden="true"></span>
+          <strong>正在检查登录状态…</strong>
+          <p>登录过的用户会直接进入自己的工作区。</p>
+        </div>
+        <div id="entryChoiceContent" class="entry-choice-content" hidden>
+          <header class="entry-choice-head">
+            <span class="entry-choice-brand">写了就发</span>
+            <h2 id="entryChoiceTitle">这次想怎么使用？</h2>
+            <p>临时排版可以直接进入；需要长期保存和跨设备使用时再登录。</p>
+          </header>
+          <div id="entryChoiceNotice" class="entry-choice-notice" hidden></div>
+          <div class="entry-choice-options">
+            <article class="entry-choice-option guest-option">
+              <span class="entry-choice-option-icon"><i data-lucide="zap"></i></span>
+              <div>
+                <span class="entry-choice-kicker">临时使用</span>
+                <h3>游客模式</h3>
+                <p>不注册，直接排版和导出。内容只留在当前浏览器标签页，关闭后不保证保留。</p>
+              </div>
+              <ul>
+                <li><i data-lucide="check"></i>立即开始，不上传云端</li>
+                <li><i data-lucide="clock-3"></i>适合一次性、紧急排版</li>
+              </ul>
+              <button id="chooseGuestBtn" class="secondary-button entry-choice-button" type="button">
+                以游客身份进入<i data-lucide="arrow-right"></i>
+              </button>
+            </article>
+            <article class="entry-choice-option account-option">
+              <span class="entry-choice-recommended">长期使用推荐</span>
+              <span class="entry-choice-option-icon"><i data-lucide="cloud-check"></i></span>
+              <div>
+                <span class="entry-choice-kicker">长期保存</span>
+                <h3>登录工作区</h3>
+                <p>按账号保存头像、昵称、图文和素材，换设备登录后仍能继续编辑。</p>
+              </div>
+              <ul>
+                <li><i data-lucide="check"></i>自动同步到 Supabase</li>
+                <li><i data-lucide="check"></i>不同账号的数据相互隔离</li>
+              </ul>
+              <span id="entryChoiceReturningHint" class="entry-choice-returning" hidden></span>
+              <button id="chooseLoginBtn" class="primary-button entry-choice-button" type="button">
+                登录并长期保存<i data-lucide="arrow-right"></i>
+              </button>
+            </article>
+          </div>
+          <p class="entry-choice-footnote">之后也可以通过右下角的账号入口随时登录或退出。</p>
+        </div>
+      </section>
+    </div>
+
+    <div id="welcomeBackModal" class="welcome-back-modal hidden" role="dialog" aria-modal="true" aria-labelledby="welcomeBackTitle">
+      <section class="welcome-back-card">
+        <button id="welcomeBackCloseBtn" class="icon-button ghost welcome-back-close" type="button" title="关闭" aria-label="直接进入工作区">
+          <i data-lucide="x"></i>
+        </button>
+        <header class="welcome-back-head">
+          <h2 id="welcomeBackTitle">欢迎回来，操作方式没有变</h2>
+          <p>你仍然可以像以前一样直接排版和下载。</p>
+        </header>
+        <div class="welcome-back-features" aria-label="本次新增功能">
+          <article>
+            <span class="welcome-back-feature-icon"><i data-lucide="circle-user-round"></i></span>
+            <div><strong>账户同步</strong><p>登录后跨设备保存头像、昵称和草稿</p></div>
+            <span id="welcomeBackAccountState" class="welcome-back-feature-state">可选开启</span>
+          </article>
+          <article>
+            <span class="welcome-back-feature-icon"><i data-lucide="video"></i></span>
+            <div><strong>实况图片</strong><p>视频可制作并批量导出 Live Photo</p></div>
+            <span class="welcome-back-feature-state">新功能</span>
+          </article>
+          <article>
+            <span class="welcome-back-feature-icon"><i data-lucide="box"></i></span>
+            <div><strong>Obsidian</strong><p>连接仓库后读取和同步 Markdown</p></div>
+            <span class="welcome-back-feature-state">新功能</span>
+          </article>
+        </div>
+        <div class="welcome-back-actions">
+          <button id="welcomeBackDirectBtn" class="primary-button" type="button">直接进入工作区</button>
+          <button id="welcomeBackTourBtn" class="secondary-button" type="button">用 30 秒看看新功能</button>
+        </div>
+        <p class="welcome-back-footnote">本欢迎页在当前版本仅显示一次，之后可从右下角“本次更新”重新查看。</p>
+      </section>
+    </div>
+
+    <div id="accountModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle">
+      <div class="modal-card account-modal-card">
+        <button id="accountCloseBtn" class="icon-button ghost account-modal-close" type="button" title="关闭" aria-label="关闭账号面板">
+          <i data-lucide="x"></i>
+        </button>
+
+        <aside class="account-value-pane">
+          <span class="account-value-brand">写了就发</span>
+          <h3 id="accountModalTitle">登录后，<br />继续上次的创作</h3>
+          <div class="account-benefits" aria-label="登录后可用功能">
+            <div class="account-benefit-row">
+              <span class="account-benefit-icon"><i data-lucide="user-round"></i></span>
+              <div><strong>同步头像与昵称</strong><span>在所有设备上保持一致</span></div>
+            </div>
+            <div class="account-benefit-row">
+              <span class="account-benefit-icon"><i data-lucide="file-text"></i></span>
+              <div><strong>保存图文草稿</strong><span>自动保存，不再丢失</span></div>
+            </div>
+            <div class="account-benefit-row">
+              <span class="account-benefit-icon"><i data-lucide="laptop"></i></span>
+              <div><strong>跨设备继续编辑</strong><span>随时随地继续你的创作</span></div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="account-modal-body">
+          <div id="accountConfigNotice" class="account-notice" hidden></div>
+
+          <form id="accountAuthForm" class="account-auth-form">
+            <div class="account-auth-mode" role="tablist" aria-label="选择账号操作">
+              <button id="accountSignInModeBtn" class="is-active" type="button" role="tab" aria-selected="true">
+                登录
+              </button>
+              <button id="accountSignUpBtn" type="button" role="tab" aria-selected="false">
+                注册
+              </button>
+            </div>
+            <label>
+              <span>邮箱</span>
+              <input id="accountEmailInput" type="email" autocomplete="email" placeholder="name@example.com" required />
+            </label>
+            <label>
+              <span>密码</span>
+              <span class="account-input-wrap">
+                <input id="accountPasswordInput" type="password" autocomplete="current-password" minlength="8" placeholder="至少 8 位" required />
+                <button id="accountPasswordToggleBtn" class="account-password-toggle" type="button" title="显示密码" aria-label="显示密码">
+                  <i data-lucide="eye"></i>
+                </button>
+              </span>
+            </label>
+            <label id="accountPasswordConfirmField" hidden>
+              <span>再次输入密码</span>
+              <input id="accountPasswordConfirmInput" type="password" autocomplete="new-password" minlength="8" placeholder="再次输入相同密码" />
+            </label>
+            <div class="account-auth-actions">
+              <button id="accountSignInBtn" class="primary-button" type="submit">登录</button>
+            </div>
+            <button id="accountResendConfirmationBtn" class="account-resend-confirmation" type="button" hidden>
+              没有收到确认邮件？<span>重新发送</span>
+            </button>
+          </form>
+
+          <section id="accountSignedIn" class="account-signed-in" hidden>
+            <div class="account-user-card">
+              <img id="accountAvatar" alt="账号头像" />
+              <div>
+                <strong id="accountDisplayName">已登录</strong>
+                <span id="accountEmail"></span>
+              </div>
+              <span class="account-online"><i data-lucide="cloud-check"></i>已连接</span>
+            </div>
+            <div class="account-sync-card">
+              <strong>云端图文</strong>
+              <span id="accountSyncStatus">正在读取账号数据…</span>
+            </div>
+            <button id="accountImportLocalBtn" class="secondary-button account-wide-button" type="button">
+              <i data-lucide="cloud-upload"></i>
+              把游客 / 旧本机草稿导入此账号
+            </button>
+            <button id="accountSignOutBtn" class="ghost-button account-wide-button" type="button">退出登录</button>
+          </section>
+        </section>
+      </div>
+    </div>
 
     <div id="cropModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cropTitle">
       <div class="modal-card">
@@ -438,9 +663,164 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <div id="livePhotoModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="livePhotoModalTitle">
+      <div class="modal-card live-photo-modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="livePhotoModalTitle">插入实况图片</h3>
+            <p>先把视频作为内容素材插入图文；右侧下载时会自动识别并生成发布包。</p>
+          </div>
+          <button id="livePhotoCloseBtn" class="icon-button ghost" type="button" title="关闭" aria-label="关闭实况照片制作">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="live-photo-layout">
+          <section class="live-photo-preview-column" aria-label="实况照片预览">
+            <div id="livePhotoPreview" class="live-photo-preview">
+              <video id="livePhotoVideo" muted loop playsinline></video>
+              <canvas id="livePhotoCropCanvas" width="720" height="520" aria-label="拖动或缩放实况画面裁剪框"></canvas>
+              <div id="livePhotoEmpty" class="live-photo-empty">
+                <i data-lucide="video"></i>
+                <strong>选择一段视频</strong>
+                <span>选择比例后可直接拖动和缩放裁剪框</span>
+              </div>
+              <span class="live-photo-badge"><i data-lucide="aperture"></i>LIVE</span>
+            </div>
+            <p class="live-photo-preview-note">拖动白色裁剪框调整位置，拖动四角缩放；只裁切画面，不拉伸视频。</p>
+          </section>
+
+          <form id="livePhotoForm" class="live-photo-form">
+            <div class="live-photo-section">
+              <div class="live-photo-section-title">
+                <strong>视频素材</strong>
+                <span id="livePhotoVideoMeta">支持 MP4、MOV、WebM，单个文件不超过 350MB</span>
+              </div>
+              <label class="secondary-button live-photo-file-button">
+                <i data-lucide="video"></i>
+                <span id="livePhotoFileLabel">选择视频</span>
+                <input id="livePhotoVideoInput" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" />
+              </label>
+            </div>
+
+            <div class="live-photo-section">
+              <div class="live-photo-section-title">
+                <strong>发布平台</strong>
+                <span id="livePhotoDurationHint">小红书版本固定生成 5 秒</span>
+              </div>
+              <div class="live-photo-platforms" role="group" aria-label="发布平台">
+                <button class="active" type="button" data-live-platform="xhs">小红书 · 5 秒</button>
+                <button type="button" data-live-platform="wechat">公众号 · 3 秒</button>
+              </div>
+            </div>
+
+            <div class="live-photo-section">
+              <div class="live-photo-section-title">
+                <strong>画面比例</strong>
+                <span>只裁切画面，不拉伸视频</span>
+              </div>
+              <div class="ratio-grid live-photo-ratio-grid" role="group" aria-label="实况画面比例">
+                <button class="ratio-button" type="button" data-live-ratio="free">自由</button>
+                <button class="ratio-button active" type="button" data-live-ratio="original">原视频</button>
+                <button class="ratio-button" type="button" data-live-ratio="1">1:1</button>
+                <button class="ratio-button" type="button" data-live-ratio="1.333333">4:3</button>
+                <button class="ratio-button" type="button" data-live-ratio="1.777778">16:9</button>
+                <button class="ratio-button" type="button" data-live-ratio="0.75">3:4</button>
+                <button class="ratio-button" type="button" data-live-ratio="0.5625">9:16</button>
+              </div>
+              <label id="livePhotoCustomRatioRow" class="live-photo-custom-ratio" hidden>
+                <span>自由宽高比 <output id="livePhotoCustomRatioOutput">0.75</output></span>
+                <input id="livePhotoCustomRatioInput" type="range" min="0.4" max="2.5" step="0.01" value="0.75" />
+              </label>
+            </div>
+
+            <input id="livePhotoStartInput" type="hidden" value="0" />
+            <input id="livePhotoCoverInput" type="hidden" value="0.2" />
+
+            <div id="livePhotoServiceStatus" class="wechat-service-status">实况设置会跟随这段视频保存，右侧下载时自动应用。</div>
+            <div class="live-photo-actions">
+              <button id="livePhotoCancelBtn" class="secondary-button" type="button">取消</button>
+              <button id="livePhotoGenerateBtn" class="primary-button" type="submit" disabled>
+                <i data-lucide="image-plus"></i>
+                插入图文
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div id="livePhotoHandoffModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="livePhotoHandoffTitle">
+      <div class="modal-card live-photo-handoff-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="livePhotoHandoffTitle">实况导出</h3>
+            <p id="livePhotoHandoffSummary">Live Photo 已生成，可以直接交接到手机。</p>
+          </div>
+          <button id="livePhotoHandoffCloseBtn" class="icon-button ghost" type="button" title="关闭" aria-label="关闭导出结果">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="live-photo-handoff-layout">
+          <section class="live-photo-handoff-preview" aria-label="导出效果预览">
+            <div id="livePhotoHandoffPreview" class="live-photo-handoff-preview-main"></div>
+            <div id="livePhotoHandoffThumbnails" class="live-photo-handoff-thumbnails" aria-label="全部导出页面"></div>
+          </section>
+          <section class="live-photo-handoff-results" aria-label="导出操作">
+            <div class="live-photo-handoff-summary-block">
+              <strong id="livePhotoHandoffCount">1 页实况已生成</strong>
+              <span id="livePhotoHandoffDetail">实况将以 Live Photo 格式导出，完整保留视频内容。</span>
+            </div>
+            <section id="livePhotoHandoffProgress" class="export-progress export-progress-compact" aria-live="polite" hidden>
+              <span class="export-progress-icon" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
+              <div class="export-progress-copy">
+                <strong id="livePhotoHandoffProgressTitle">正在整理下载文件</strong>
+                <span id="livePhotoHandoffProgressDetail">请稍候，完成后会自动开始下载。</span>
+              </div>
+              <span id="livePhotoHandoffProgressMeta" class="export-progress-meta">已用时 0 秒</span>
+              <div id="livePhotoHandoffProgressBar" class="export-progress-track" role="progressbar" aria-label="批量下载进度" aria-valuetext="正在处理">
+                <span id="livePhotoHandoffProgressFill" class="export-progress-fill"></span>
+              </div>
+            </section>
+            <div class="live-photo-handoff-primary-actions">
+              <button id="livePhotoHandoffAirdropBtn" class="primary-button" type="button">
+                <i data-lucide="share"></i>AirDrop 到手机
+              </button>
+              <button id="livePhotoHandoffDownloadBtn" class="secondary-button" type="button" hidden>
+                <i data-lucide="download"></i>直接下载
+              </button>
+              <button id="livePhotoHandoffRevealBtn" class="secondary-button" type="button">
+                <i data-lucide="folder-open"></i>在电脑中显示
+              </button>
+            </div>
+            <p id="livePhotoHandoffHint" class="live-photo-handoff-hint">AirDrop 整个 .pvt 到 iPhone，照片会保留“实况”标识。</p>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="onboardingTour" class="onboarding-tour hidden" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+      <div id="onboardingFocus" class="onboarding-focus" aria-hidden="true"></div>
+      <section id="onboardingTooltip" class="onboarding-tooltip">
+        <span id="onboardingArrow" class="onboarding-arrow" aria-hidden="true"></span>
+        <h3 id="onboardingTitle">先创建自己的内容</h3>
+        <p id="onboardingBody">左侧两个内容是示例模板。点击这里，新建你的图文卡片或公众号长文。</p>
+        <button id="onboardingActionBtn" class="onboarding-action-button secondary-button" type="button" hidden></button>
+        <div class="onboarding-actions">
+          <span id="onboardingProgress">1 / 4</span>
+          <div>
+            <button id="onboardingSkipBtn" class="secondary-button" type="button">跳过</button>
+            <button id="onboardingNextBtn" class="primary-button" type="button">下一步</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="src/vendor/jszip.min.js?v=3.10.1"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="src/app.js?v=20260723-wechat-sync"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="src/supabase-config.js?v=20260729-auth"></script>
+    <script src="src/supabase.js?v=20260729-auth-redirect"></script>
+    <script src="src/app.js?v=20260730-demo-guide-v3"></script>
   </body>
 </html>
