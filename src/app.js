@@ -227,8 +227,11 @@ const els = {
   livePhotoHandoffSummary: $("#livePhotoHandoffSummary"),
   livePhotoHandoffPreview: $("#livePhotoHandoffPreview"),
   livePhotoHandoffThumbnails: $("#livePhotoHandoffThumbnails"),
+  livePhotoHandoffDevice: $("#livePhotoHandoffDevice"),
+  livePhotoHandoffDeviceLabel: $("#livePhotoHandoffDeviceLabel"),
   livePhotoHandoffCount: $("#livePhotoHandoffCount"),
   livePhotoHandoffDetail: $("#livePhotoHandoffDetail"),
+  livePhotoHandoffFiles: $("#livePhotoHandoffFiles"),
   livePhotoHandoffHint: $("#livePhotoHandoffHint"),
   livePhotoHandoffProgress: $("#livePhotoHandoffProgress"),
   livePhotoHandoffProgressTitle: $("#livePhotoHandoffProgressTitle"),
@@ -237,6 +240,7 @@ const els = {
   livePhotoHandoffProgressMeta: $("#livePhotoHandoffProgressMeta"),
   livePhotoHandoffProgressBar: $("#livePhotoHandoffProgressBar"),
   livePhotoHandoffProgressFill: $("#livePhotoHandoffProgressFill"),
+  livePhotoHandoffProgressSteps: $("#livePhotoHandoffProgressSteps"),
   onboardingTour: $("#onboardingTour"),
   onboardingFocus: $("#onboardingFocus"),
   onboardingTooltip: $("#onboardingTooltip"),
@@ -433,6 +437,8 @@ const livePhotoHandoffState = {
   isBatch: false,
   batch: null,
   batchPreparing: null,
+  pendingEntries: [],
+  prepared: false,
 };
 const exportProgressState = {
   main: { active: false, startedAt: 0, timer: 0, hideTimer: 0, current: null, total: null, value: 0 },
@@ -6729,10 +6735,69 @@ function exportProgressElements(scope = "main") {
   };
 }
 
+function livePhotoHandoffDeviceText() {
+  const userAgent = navigator.userAgent || "";
+  const platform = /Mac/i.test(navigator.platform || userAgent) ? "Mac" : "当前设备";
+  const browser = /Safari/i.test(userAgent) && !/(Chrome|Chromium|Edg)/i.test(userAgent)
+    ? "Safari"
+    : /Edg/i.test(userAgent)
+      ? "Edge"
+      : /(Chrome|Chromium)/i.test(userAgent)
+        ? "Chrome"
+        : "浏览器";
+  return `已检测：${platform} · ${browser}`;
+}
+
+function livePhotoHandoffItemCopy(item) {
+  const page = String(item.pageIndex + 1).padStart(2, "0");
+  return item.type === "live"
+    ? { page, label: "原生 Live Photo", extension: ".pvt", icon: "aperture" }
+    : { page, label: "高清图片", extension: "PNG", icon: "image" };
+}
+
+function renderLivePhotoHandoffFiles() {
+  if (!els.livePhotoHandoffFiles) return;
+  els.livePhotoHandoffFiles.innerHTML = "";
+  els.livePhotoHandoffFiles.hidden = !livePhotoHandoffState.isBatch;
+  if (!livePhotoHandoffState.isBatch) return;
+  for (const item of livePhotoHandoffState.items) {
+    const copy = livePhotoHandoffItemCopy(item);
+    const row = document.createElement("div");
+    row.className = "live-photo-handoff-file";
+    row.innerHTML = `
+      <i data-lucide="${copy.icon}" aria-hidden="true"></i>
+      <span>${copy.page} · ${copy.label}</span>
+      <strong>${copy.extension}</strong>
+    `;
+    els.livePhotoHandoffFiles.append(row);
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function updateLivePhotoHandoffProgressSteps(activePageIndex = -1, completedPageIndexes = []) {
+  if (!els.livePhotoHandoffProgressSteps) return;
+  const completed = new Set(completedPageIndexes.map(Number));
+  els.livePhotoHandoffProgressSteps.innerHTML = "";
+  for (const item of livePhotoHandoffState.items) {
+    const isComplete = completed.has(item.pageIndex);
+    const isActive = item.pageIndex === activePageIndex && !isComplete;
+    const copy = livePhotoHandoffItemCopy(item);
+    const step = document.createElement("div");
+    step.className = `handoff-progress-step${isComplete ? " is-complete" : isActive ? " is-active" : ""}`;
+    step.innerHTML = `
+      <span>${item.type === "live" ? "实况" : "图片"} ${copy.page}</span>
+      <strong><i data-lucide="${isComplete ? "check" : isActive ? "loader-circle" : "clock-3"}" aria-hidden="true"></i>${isComplete ? "已完成" : isActive ? "处理中" : "等待中"}</strong>
+    `;
+    els.livePhotoHandoffProgressSteps.append(step);
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
 function syncExportBusyState() {
   const mainBusy = exportProgressState.main.active;
+  const handoffBusy = exportProgressState.handoff.active;
   const guideLocked = isBuiltInProjectId(state.currentProjectId);
-  document.body.classList.toggle("export-busy", mainBusy || exportProgressState.handoff.active);
+  document.body.classList.toggle("export-busy", mainBusy || handoffBusy);
   [els.downloadZip, els.downloadArticle].filter(Boolean).forEach((button) => {
     button.disabled = mainBusy || guideLocked;
     button.setAttribute("aria-disabled", button.disabled ? "true" : "false");
@@ -6744,6 +6809,10 @@ function syncExportBusyState() {
     button.setAttribute("aria-disabled", button.disabled ? "true" : "false");
     button.title = guideLocked ? GUIDE_DOWNLOAD_MESSAGE : button.dataset.enabledTitle;
   });
+  if (els.livePhotoHandoffClose) {
+    els.livePhotoHandoffClose.disabled = handoffBusy;
+    els.livePhotoHandoffClose.setAttribute("aria-disabled", handoffBusy ? "true" : "false");
+  }
 }
 
 function exportElapsedSeconds(scope) {
@@ -6791,6 +6860,12 @@ function beginExportProgress(scope, options = {}) {
   elements.title.textContent = options.title || "正在准备导出";
   elements.detail.textContent = options.detail || "系统正在处理，请不要关闭页面。";
   setExportProgressValue(scope, Number.isFinite(options.value) ? options.value : 5);
+  if (scope === "handoff") {
+    updateLivePhotoHandoffProgressSteps(
+      Number.isFinite(options.activePageIndex) ? options.activePageIndex : livePhotoHandoffState.items[0]?.pageIndex ?? -1,
+      options.completedPageIndexes || [],
+    );
+  }
   refreshExportProgressMeta(scope);
   stateForScope.timer = window.setInterval(() => refreshExportProgressMeta(scope), 1000);
   syncExportBusyState();
@@ -6859,7 +6934,16 @@ function resetExportProgress(scope) {
   elements.percent.textContent = "0%";
   elements.fill.style.width = "0%";
   elements.bar.setAttribute("aria-valuenow", "0");
+  if (scope === "handoff" && els.livePhotoHandoffProgressSteps) {
+    els.livePhotoHandoffProgressSteps.innerHTML = "";
+  }
   syncExportBusyState();
+}
+
+function waitForExportProgressPaint() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
 }
 
 async function generateLivePackageForCanvas(canvas, pageIndex, reveal = true, serviceChecked = false, onStage = null) {
@@ -6918,12 +7002,18 @@ async function generateLivePackageForCanvas(canvas, pageIndex, reveal = true, se
 }
 
 function closeLivePhotoHandoff() {
+  if (exportProgressState.handoff.active) return;
   resetExportProgress("handoff");
   els.livePhotoHandoffModal.classList.add("hidden");
   els.livePhotoHandoffPreview.innerHTML = "";
   els.livePhotoHandoffThumbnails.innerHTML = "";
+  els.livePhotoHandoffFiles.innerHTML = "";
+  els.livePhotoHandoffFiles.hidden = true;
+  els.livePhotoHandoffDevice.hidden = true;
   livePhotoHandoffState.onlineFallback = false;
   livePhotoHandoffState.onlineEntries = [];
+  livePhotoHandoffState.pendingEntries = [];
+  livePhotoHandoffState.prepared = false;
 }
 
 function createLivePhotoHandoffPreviewFrame(pageIndex, compact = false) {
@@ -7006,6 +7096,93 @@ async function ensureLivePhotoBatchPrepared() {
   return livePhotoHandoffState.batchPreparing;
 }
 
+async function preparePendingLivePhotoHandoffBatch() {
+  if (livePhotoHandoffState.prepared) return ensureLivePhotoBatchPrepared();
+  const entries = livePhotoHandoffState.pendingEntries;
+  if (!entries.length) return ensureLivePhotoBatchPrepared();
+
+  const liveEntries = entries.filter(([, canvas]) => liveImageHitsForCanvas(canvas).length);
+  const staticEntries = entries.filter(([, canvas]) => !liveImageHitsForCanvas(canvas).length);
+  if (!(await ensureLivePhotoServiceReady())) {
+    throw new Error("本机实况服务没有运行。请启动写了就发本地服务后重试。");
+  }
+  const invalid = liveEntries.find(([, canvas]) => liveImageHitsForCanvas(canvas).length > 1);
+  if (invalid) throw new Error(`第 ${invalid[0] + 1} 页包含多段实况，请先拆到不同页面。`);
+
+  const completedPageIndexes = [];
+  const liveResults = [];
+  for (const [position, [pageIndex, canvas]] of liveEntries.entries()) {
+    updateLivePhotoHandoffProgressSteps(pageIndex, completedPageIndexes);
+    updateExportProgress("handoff", {
+      title: "正在生成全部内容",
+      detail: `正在处理第 ${pageIndex + 1} / ${entries.length} 页 · 原生 Live Photo`,
+      current: completedPageIndexes.length,
+      total: entries.length,
+      value: 8 + (completedPageIndexes.length / entries.length) * 72,
+    });
+    const result = await generateLivePackageForCanvas(canvas, pageIndex, false, true, (stage, detail) => {
+      const stageRatio = stage === "validate" ? 0.1 : stage === "page" ? 0.35 : 0.68;
+      updateExportProgress("handoff", {
+        title: "正在生成全部内容",
+        detail,
+        current: completedPageIndexes.length,
+        total: entries.length,
+        value: 8 + ((completedPageIndexes.length + stageRatio) / entries.length) * 72,
+      });
+    });
+    liveResults.push(result);
+    completedPageIndexes.push(pageIndex);
+    const nextLive = liveEntries[position + 1]?.[0];
+    const nextStatic = staticEntries[0]?.[0];
+    updateLivePhotoHandoffProgressSteps(nextLive ?? nextStatic ?? -1, completedPageIndexes);
+  }
+
+  let staticPackage = null;
+  if (staticEntries.length) {
+    updateLivePhotoHandoffProgressSteps(staticEntries[0][0], completedPageIndexes);
+    staticPackage = await prepareStaticCanvasSubset(staticEntries, (progress) => {
+      if (progress.type === "page" && !completedPageIndexes.includes(progress.pageIndex)) {
+        completedPageIndexes.push(progress.pageIndex);
+      }
+      const nextStatic = staticEntries.find(([pageIndex]) => !completedPageIndexes.includes(pageIndex))?.[0] ?? -1;
+      updateLivePhotoHandoffProgressSteps(nextStatic, completedPageIndexes);
+      updateExportProgress("handoff", {
+        title: "正在生成全部内容",
+        detail: progress.type === "archive"
+          ? "全部页面已经生成，正在整理批量发布包…"
+          : `正在处理第 ${progress.pageIndex + 1} / ${entries.length} 页 · 高清 PNG`,
+        current: completedPageIndexes.length,
+        total: entries.length,
+        value: progress.type === "archive" ? 84 : 8 + (completedPageIndexes.length / entries.length) * 72,
+      });
+    });
+  }
+
+  livePhotoHandoffState.liveResults = liveResults.sort((a, b) => a.pageIndex - b.pageIndex);
+  livePhotoHandoffState.staticPages = staticEntries.map(([pageIndex]) => pageIndex).sort((a, b) => a - b);
+  livePhotoHandoffState.staticPackage = staticPackage;
+  livePhotoHandoffState.items = [
+    ...livePhotoHandoffState.liveResults.map((result) => ({ type: "live", pageIndex: result.pageIndex, result })),
+    ...livePhotoHandoffState.staticPages.map((pageIndex) => ({ type: "static", pageIndex })),
+  ].sort((a, b) => a.pageIndex - b.pageIndex);
+  livePhotoHandoffState.pendingEntries = [];
+  livePhotoHandoffState.prepared = true;
+  livePhotoHandoffState.batch = null;
+  livePhotoHandoffState.batchPreparing = null;
+  renderLivePhotoHandoffThumbnails();
+  renderLivePhotoHandoffFiles();
+  selectLivePhotoHandoffPage(livePhotoHandoffState.items[0]?.pageIndex ?? -1);
+  updateLivePhotoHandoffProgressSteps(-1, completedPageIndexes);
+  updateExportProgress("handoff", {
+    title: "正在整理全部内容",
+    detail: "全部页面已经生成，正在准备系统发送…",
+    current: entries.length,
+    total: entries.length,
+    value: 88,
+  });
+  return ensureLivePhotoBatchPrepared();
+}
+
 async function responseBlobWithProgress(response, onProgress = null) {
   const total = Number(response.headers.get("content-length")) || 0;
   if (!response.body?.getReader || total <= 0) return response.blob();
@@ -7053,17 +7230,34 @@ async function airdropLivePhotoHandoff() {
   }
   const isBatch = livePhotoHandoffState.isBatch;
   if (!isBatch && !livePhotoHandoffState.selectedJobId) return;
+  if (!beginExportProgress("handoff", {
+    title: isBatch ? "正在生成全部内容" : "正在打开 AirDrop",
+    detail: isBatch ? "完成后将自动打开 AirDrop。" : "正在把实况发布包交给 macOS…",
+    value: isBatch ? 5 : 72,
+    current: isBatch ? 0 : null,
+    total: isBatch ? livePhotoHandoffState.items.length : null,
+    activePageIndex: isBatch ? livePhotoHandoffState.items[0]?.pageIndex : -1,
+  })) return;
   els.livePhotoHandoffAirdrop.disabled = true;
-  els.livePhotoHandoffAirdrop.innerHTML = '<i data-lucide="loader-circle"></i>正在打开 AirDrop…';
+  els.livePhotoHandoffDownload.disabled = true;
+  els.livePhotoHandoffReveal.disabled = true;
   if (window.lucide) window.lucide.createIcons();
   try {
+    await waitForExportProgressPaint();
     let path = "/api/live-photo/airdrop";
     let payload = { job_id: livePhotoHandoffState.selectedJobId };
     if (isBatch) {
-      const batch = await ensureLivePhotoBatchPrepared();
+      const batch = await preparePendingLivePhotoHandoffBatch();
       path = "/api/live-photo/batch-airdrop";
       payload = { batch_id: batch.batch_id };
     }
+    updateExportProgress("handoff", {
+      title: "正在打开系统 AirDrop",
+      detail: isBatch ? `正在发送全部 ${livePhotoHandoffState.items.length} 个项目…` : "正在发送这个实况发布包…",
+      current: isBatch ? livePhotoHandoffState.items.length : null,
+      total: isBatch ? livePhotoHandoffState.items.length : null,
+      value: 97,
+    });
     const response = await fetch(livePhotoApiUrl(path), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -7072,11 +7266,20 @@ async function airdropLivePhotoHandoff() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || "无法打开 AirDrop 分享面板。");
     els.status.textContent = isBatch ? "整批内容已加入 AirDrop，请选择你的 iPhone。" : "AirDrop 分享面板已打开，请选择你的 iPhone。";
+    updateExportProgress("handoff", {
+      title: "AirDrop 已打开",
+      detail: isBatch ? `全部 ${livePhotoHandoffState.items.length} 个项目已交给系统。` : "实况发布包已交给系统。",
+      value: 100,
+    });
+    window.setTimeout(() => resetExportProgress("handoff"), 260);
   } catch (error) {
     els.status.textContent = error?.message || "无法打开 AirDrop 分享面板。";
+    finishExportProgress("handoff", { success: false, title: "AirDrop 没有打开", detail: els.status.textContent });
   } finally {
     els.livePhotoHandoffAirdrop.disabled = false;
-    els.livePhotoHandoffAirdrop.innerHTML = `<i data-lucide="share"></i>${isBatch ? "AirDrop 到手机" : "AirDrop"}`;
+    els.livePhotoHandoffDownload.disabled = false;
+    els.livePhotoHandoffReveal.disabled = isBatch ? !livePhotoHandoffState.batch : !livePhotoHandoffState.selectedJobId;
+    els.livePhotoHandoffAirdrop.innerHTML = `<i data-lucide="share"></i>${isBatch ? "AirDrop 全部到手机" : "AirDrop"}`;
     if (window.lucide) window.lucide.createIcons();
   }
 }
@@ -7162,18 +7365,20 @@ async function downloadLivePhotoBatch() {
     return;
   }
   if (!beginExportProgress("handoff", {
-    title: "正在整理批量下载",
-    detail: "系统正在合并 Live Photo 与普通图片…",
+    title: "正在生成全部内容",
+    detail: "系统正在处理 Live Photo 与普通图片…",
     value: 5,
+    current: 0,
+    total: livePhotoHandoffState.items.length,
+    activePageIndex: livePhotoHandoffState.items[0]?.pageIndex,
   })) return;
   els.livePhotoHandoffDownload.disabled = true;
   els.livePhotoHandoffAirdrop.disabled = true;
   els.livePhotoHandoffReveal.disabled = true;
-  els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="loader-circle"></i>正在整理并下载…';
   if (window.lucide) window.lucide.createIcons();
   try {
-    updateExportProgress("handoff", { title: "正在整理批量发布包", detail: "正在核对实况文件和普通 PNG…", value: 18 });
-    const batch = await ensureLivePhotoBatchPrepared();
+    await waitForExportProgressPaint();
+    const batch = await preparePendingLivePhotoHandoffBatch();
     updateExportProgress("handoff", { title: "正在下载批量文件", detail: "发布包已经整理完成，正在传输 ZIP…", value: 40 });
     const response = await fetch(livePhotoApiUrl(batch.archive_url));
     if (!response.ok) throw new Error("批量压缩包下载失败。");
@@ -7186,14 +7391,14 @@ async function downloadLivePhotoBatch() {
     });
     updateExportProgress("handoff", { title: "正在保存下载文件", detail: "传输完成，正在交给浏览器保存…", value: 96 });
     await saveBlob(archiveBlob, batch.archive_name || "写了就发-批量导出.zip");
-    els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="check"></i>已直接下载';
+    els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="check"></i>已下载全部到电脑';
     els.livePhotoHandoffReveal.hidden = false;
     els.livePhotoHandoffHint.textContent = "下载已完成；点击“在电脑中找到”可打开本次整理好的全部文件。";
     els.status.textContent = `已下载 ${livePhotoHandoffState.items.length} 页内容，并在电脑中保留可查找的导出文件夹。`;
     finishExportProgress("handoff", { title: "批量下载完成", detail: `已处理并下载 ${livePhotoHandoffState.items.length} 页内容。` });
   } catch (error) {
     els.livePhotoHandoffDownload.disabled = false;
-    els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="download"></i>直接下载';
+    els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="download"></i>下载全部到电脑';
     els.status.textContent = error?.message || "批量下载失败。";
     finishExportProgress("handoff", { success: false, title: "批量下载失败", detail: els.status.textContent });
   }
@@ -7218,6 +7423,60 @@ function renderLivePhotoHandoffThumbnails() {
   }
 }
 
+function applyBatchLivePhotoHandoffCopy(liveCount, staticCount, total) {
+  els.livePhotoHandoffTitle.textContent = "批量导出";
+  els.livePhotoHandoffSummary.textContent = "系统将一次处理并发送全部页面。";
+  els.livePhotoHandoffDevice.hidden = false;
+  els.livePhotoHandoffDeviceLabel.textContent = livePhotoHandoffDeviceText();
+  els.livePhotoHandoffCount.textContent = "发送全部内容到 iPhone";
+  els.livePhotoHandoffDetail.textContent = `共 ${total} 页 · ${liveCount} 张实况 · ${staticCount} 张图片`;
+  renderLivePhotoHandoffFiles();
+  els.livePhotoHandoffAirdrop.disabled = false;
+  els.livePhotoHandoffAirdrop.innerHTML = '<i data-lucide="share"></i>AirDrop 全部到手机';
+  els.livePhotoHandoffDownload.hidden = false;
+  els.livePhotoHandoffDownload.disabled = false;
+  els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="download"></i>下载全部到电脑';
+  els.livePhotoHandoffReveal.hidden = true;
+  els.livePhotoHandoffReveal.innerHTML = '<i data-lucide="folder-open"></i>在电脑中找到';
+  els.livePhotoHandoffHint.textContent = "点击后会一次生成全部内容，并打开系统 AirDrop。";
+  els.livePhotoHandoffThumbnails.hidden = false;
+}
+
+function showPendingLivePhotoBatchHandoff(entries) {
+  resetExportProgress("main");
+  resetExportProgress("handoff");
+  livePhotoHandoffState.onlineFallback = false;
+  livePhotoHandoffState.onlineEntries = [];
+  livePhotoHandoffState.liveResults = [];
+  livePhotoHandoffState.staticPages = entries
+    .filter(([, canvas]) => !liveImageHitsForCanvas(canvas).length)
+    .map(([pageIndex]) => pageIndex)
+    .sort((a, b) => a - b);
+  livePhotoHandoffState.staticPackage = null;
+  livePhotoHandoffState.selectedJobId = "";
+  livePhotoHandoffState.items = entries
+    .map(([pageIndex, canvas]) => ({
+      type: liveImageHitsForCanvas(canvas).length ? "live" : "static",
+      pageIndex,
+      result: null,
+    }))
+    .sort((a, b) => a.pageIndex - b.pageIndex);
+  livePhotoHandoffState.isBatch = true;
+  livePhotoHandoffState.batch = null;
+  livePhotoHandoffState.batchPreparing = null;
+  livePhotoHandoffState.pendingEntries = entries.map(([pageIndex, canvas]) => [pageIndex, canvas]);
+  livePhotoHandoffState.prepared = false;
+  renderLivePhotoHandoffThumbnails();
+
+  const liveCount = livePhotoHandoffState.items.filter((item) => item.type === "live").length;
+  const staticCount = livePhotoHandoffState.items.length - liveCount;
+  applyBatchLivePhotoHandoffCopy(liveCount, staticCount, livePhotoHandoffState.items.length);
+  els.livePhotoHandoffModal.classList.remove("hidden");
+  selectLivePhotoHandoffPage(livePhotoHandoffState.items[0]?.pageIndex ?? -1);
+  els.status.textContent = `已识别 ${livePhotoHandoffState.items.length} 页内容，选择 AirDrop 或下载到电脑。`;
+  if (window.lucide) window.lucide.createIcons();
+}
+
 function showLivePhotoHandoff(liveResults, staticEntries = [], staticPackage = null) {
   resetExportProgress("handoff");
   livePhotoHandoffState.onlineFallback = false;
@@ -7232,25 +7491,19 @@ function showLivePhotoHandoff(liveResults, staticEntries = [], staticPackage = n
   livePhotoHandoffState.isBatch = livePhotoHandoffState.items.length > 1;
   livePhotoHandoffState.batch = null;
   livePhotoHandoffState.batchPreparing = null;
+  livePhotoHandoffState.pendingEntries = [];
+  livePhotoHandoffState.prepared = true;
   renderLivePhotoHandoffThumbnails();
   const liveCount = livePhotoHandoffState.liveResults.length;
   const staticCount = livePhotoHandoffState.staticPages.length;
   const total = livePhotoHandoffState.items.length;
   if (livePhotoHandoffState.isBatch) {
-    els.livePhotoHandoffTitle.textContent = "批量导出";
-    els.livePhotoHandoffSummary.textContent = "系统已自动识别普通图片和 Live Photo，并按正确格式整理。";
-    els.livePhotoHandoffCount.textContent = `共 ${total} 页 · ${liveCount} 页实况 · ${staticCount} 张图片`;
-    els.livePhotoHandoffDetail.textContent = "实况保留为 .pvt，普通页面保留为高清 PNG。";
-    els.livePhotoHandoffAirdrop.innerHTML = '<i data-lucide="share"></i>AirDrop 到手机';
-    els.livePhotoHandoffDownload.hidden = false;
-    els.livePhotoHandoffDownload.disabled = false;
-    els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="download"></i>直接下载';
-    els.livePhotoHandoffReveal.hidden = true;
-    els.livePhotoHandoffReveal.innerHTML = '<i data-lucide="folder-open"></i>在电脑中找到';
-    els.livePhotoHandoffHint.textContent = "直接下载完成后，可以在电脑中找到本次整理好的全部文件。";
-    els.livePhotoHandoffThumbnails.hidden = false;
+    applyBatchLivePhotoHandoffCopy(liveCount, staticCount, total);
   } else {
     const result = livePhotoHandoffState.liveResults[0];
+    els.livePhotoHandoffDevice.hidden = true;
+    els.livePhotoHandoffFiles.hidden = true;
+    els.livePhotoHandoffFiles.innerHTML = "";
     els.livePhotoHandoffTitle.textContent = "实况导出";
     els.livePhotoHandoffSummary.textContent = "Live Photo 已生成，可以直接交接到手机。";
     els.livePhotoHandoffCount.textContent = `第 ${result.pageIndex + 1} 页实况已生成`;
@@ -7286,11 +7539,16 @@ function showOnlineLivePhotoFallback(entries) {
   livePhotoHandoffState.isBatch = livePhotoHandoffState.items.length > 1;
   livePhotoHandoffState.batch = null;
   livePhotoHandoffState.batchPreparing = null;
+  livePhotoHandoffState.pendingEntries = [];
+  livePhotoHandoffState.prepared = false;
   renderLivePhotoHandoffThumbnails();
 
   const liveCount = livePhotoHandoffState.items.filter((item) => item.type === "live").length;
   const staticCount = livePhotoHandoffState.items.length - liveCount;
   const total = livePhotoHandoffState.items.length;
+  els.livePhotoHandoffDevice.hidden = true;
+  els.livePhotoHandoffFiles.hidden = true;
+  els.livePhotoHandoffFiles.innerHTML = "";
   els.livePhotoHandoffTitle.textContent = "在线版暂不能生成 Live Photo";
   els.livePhotoHandoffSummary.textContent = "视频和排版没有丢失。你可以先下载普通图片版，或使用 macOS 本地版生成完整实况。";
   els.livePhotoHandoffCount.textContent = livePhotoHandoffState.isBatch
@@ -7529,86 +7787,15 @@ async function downloadAll() {
     showOnlineLivePhotoFallback(entries);
     return;
   }
+  if (liveEntries.length) {
+    showPendingLivePhotoBatchHandoff(entries);
+    return;
+  }
   if (!beginExportProgress("main", {
     title: "正在准备批量导出",
     detail: "正在识别普通图片和 Live Photo…",
     value: 5,
   })) return;
-  if (liveEntries.length) {
-    updateExportProgress("main", { title: "正在检查实况服务", detail: "正在确认本机可以生成 Live Photo…", value: 10 });
-    if (!(await ensureLivePhotoServiceReady())) {
-      els.status.textContent = "本机实况服务没有运行。请双击项目里的「启动写了就发.command」，保留终端窗口后再试。";
-      finishExportProgress("main", { success: false, title: "实况服务尚未运行", detail: els.status.textContent });
-      return;
-    }
-    const invalid = liveEntries.find(([, canvas]) => liveImageHitsForCanvas(canvas).length > 1);
-    if (invalid) {
-      els.status.textContent = `第 ${invalid[0] + 1} 页包含多段实况，稳妥首版请把它们拆到不同页面。`;
-      finishExportProgress("main", { success: false, title: "需要先调整实况分页", detail: els.status.textContent });
-      return;
-    }
-    const staticEntries = entries.filter(([, canvas]) => !liveImageHitsForCanvas(canvas).length);
-    try {
-      const liveResults = [];
-      for (const [position, [index, canvas]] of liveEntries.entries()) {
-        els.status.textContent = `正在生成实况发布包 ${position + 1}/${liveEntries.length}…`;
-        updateExportProgress("main", {
-          title: `正在生成实况 ${position + 1}/${liveEntries.length}`,
-          detail: `正在处理第 ${index + 1} 页的 Live Photo 发布包…`,
-          current: position,
-          total: entries.length,
-          value: 12 + (position / entries.length) * 72,
-        });
-        liveResults.push(await generateLivePackageForCanvas(canvas, index, false, true, (stage, detail) => {
-          const stageRatio = stage === "validate" ? 0.1 : stage === "page" ? 0.35 : 0.65;
-          updateExportProgress("main", {
-            title: `正在生成实况 ${position + 1}/${liveEntries.length}`,
-            detail,
-            current: position,
-            total: entries.length,
-            value: 12 + ((position + stageRatio) / entries.length) * 72,
-          });
-        }));
-        updateExportProgress("main", {
-          title: `已生成实况 ${position + 1}/${liveEntries.length}`,
-          detail: `第 ${index + 1} 页实况已经处理完成。`,
-          current: position + 1,
-          total: entries.length,
-          value: 12 + ((position + 1) / entries.length) * 72,
-        });
-      }
-      els.status.textContent = staticEntries.length ? "正在单独打包普通 PNG…" : "实况发布包已生成。";
-      const staticPackage = await prepareStaticCanvasSubset(staticEntries, (progress) => {
-        const completed = liveEntries.length + progress.completed;
-        if (progress.type === "archive") {
-          updateExportProgress("main", {
-            title: "正在整理批量发布包",
-            detail: "全部页面已经生成，正在整理下载文件…",
-            value: 90,
-          });
-          return;
-        }
-        updateExportProgress("main", {
-          title: `正在生成普通图片 ${progress.completed}/${progress.total}`,
-          detail: `第 ${progress.pageIndex + 1} 页高清 PNG 已处理。`,
-          current: completed,
-          total: entries.length,
-          value: 12 + (completed / entries.length) * 72,
-        });
-      });
-      updateExportProgress("main", { title: "正在打开导出面板", detail: "所有页面均已处理完成。", value: 96 });
-      showLivePhotoHandoff(liveResults, staticEntries, staticPackage);
-      els.status.textContent = `已分流完成：${liveEntries.length} 个 Live Photo${staticEntries.length ? `，${staticEntries.length} 张普通 PNG` : ""}。`;
-      finishExportProgress("main", {
-        title: "批量内容已处理完成",
-        detail: `已生成 ${liveEntries.length} 个 Live Photo${staticEntries.length ? `和 ${staticEntries.length} 张普通图片` : ""}。`,
-      });
-    } catch (error) {
-      els.status.textContent = error?.message || "批量导出失败。";
-      finishExportProgress("main", { success: false, title: "批量导出失败", detail: els.status.textContent });
-    }
-    return;
-  }
 
   if (!window.JSZip) {
     els.status.textContent = "当前环境不支持打包，将逐张下载";

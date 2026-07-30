@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>写了就发 | Write Then Publish</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317202f'/%3E%3Cpath d='M18 17h28v7H18zm0 13h20v6H18zm0 12h28v6H18z' fill='%23fff'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="src/styles.css?v=20260730-progress-status" />
+    <link rel="stylesheet" href="src/styles.css?v=20260730-batch-airdrop" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -770,18 +770,26 @@
             <div id="livePhotoHandoffThumbnails" class="live-photo-handoff-thumbnails" aria-label="全部导出页面"></div>
           </section>
           <section class="live-photo-handoff-results" aria-label="导出操作">
+            <div id="livePhotoHandoffDevice" class="live-photo-handoff-device" hidden>
+              <i data-lucide="circle-check-big" aria-hidden="true"></i>
+              <strong id="livePhotoHandoffDeviceLabel">已检测：Mac · Safari</strong>
+            </div>
             <div class="live-photo-handoff-summary-block">
               <strong id="livePhotoHandoffCount">1 页实况已生成</strong>
               <span id="livePhotoHandoffDetail">实况将以 Live Photo 格式导出，完整保留视频内容。</span>
             </div>
+            <div id="livePhotoHandoffFiles" class="live-photo-handoff-files" aria-label="本次导出文件" hidden></div>
             <section id="livePhotoHandoffProgress" class="export-progress export-progress-compact" aria-live="polite" aria-label="实况下载处理进度" hidden>
-              <div class="export-progress-card">
-                <span class="export-progress-icon" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
-                <div class="export-progress-copy">
+              <div class="export-progress-card handoff-progress-card">
+                <div class="export-progress-copy handoff-progress-copy">
                   <strong id="livePhotoHandoffProgressTitle">正在整理下载文件</strong>
                   <span id="livePhotoHandoffProgressDetail">请稍候，完成后会自动开始下载。</span>
                 </div>
-                <strong id="livePhotoHandoffProgressPercent" class="export-progress-percent">0%</strong>
+                <div class="handoff-progress-ring-wrap" aria-hidden="true">
+                  <span class="export-progress-icon handoff-progress-ring"><i data-lucide="loader-circle"></i></span>
+                  <strong id="livePhotoHandoffProgressPercent" class="export-progress-percent">0%</strong>
+                </div>
+                <div id="livePhotoHandoffProgressSteps" class="handoff-progress-steps" aria-label="页面处理状态"></div>
                 <span id="livePhotoHandoffProgressMeta" class="export-progress-meta">已用时 0 秒</span>
                 <div id="livePhotoHandoffProgressBar" class="export-progress-track" role="progressbar" aria-label="批量下载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="正在处理">
                   <span id="livePhotoHandoffProgressFill" class="export-progress-fill"></span>
@@ -790,10 +798,10 @@
             </section>
             <div class="live-photo-handoff-primary-actions">
               <button id="livePhotoHandoffAirdropBtn" class="primary-button" type="button">
-                <i data-lucide="share"></i>AirDrop 到手机
+                <i data-lucide="share"></i>AirDrop 全部到手机
               </button>
               <button id="livePhotoHandoffDownloadBtn" class="secondary-button" type="button" hidden>
-                <i data-lucide="download"></i>直接下载
+                <i data-lucide="download"></i>下载全部到电脑
               </button>
               <button id="livePhotoHandoffRevealBtn" class="secondary-button" type="button">
                 <i data-lucide="folder-open"></i>在电脑中显示
@@ -828,6 +836,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="src/supabase-config.js?v=20260729-auth"></script>
     <script src="src/supabase.js?v=20260729-auth-redirect"></script>
-    <script src="src/app.js?v=20260730-default-font-34"></script>
+    <script src="src/app.js?v=20260730-batch-airdrop"></script>
   </body>
 </html>

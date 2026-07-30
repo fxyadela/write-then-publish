@@ -3445,7 +3445,7 @@ body.export-busy {
 
 .live-photo-handoff-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) 420px;
   min-height: 0;
   overflow: auto;
 }
@@ -3568,17 +3568,41 @@ body.export-busy {
 
 .live-photo-handoff-results {
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
-  align-content: center;
-  gap: 28px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  align-content: stretch;
+  gap: 22px;
   min-width: 0;
-  padding: 46px 38px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 40px 38px;
+}
+
+.live-photo-handoff-device {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.live-photo-handoff-device[hidden] {
+  display: none;
+}
+
+.live-photo-handoff-device svg {
+  width: 14px;
+  height: 14px;
+  color: #65a30d;
+}
+
+.live-photo-handoff-device strong {
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .live-photo-handoff-summary-block {
   display: grid;
   gap: 10px;
-  padding-bottom: 26px;
+  padding-bottom: 20px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -3595,6 +3619,40 @@ body.export-busy {
   line-height: 1.65;
 }
 
+.live-photo-handoff-files {
+  display: grid;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  overscroll-behavior: contain;
+}
+
+.live-photo-handoff-files[hidden] {
+  display: none;
+}
+
+.live-photo-handoff-file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.live-photo-handoff-file svg {
+  width: 17px;
+  height: 17px;
+}
+
+.live-photo-handoff-file strong {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .live-photo-handoff-primary-actions {
   display: grid;
   gap: 12px;
@@ -3609,6 +3667,130 @@ body.export-busy {
 .live-photo-handoff-hint {
   margin: 0;
   text-align: center;
+}
+
+.export-progress-compact .handoff-progress-card {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 18px;
+  width: min(430px, calc(100vw - 40px));
+  padding: 28px 34px 24px;
+  text-align: center;
+}
+
+.export-progress-compact .handoff-progress-copy {
+  grid-column: 1;
+  grid-row: auto;
+  justify-items: center;
+  gap: 5px;
+}
+
+.export-progress-compact .handoff-progress-copy strong {
+  font-size: 18px;
+}
+
+.export-progress-compact .handoff-progress-ring-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  grid-column: 1;
+  grid-row: auto;
+  width: 96px;
+  height: 96px;
+}
+
+.export-progress-compact .handoff-progress-ring {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  margin: 0;
+  color: var(--active-text);
+  background: transparent;
+}
+
+.export-progress-compact .handoff-progress-ring svg {
+  width: 96px;
+  height: 96px;
+  margin: 0;
+  stroke-width: 1.7;
+}
+
+.export-progress-compact .handoff-progress-ring-wrap .export-progress-percent {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 850;
+  letter-spacing: -0.03em;
+}
+
+.export-progress-compact:is(.is-success, .is-error, .is-cancelled) .handoff-progress-ring-wrap .export-progress-percent {
+  display: none;
+}
+
+.handoff-progress-steps {
+  display: grid;
+  grid-column: 1;
+  grid-row: auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.handoff-progress-step {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.handoff-progress-step > span,
+.handoff-progress-step > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handoff-progress-step > strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.handoff-progress-step svg {
+  width: 13px;
+  height: 13px;
+}
+
+.handoff-progress-step.is-complete > strong {
+  color: #65a30d;
+}
+
+.handoff-progress-step.is-active > strong {
+  color: var(--active-text);
+}
+
+.handoff-progress-step.is-active svg {
+  animation: export-progress-spin 1s linear infinite;
+}
+
+.export-progress-compact .export-progress-meta {
+  display: none;
+}
+
+.export-progress-compact .export-progress-track {
+  grid-column: 1;
+  grid-row: auto;
+  width: 100%;
+  height: 4px;
+  margin-top: 0;
 }
 
 .onboarding-tour {
