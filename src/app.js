@@ -7,13 +7,15 @@ const CARD_SIDE_PADDING = 42;
 const CARD_CONTENT_WIDTH = CANVAS_WIDTH - CARD_SIDE_PADDING * 2;
 const CARD_MAX_IMAGE_HEIGHT = CANVAS_HEIGHT - CARD_SIDE_PADDING - 62;
 const DEFAULT_CARD_FONT_SIZE = 34;
+const DEFAULT_CARD_LINE_HEIGHT = 1.85;
 const CARD_BODY_FONT_WEIGHT = 400;
-const CARD_BODY_STROKE_WIDTH = 0.5;
+const CARD_BODY_STROKE_WIDTH = 0;
 const EXPORT_IMAGE_MIME = "image/png";
 const DEFAULT_HANDLE = "@X: iamcora13";
 const EXPORT_IMAGE_EXTENSION = ".png";
 const EXPORT_ZIP_COMPRESSION = "STORE";
 const LIVE_PHOTO_API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:5173" : "";
+const LIVE_PHOTO_LOCAL_GUIDE_URL = "https://github.com/fxyadela/write-then-publish#本地运行";
 const OBSIDIAN_VAULT_DB = "writeThenPublishObsidianVault";
 const OBSIDIAN_VAULT_STORE = "settings";
 const OBSIDIAN_VAULT_KEY = "directoryHandle";
@@ -42,6 +44,12 @@ function storageForScope(scope = activeStorageScope) {
 function livePhotoApiUrl(path) {
   return `${LIVE_PHOTO_API_BASE}${path}`;
 }
+
+function needsLivePhotoStaticFallback() {
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+  if (window.location.protocol === "file:") return true;
+  return /^https?:$/.test(window.location.protocol) && !localHosts.has(window.location.hostname);
+}
 const MAX_PROJECTS = 24;
 const BUILT_IN_PROJECT_PREFIX = "guide_";
 const GUIDE_CARDS_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}cards`;
@@ -62,6 +70,7 @@ const els = {
   exportProgress: $("#exportProgress"),
   exportProgressTitle: $("#exportProgressTitle"),
   exportProgressDetail: $("#exportProgressDetail"),
+  exportProgressPercent: $("#exportProgressPercent"),
   exportProgressMeta: $("#exportProgressMeta"),
   exportProgressBar: $("#exportProgressBar"),
   exportProgressFill: $("#exportProgressFill"),
@@ -123,7 +132,6 @@ const els = {
   downloadArticle: $("#downloadArticleBtn"),
   copyWechat: $("#copyWechatBtn"),
   syncWechat: $("#syncWechatBtn"),
-  scrollMode: $("#scrollModeBtn"),
   articleSettings: $("#articleSettings"),
   articleThemeButtons: document.querySelectorAll("[data-article-theme]"),
   articleFontButtons: document.querySelectorAll("[data-article-font]"),
@@ -225,6 +233,7 @@ const els = {
   livePhotoHandoffProgress: $("#livePhotoHandoffProgress"),
   livePhotoHandoffProgressTitle: $("#livePhotoHandoffProgressTitle"),
   livePhotoHandoffProgressDetail: $("#livePhotoHandoffProgressDetail"),
+  livePhotoHandoffProgressPercent: $("#livePhotoHandoffProgressPercent"),
   livePhotoHandoffProgressMeta: $("#livePhotoHandoffProgressMeta"),
   livePhotoHandoffProgressBar: $("#livePhotoHandoffProgressBar"),
   livePhotoHandoffProgressFill: $("#livePhotoHandoffProgressFill"),
@@ -352,9 +361,6 @@ const state = {
   },
   canvases: [],
   lastFindIndex: -1,
-  mode: "auto",
-  scrollOffset: 0,
-  scrollMax: 0,
   colorBrush: false,
   bgColorBrush: false,
   uiTheme: "light",
@@ -419,6 +425,8 @@ const livePhotoHandoffState = {
   liveResults: [],
   staticPages: [],
   staticPackage: null,
+  onlineFallback: false,
+  onlineEntries: [],
   selectedJobId: "",
   selectedPageIndex: -1,
   items: [],
@@ -427,8 +435,8 @@ const livePhotoHandoffState = {
   batchPreparing: null,
 };
 const exportProgressState = {
-  main: { active: false, startedAt: 0, timer: 0, hideTimer: 0, current: null, total: null },
-  handoff: { active: false, startedAt: 0, timer: 0, hideTimer: 0, current: null, total: null },
+  main: { active: false, startedAt: 0, timer: 0, hideTimer: 0, current: null, total: null, value: 0 },
+  handoff: { active: false, startedAt: 0, timer: 0, hideTimer: 0, current: null, total: null, value: 0 },
 };
 const cloudState = {
   session: null,
@@ -470,7 +478,7 @@ function defaultFormState() {
     accentColor: "#2563eb",
     bgColor: "#ffffff",
     fontSize: String(DEFAULT_CARD_FONT_SIZE),
-    lineHeight: "1.65",
+    lineHeight: String(DEFAULT_CARD_LINE_HEIGHT),
     zhFont: "zh-system",
     enFont: "en-system",
     imageHeight: String(CARD_MAX_IMAGE_HEIGHT),
@@ -522,9 +530,9 @@ const cardsGuideText = `# 图文卡片说明书
 
 [[image:guide_live]]
 
-上面是可播放的内置实况演示。新建内容后请换成自己的视频；右侧下载会自动识别实况页并生成完整 Live Photo 发布包。
+上面是可播放的内置实况演示。新建内容后请换成自己的视频；右侧下载会自动识别实况页。在线版可以下载普通图片版，完整 Live Photo 发布包需要 macOS 本地版生成。
 
-混合批量下载时，普通页面保留为高清 PNG，实况页面保留为完整 \`.pvt\`，不会混成同一种文件。
+macOS 本地版混合批量下载时，普通页面保留为高清 PNG，实况页面保留为完整 \`.pvt\`；在线版会按原顺序下载全部普通图片版。
 
 ## 第四步：连接 Obsidian
 
@@ -677,6 +685,14 @@ function isBuiltInProject(project) {
   return Boolean(project?.builtIn || isBuiltInProjectId(project?.id));
 }
 
+const GUIDE_DOWNLOAD_MESSAGE = "内置说明书仅供预览，请先点击左上角“+”新建自己的内容再下载。";
+
+function blockBuiltInGuideDownload() {
+  if (!isBuiltInProjectId(state.currentProjectId)) return false;
+  els.status.textContent = GUIDE_DOWNLOAD_MESSAGE;
+  return true;
+}
+
 function allHistoryProjects() {
   return [...builtInGuideProjects(), ...state.projects];
 }
@@ -716,6 +732,7 @@ function syncGuideReadOnlyMode() {
   if (readOnly) {
     document.querySelectorAll(".editor-controls details[open]").forEach((details) => details.removeAttribute("open"));
   }
+  syncExportBusyState();
 }
 
 function readForm() {
@@ -727,7 +744,7 @@ function readForm() {
     accentColor: els.accentColor.value,
     bgColor: els.bgColor.value,
     fontSize: clamp(Number(els.fontSize.value) || DEFAULT_CARD_FONT_SIZE, 24, 40),
-    lineHeight: clamp(Number(els.lineHeight.value) || 1.65, 1, 2.4),
+    lineHeight: clamp(Number(els.lineHeight.value) || DEFAULT_CARD_LINE_HEIGHT, 1, 2.4),
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
     imageHeight: clamp(Number(els.imageHeight.value) || CARD_MAX_IMAGE_HEIGHT, 220, CARD_MAX_IMAGE_HEIGHT),
@@ -796,7 +813,7 @@ function applyForm(data) {
   els.accentColor.value = data.accentColor ?? "#2563eb";
   els.bgColor.value = data.bgColor ?? "#ffffff";
   els.fontSize.value = data.fontSize ?? String(DEFAULT_CARD_FONT_SIZE);
-  els.lineHeight.value = data.lineHeight ?? "1.65";
+  els.lineHeight.value = data.lineHeight ?? String(DEFAULT_CARD_LINE_HEIGHT);
   els.zhFont.value = FONT_STACKS[data.zhFont] ? data.zhFont : "zh-system";
   els.enFont.value = FONT_STACKS[data.enFont] ? data.enFont : "en-system";
   const storedImageHeight = String(data.imageHeight ?? CARD_MAX_IMAGE_HEIGHT);
@@ -884,7 +901,6 @@ function updateAppMode() {
   els.convertMode.setAttribute("title", targetMode === "article" ? "将当前内容转为长文" : "将当前内容自动分页为图文卡片");
   els.convertMode.querySelector("span").textContent = targetLabel;
   els.articleSettings.hidden = state.appMode !== "article";
-  els.scrollMode.hidden = state.appMode === "article";
   els.downloadZip.hidden = state.appMode === "article";
   els.downloadArticle.hidden = state.appMode !== "article";
   els.copyWechat.hidden = state.appMode !== "article";
@@ -896,7 +912,6 @@ async function setAppMode(mode) {
   const nextMode = mode === "article" ? "article" : "cards";
   if (state.appMode === nextMode) return;
   state.appMode = nextMode;
-  state.scrollOffset = 0;
   updateAppMode();
   await render();
 }
@@ -1396,8 +1411,6 @@ async function showGuideProjectForDemo() {
   const guideProject = findHistoryProject(GUIDE_CARDS_PROJECT_ID);
   if (!guideProject) return;
   state.currentProjectId = guideProject.id;
-  state.mode = "auto";
-  state.scrollOffset = 0;
   applyForm(guideProject.data);
   syncGuideReadOnlyMode();
   resetTextHistory();
@@ -1546,8 +1559,6 @@ async function activateWorkspaceScope(scope, projects = null, profile = null) {
     }
 
     const data = findHistoryProject(state.currentProjectId)?.data || findHistoryProject(GUIDE_CARDS_PROJECT_ID)?.data || defaultFormState();
-    state.mode = "auto";
-    state.scrollOffset = 0;
     applyForm(data);
     syncGuideReadOnlyMode();
     resetTextHistory();
@@ -1960,8 +1971,12 @@ function migrateStoredState(data) {
   );
   if (["380", "520"].includes(String(data.imageHeight))) data.imageHeight = String(CARD_MAX_IMAGE_HEIGHT);
   if (!data.handle || data.handle === "@heytomato") data.handle = DEFAULT_HANDLE;
-  if (!Number.isFinite(Number(data.lineHeight))) data.lineHeight = "1.65";
-  if (Math.abs(Number(data.lineHeight) - 1.85) < 0.001) data.lineHeight = "1.65";
+  if (!Number.isFinite(Number(data.fontSize)) || Math.abs(Number(data.fontSize) - 31) < 0.001) {
+    data.fontSize = String(DEFAULT_CARD_FONT_SIZE);
+  }
+  if (!Number.isFinite(Number(data.lineHeight)) || Math.abs(Number(data.lineHeight) - 1.65) < 0.001) {
+    data.lineHeight = String(DEFAULT_CARD_LINE_HEIGHT);
+  }
   data.headerMode = data.headerMode === "first" ? "first" : "every";
   data.appMode = data.appMode === "article" ? "article" : "cards";
   data.articleTheme = normalizeArticleTheme(data.articleTheme);
@@ -2156,7 +2171,6 @@ async function openProject(projectId) {
   const project = findHistoryProject(projectId);
   if (!project) return;
   state.currentProjectId = project.id;
-  state.scrollOffset = 0;
   applyForm(project.data);
   syncGuideReadOnlyMode();
   if (isBuiltInProject(project)) saveProjectStore();
@@ -2200,8 +2214,6 @@ async function deleteProject(projectId) {
   if (!state.projects.length) {
     const guideProject = findHistoryProject(GUIDE_CARDS_PROJECT_ID);
     state.currentProjectId = GUIDE_CARDS_PROJECT_ID;
-    state.mode = "auto";
-    state.scrollOffset = 0;
     applyForm(guideProject?.data || defaultFormState());
     syncGuideReadOnlyMode();
     resetTextHistory();
@@ -2215,8 +2227,6 @@ async function deleteProject(projectId) {
   if (deletingCurrent) {
     const nextProject = state.projects[0];
     state.currentProjectId = nextProject.id;
-    state.mode = "auto";
-    state.scrollOffset = 0;
     applyForm(nextProject.data);
     syncGuideReadOnlyMode();
     resetTextHistory();
@@ -2237,8 +2247,6 @@ async function createNewProject() {
   const project = createProject(blankFormState());
   state.projects = [project, ...state.projects.filter((item) => item.id !== project.id)].slice(0, MAX_PROJECTS);
   state.currentProjectId = project.id;
-  state.mode = "auto";
-  state.scrollOffset = 0;
   applyForm(project.data);
   syncGuideReadOnlyMode();
   resetTextHistory();
@@ -2293,6 +2301,12 @@ const WHATS_NEW_ONBOARDING_STEPS = [
     body: "从这里选择视频、裁剪画面并插入图文。导出时会自动识别实况页，单张和批量都按对应格式处理。",
   },
   {
+    target: ".preview-image-box",
+    fallbackTarget: "#previewPanel",
+    title: "拖动图片调整位置",
+    body: "直接按住右侧预览中的图片，拖到蓝色落点线后松手。图片会移动到对应段落，左侧 Markdown 顺序也会同步更新。",
+  },
+  {
     target: "#obsidianImportMenu",
     title: "连接 Obsidian",
     body: "连接仓库后，可以读取笔记里的图片并同步修改后的 Markdown。暂不连接也不会影响普通编辑。",
@@ -2318,7 +2332,9 @@ function onboardingShouldStart() {
 function positionOnboardingStep() {
   if (!onboardingIsOpen()) return;
   const step = onboardingSteps()[onboardingStepIndex];
-  const target = step ? document.querySelector(step.target) : null;
+  const target = step
+    ? document.querySelector(step.target) || (step.fallbackTarget ? document.querySelector(step.fallbackTarget) : null)
+    : null;
   if (!target) return;
   const rect = target.getBoundingClientRect();
   const padding = 7;
@@ -4310,8 +4326,8 @@ function styleForBlock(type, settings) {
     weight: CARD_BODY_FONT_WEIGHT,
     strokeWidth: CARD_BODY_STROKE_WIDTH,
     italic: false,
-    marginTop: 5,
-    marginBottom: 0,
+    marginTop: 16,
+    marginBottom: 10,
     color: settings.textColor,
   };
 }
@@ -4695,213 +4711,69 @@ async function buildPages(settings) {
   return pages.length ? pages : [createPage()];
 }
 
-async function buildScrollPage(settings) {
-  const measureCanvas = document.createElement("canvas");
-  const ctx = measureCanvas.getContext("2d");
-  const blocks = parseBlocks(settings.content, settings.images);
-  const avatar = await loadImage(settings.avatar).catch(() => null);
-  const badge = await loadImage(verifiedBadgeSrc).catch(() => null);
-  const imageCache = {};
-  const bounds = contentBoundsForHeader(true);
-  const contentWidth = bounds.right - bounds.left;
-  const viewportHeight = bounds.bottom - bounds.top;
-  const page = {
-    avatar,
-    badge,
-    settings,
-    showHeader: true,
-    items: [],
-    bounds,
-    scrollOffset: 0,
-    scrollMax: 0,
-  };
-  let y = 0;
-  let hasContent = false;
-  let previousBlockType = null;
-
-  for (const block of blocks) {
-    if (block.type === "spacer") {
-      y += blankLineGap(settings);
-      previousBlockType = "spacer";
-      continue;
-    }
-
-    if (block.type === "table") {
-      const table = buildTableLayout(ctx, block, settings, contentWidth);
-      y += hasContent && previousBlockType !== "spacer" ? 18 : 0;
-      page.items.push({ type: "table", x: bounds.left, y, width: contentWidth, table, sourceStart: block.sourceStart, sourceEnd: block.sourceEnd });
-      y += table.height + 18;
-      hasContent = true;
-      previousBlockType = "table";
-      continue;
-    }
-
-    if (block.type === "image") {
-      const data = settings.images[block.id];
-      if (!data) continue;
-      if (!imageCache[block.id]) {
-        imageCache[block.id] = await loadImage(data.src).catch(() => null);
-      }
-      const img = imageCache[block.id];
-      if (!img) continue;
-      const sourceRect = getImageSourceRect(img, data.crop);
-      const size = imageBlockSize(sourceRect, contentWidth, imageMaxHeightForLayout(data.layout, Math.min(settings.imageHeight, viewportHeight), viewportHeight), data.layout);
-      y += hasContent && previousBlockType !== "spacer" ? 24 : 0;
-      page.items.push({
-        type: "image",
-        imageId: block.id,
-        image: img,
-        sourceRect,
-        baseWidth: size.baseWidth,
-        maxWidth: size.maxWidth,
-        x: bounds.left + size.offsetX,
-        y,
-        width: size.width,
-        height: size.height,
-        radius: 13,
-        resizeMaxWidth: size.resizeMaxWidth,
-        sourceStart: block.sourceStart,
-        sourceEnd: block.sourceEnd,
-      });
-      y += size.height + 34;
-      hasContent = true;
-      previousBlockType = "image";
-      continue;
-    }
-
-    const style = styleForBlock(block.type, settings);
-    const lineHeight = Math.ceil(style.size * style.lineHeight);
-    const textWidth = style.quote ? contentWidth - 28 : contentWidth;
-    const lines = wrapBlockLines(ctx, block, style, textWidth);
-    let firstLine = true;
-
-    for (const line of lines) {
-      y += firstLine && hasContent && previousBlockType !== "spacer" ? style.marginTop : 0;
-      page.items.push({
-        type: "text",
-        blockType: block.type,
-        line,
-        style,
-        x: bounds.left + (style.quote ? 28 : 0),
-        y,
-        lineHeight,
-        sourceStart: line.find((token) => Number.isFinite(token.sourceStart))?.sourceStart ?? block.sourceStart,
-        sourceEnd: [...line].reverse().find((token) => Number.isFinite(token.sourceEnd))?.sourceEnd ?? block.sourceEnd,
-      });
-      y += lineHeight;
-      firstLine = false;
-      hasContent = true;
-    }
-
-    if (lines.length) {
-      y += style.marginBottom;
-      previousBlockType = block.type;
-    }
-  }
-
-  page.scrollMax = Math.max(0, y - viewportHeight);
-  state.scrollMax = page.scrollMax;
-  state.scrollOffset = clamp(state.scrollOffset, 0, page.scrollMax);
-  page.scrollOffset = state.scrollOffset;
-  return page;
-}
-
 function renderPage(page, index, total) {
+  const legacyCanvas = document.createElement("canvas");
+  legacyCanvas.width = CANVAS_WIDTH;
+  legacyCanvas.height = CANVAS_HEIGHT;
+  const legacyContext = legacyCanvas.getContext("2d");
+  legacyContext.imageSmoothingQuality = "high";
+  drawPageToContext(legacyContext, page);
+
   const canvas = document.createElement("canvas");
   canvas.width = OUTPUT_CANVAS_WIDTH;
   canvas.height = OUTPUT_CANVAS_HEIGHT;
   canvas.dataset.page = String(index + 1);
   canvas._page = page;
-  canvas._scrollPage = false;
   const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(legacyCanvas, 0, 0, OUTPUT_CANVAS_WIDTH, OUTPUT_CANVAS_HEIGHT);
+  ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.setTransform(CANVAS_RENDER_SCALE, 0, 0, CANVAS_RENDER_SCALE, 0, 0);
-
-  drawPageToContext(ctx, page, false);
-  canvas._textHits = collectTextHits(ctx, page, false);
-  canvas._imageHits = collectImageHits(page, false);
-  canvas._imageDropTargets = collectImageDropTargets(page, false);
+  drawPageMediaToContext(ctx, page);
+  canvas._textHits = collectTextHits(ctx, page);
+  canvas._imageHits = collectImageHits(page);
+  canvas._imageDropTargets = collectImageDropTargets(page);
   return canvas;
 }
 
-function renderScrollPage(page) {
-  const canvas = document.createElement("canvas");
-  canvas.width = OUTPUT_CANVAS_WIDTH;
-  canvas.height = OUTPUT_CANVAS_HEIGHT;
-  canvas.dataset.page = "scroll";
-  canvas._page = page;
-  canvas._scrollPage = true;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingQuality = "high";
-  ctx.setTransform(CANVAS_RENDER_SCALE, 0, 0, CANVAS_RENDER_SCALE, 0, 0);
-
-  drawPageToContext(ctx, page, true);
-  canvas._textHits = collectTextHits(ctx, page, true);
-  canvas._imageHits = collectImageHits(page, true);
-  canvas._imageDropTargets = collectImageDropTargets(page, true);
-  return canvas;
-}
-
-function drawPageToContext(ctx, page, scrollPage = false) {
+function drawPageToContext(ctx, page) {
   drawBackground(ctx, page.settings);
   if (page.showHeader !== false) {
     drawHeader(ctx, page.settings, page.avatar, page.badge);
   }
 
-  if (!scrollPage) {
-    for (const item of page.items) {
-      if (item.type === "image") drawImageBlock(ctx, item);
-      if (item.type === "table") drawTableBlock(ctx, item, page.settings);
-      if (item.type === "text") drawTextLine(ctx, item, page.settings);
-    }
-    return;
-  }
-
-  const { bounds } = page;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
-  ctx.clip();
-  ctx.translate(0, bounds.top - page.scrollOffset);
   for (const item of page.items) {
     if (item.type === "image") drawImageBlock(ctx, item);
     if (item.type === "table") drawTableBlock(ctx, item, page.settings);
     if (item.type === "text") drawTextLine(ctx, item, page.settings);
   }
-  ctx.restore();
+}
 
+function drawPageMediaToContext(ctx, page) {
   if (page.showHeader !== false) {
-    ctx.strokeStyle = isDarkHexColor(page.settings.bgColor) ? "rgba(255,255,255,.12)" : "rgba(23,32,47,.06)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(bounds.left, bounds.top - 10);
-    ctx.lineTo(bounds.right, bounds.top - 10);
-    ctx.stroke();
+    drawHeaderMedia(ctx, page.settings, page.avatar, page.badge);
+  }
+  for (const item of page.items) {
+    if (item.type === "image") drawImageBlock(ctx, item);
   }
 }
 
-function collectTextHits(ctx, page, scrollPage = false) {
+function collectTextHits(ctx, page) {
   const hits = [];
-  const bounds = page.bounds || null;
 
   for (const item of page.items) {
     if (item.type !== "text") continue;
     let cursor = item.x;
-    const y = scrollPage ? (bounds?.top || 0) + item.y - page.scrollOffset : item.y;
-    if (scrollPage && bounds && (y + item.lineHeight < bounds.top || y > bounds.bottom)) {
-      continue;
-    }
 
     for (const token of item.line) {
       const width = measureToken(ctx, token, item.style);
       if (!/^\s+$/.test(token.text) && Number.isFinite(token.sourceStart) && Number.isFinite(token.sourceEnd)) {
-        const top = Math.max(y, scrollPage && bounds ? bounds.top : y);
-        const bottom = Math.min(y + item.lineHeight, scrollPage && bounds ? bounds.bottom : y + item.lineHeight);
         hits.push({
           x: cursor,
-          y: top,
+          y: item.y,
           width,
-          height: Math.max(0, bottom - top),
+          height: item.lineHeight,
           sourceStart: token.sourceStart,
           sourceEnd: token.sourceEnd,
         });
@@ -4913,44 +4785,34 @@ function collectTextHits(ctx, page, scrollPage = false) {
   return hits;
 }
 
-function collectImageHits(page, scrollPage = false) {
-  const bounds = page.bounds || null;
+function collectImageHits(page) {
   return page.items
     .filter((item) => item.type === "image" && item.imageId)
-    .map((item) => {
-      const y = scrollPage ? (bounds?.top || 0) + item.y - page.scrollOffset : item.y;
-      const top = scrollPage && bounds ? Math.max(y, bounds.top) : y;
-      const bottom = scrollPage && bounds ? Math.min(y + item.height, bounds.bottom) : y + item.height;
-      return {
-        imageId: item.imageId,
-        x: item.x,
-        y: top,
-        width: item.width,
-        height: Math.max(0, bottom - top),
-        baseWidth: item.baseWidth || item.width,
-        maxWidth: item.maxWidth || CARD_CONTENT_WIDTH,
-        resizeMaxWidth: item.resizeMaxWidth || item.baseWidth || item.width,
-        sourceStart: item.sourceStart,
-        sourceEnd: item.sourceEnd,
-      };
-    })
+    .map((item) => ({
+      imageId: item.imageId,
+      x: item.x,
+      y: item.y,
+      width: item.width,
+      height: item.height,
+      baseWidth: item.baseWidth || item.width,
+      maxWidth: item.maxWidth || CARD_CONTENT_WIDTH,
+      resizeMaxWidth: item.resizeMaxWidth || item.baseWidth || item.width,
+      sourceStart: item.sourceStart,
+      sourceEnd: item.sourceEnd,
+    }))
     .filter((hit) => hit.height > 0 && hit.width > 0);
 }
 
-function collectImageDropTargets(page, scrollPage = false) {
-  const bounds = page.bounds || null;
+function collectImageDropTargets(page) {
   return page.items
     .filter((item) => Number.isFinite(item.sourceStart) && Number.isFinite(item.sourceEnd))
     .map((item) => {
-      const rawY = scrollPage ? (bounds?.top || 0) + item.y - page.scrollOffset : item.y;
       const rawHeight = item.type === "table" ? item.table.height : item.type === "text" ? item.lineHeight : item.height;
-      const top = scrollPage && bounds ? Math.max(rawY, bounds.top) : rawY;
-      const bottom = scrollPage && bounds ? Math.min(rawY + rawHeight, bounds.bottom) : rawY + rawHeight;
       return {
         imageId: item.imageId || "",
         targetKind: item.type === "text" && item.blockType === "p" ? "text-line" : "block",
-        y: top,
-        height: Math.max(0, bottom - top),
+        y: item.y,
+        height: rawHeight,
         sourceStart: item.sourceStart,
         sourceEnd: item.sourceEnd,
       };
@@ -5006,6 +4868,26 @@ function drawHeader(ctx, settings, avatar, badge) {
     ctx.beginPath();
     ctx.arc(769 + i * 16, 79, 5, 0, Math.PI * 2);
     ctx.fill();
+  }
+}
+
+function drawHeaderMedia(ctx, settings, avatar, badge) {
+  const x = 42;
+  const y = 38;
+  const size = 82;
+  if (avatar) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+    ctx.clip();
+    drawSourceCoverImage(ctx, avatar, getImageSourceRect(avatar, settings.avatarCrop), x, y, size, size);
+    ctx.restore();
+  }
+  if (badge) {
+    const textX = 152;
+    ctx.font = `650 30px ${fontFamilyForText(settings.displayName, settings)}`;
+    const name = clampText(ctx, settings.displayName, 430);
+    drawVerifiedBadge(ctx, badge, textX + ctx.measureText(name).width + 24, 59);
   }
 }
 
@@ -5168,8 +5050,6 @@ function clampText(ctx, text, maxWidth) {
 
 function renderArticlePreview(settings) {
   state.canvases = [];
-  state.scrollOffset = 0;
-  state.scrollMax = 0;
   els.pages.innerHTML = "";
   els.pages.className = "pages article-mode";
   els.articleSettings.hidden = false;
@@ -5184,6 +5064,7 @@ function renderArticlePreview(settings) {
   const wordCount = settings.content.replace(/\s/g, "").length;
   els.pageCount.textContent = "长文";
   els.status.textContent = `已生成长文预览，约 ${wordCount} 字`;
+  syncExportBusyState();
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -6002,7 +5883,12 @@ function normalizeLivePhotoTiming() {
   if (livePhotoState.file && livePhotoState.sourceDuration < target) {
     setLivePhotoServiceMessage(`当前视频只有 ${formatLivePhotoDuration(livePhotoState.sourceDuration)}，不足以生成 ${target} 秒版本。`, "error");
   } else if (livePhotoState.file) {
-    setLivePhotoServiceMessage("设置会跟随视频插入图文；右侧下载时自动生成 Live Photo 发布包。", "ready");
+    setLivePhotoServiceMessage(
+      needsLivePhotoStaticFallback()
+        ? "设置会跟随视频插入图文；在线版可预览并下载图片版，完整 Live Photo 需 macOS 本地版生成。"
+        : "设置会跟随视频插入图文；右侧下载时自动生成 Live Photo 发布包。",
+      "ready",
+    );
   }
   updateLivePhotoGenerateState();
 }
@@ -6248,7 +6134,11 @@ async function applyLivePhotoAsset(event) {
     livePhotoState.generating = false;
     closeLivePhotoModal();
     await render();
-    els.status.textContent = editing ? "已更新实况素材" : "已插入实况图片；右侧下载会自动生成发布包";
+    els.status.textContent = editing
+      ? "已更新实况素材"
+      : needsLivePhotoStaticFallback()
+        ? "已插入实况图片；在线版可预览并下载图片版，完整实况请使用 macOS 本地版"
+        : "已插入实况图片；右侧下载会自动生成发布包";
   } catch (error) {
     setLivePhotoServiceMessage(error?.message || "实况素材保存失败。", "error");
   } finally {
@@ -6267,15 +6157,8 @@ async function render() {
     saveState();
     return;
   }
-  if (state.mode === "scroll") {
-    const page = await buildScrollPage(settings);
-    state.canvases = [renderScrollPage(page)];
-  } else {
-    const pages = await buildPages(settings);
-    state.canvases = pages.map((page, index) => renderPage(page, index, pages.length));
-    state.scrollOffset = 0;
-    state.scrollMax = 0;
-  }
+  const pages = await buildPages(settings);
+  state.canvases = pages.map((page, index) => renderPage(page, index, pages.length));
   drawPreview(state.canvases);
   saveState();
 }
@@ -6283,9 +6166,7 @@ async function render() {
 function drawPreview(canvases) {
   els.pages.innerHTML = "";
   els.pages.className = "pages";
-  els.pages.classList.toggle("scroll-mode", state.mode === "scroll");
   els.articleSettings.hidden = true;
-  els.scrollMode.classList.toggle("active", state.mode === "scroll");
   if (!canvases.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
@@ -6300,10 +6181,6 @@ function drawPreview(canvases) {
     shell.classList.toggle("has-live", liveHits.length > 0);
     const frame = document.createElement("div");
     frame.className = "page-frame";
-    if (state.mode === "scroll") {
-      frame.classList.add("scrollable");
-      attachScrollFrameHandlers(frame);
-    }
     frame.append(canvas);
     frame.append(createImageEditLayer(canvas));
     frame.append(createTextHitLayer(canvas));
@@ -6312,14 +6189,16 @@ function drawPreview(canvases) {
     const actions = document.createElement("div");
     actions.className = "page-actions";
     const label = document.createElement("span");
-    label.textContent = state.mode === "scroll" ? "滑动截图" : `${liveHits.length ? "实况" : "图片"} ${String(index + 1).padStart(2, "0")}`;
+    label.textContent = `${liveHits.length ? "实况" : "图片"} ${String(index + 1).padStart(2, "0")}`;
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.pageExport = "true";
-    button.title = liveHits.length ? "自动生成 Live Photo 发布包" : "下载单张 PNG";
+    button.title = liveHits.length
+      ? needsLivePhotoStaticFallback() ? "查看实况导出选项" : "自动生成 Live Photo 发布包"
+      : "下载单张 PNG";
     button.setAttribute("aria-label", liveHits.length ? `导出第 ${index + 1} 张实况` : `下载第 ${index + 1} 张`);
     button.innerHTML = `<i data-lucide="${liveHits.length ? "aperture" : "download"}"></i>`;
-    const filename = state.mode === "scroll" ? "layout-scroll-shot.png" : `layout-page-${String(index + 1).padStart(2, "0")}.png`;
+    const filename = `layout-page-${String(index + 1).padStart(2, "0")}.png`;
     button.addEventListener("click", () => exportCanvasAutomatically(canvas, filename, index));
     actions.append(label, button);
     shell.append(frame, actions);
@@ -6327,11 +6206,11 @@ function drawPreview(canvases) {
   });
 
   const livePageCount = canvases.filter((canvas) => liveImageHitsForCanvas(canvas).length).length;
-  els.pageCount.textContent = state.mode === "scroll" ? "滑动截图模式" : `${canvases.length} 张图片${livePageCount ? ` · ${livePageCount} 张实况` : ""}`;
-  els.status.textContent =
-    state.mode === "scroll"
-      ? `滑动截图模式：在卡片上滚动，下载当前画面`
-      : `已生成 ${canvases.length} 张${livePageCount ? `，其中 ${livePageCount} 张会自动导出 Live Photo` : ""}，高清尺寸 ${OUTPUT_CANVAS_WIDTH}x${OUTPUT_CANVAS_HEIGHT}`;
+  els.pageCount.textContent = `${canvases.length} 张图片${livePageCount ? ` · ${livePageCount} 张实况` : ""}`;
+  els.status.textContent = livePageCount && needsLivePhotoStaticFallback()
+    ? `已生成 ${canvases.length} 张 · ${livePageCount} 张实况；在线版可预览并下载图片版，完整实况需 macOS 本地版`
+    : `已生成 ${canvases.length} 张${livePageCount ? `，其中 ${livePageCount} 张会自动导出 Live Photo` : ""}，高清尺寸 ${OUTPUT_CANVAS_WIDTH}x${OUTPUT_CANVAS_HEIGHT}`;
+  syncExportBusyState();
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -6810,46 +6689,6 @@ function resizeImageLayout(startLayout, startBox, dx, dy) {
   };
 }
 
-function attachScrollFrameHandlers(frame) {
-  let startY = 0;
-  let startOffset = 0;
-
-  frame.addEventListener(
-    "wheel",
-    (event) => {
-      if (state.mode !== "scroll" || state.scrollMax <= 0) return;
-      event.preventDefault();
-      setScrollOffset(state.scrollOffset + event.deltaY);
-    },
-    { passive: false },
-  );
-
-  frame.addEventListener(
-    "touchstart",
-    (event) => {
-      startY = event.touches[0]?.clientY || 0;
-      startOffset = state.scrollOffset;
-    },
-    { passive: true },
-  );
-
-  frame.addEventListener(
-    "touchmove",
-    (event) => {
-      if (state.mode !== "scroll" || state.scrollMax <= 0) return;
-      event.preventDefault();
-      const y = event.touches[0]?.clientY || startY;
-      setScrollOffset(startOffset + startY - y);
-    },
-    { passive: false },
-  );
-}
-
-function setScrollOffset(value) {
-  state.scrollOffset = clamp(value, 0, state.scrollMax);
-  render();
-}
-
 function liveImageHitsForCanvas(canvas) {
   return (canvas?._imageHits || []).filter((hit) => state.images[hit.imageId]?.kind === "live");
 }
@@ -6873,6 +6712,7 @@ function exportProgressElements(scope = "main") {
       root: els.livePhotoHandoffProgress,
       title: els.livePhotoHandoffProgressTitle,
       detail: els.livePhotoHandoffProgressDetail,
+      percent: els.livePhotoHandoffProgressPercent,
       meta: els.livePhotoHandoffProgressMeta,
       bar: els.livePhotoHandoffProgressBar,
       fill: els.livePhotoHandoffProgressFill,
@@ -6882,6 +6722,7 @@ function exportProgressElements(scope = "main") {
     root: els.exportProgress,
     title: els.exportProgressTitle,
     detail: els.exportProgressDetail,
+    percent: els.exportProgressPercent,
     meta: els.exportProgressMeta,
     bar: els.exportProgressBar,
     fill: els.exportProgressFill,
@@ -6890,12 +6731,18 @@ function exportProgressElements(scope = "main") {
 
 function syncExportBusyState() {
   const mainBusy = exportProgressState.main.active;
+  const guideLocked = isBuiltInProjectId(state.currentProjectId);
   document.body.classList.toggle("export-busy", mainBusy || exportProgressState.handoff.active);
   [els.downloadZip, els.downloadArticle].filter(Boolean).forEach((button) => {
-    button.disabled = mainBusy;
+    button.disabled = mainBusy || guideLocked;
+    button.setAttribute("aria-disabled", button.disabled ? "true" : "false");
+    button.title = guideLocked ? GUIDE_DOWNLOAD_MESSAGE : "";
   });
   document.querySelectorAll("[data-page-export]").forEach((button) => {
-    button.disabled = mainBusy;
+    if (!button.dataset.enabledTitle) button.dataset.enabledTitle = button.title || "下载当前页面";
+    button.disabled = mainBusy || guideLocked;
+    button.setAttribute("aria-disabled", button.disabled ? "true" : "false");
+    button.title = guideLocked ? GUIDE_DOWNLOAD_MESSAGE : button.dataset.enabledTitle;
   });
 }
 
@@ -6914,6 +6761,19 @@ function refreshExportProgressMeta(scope) {
   elements.meta.textContent = `${count}已用时 ${exportElapsedSeconds(scope)} 秒`;
 }
 
+function setExportProgressValue(scope, value) {
+  const stateForScope = exportProgressState[scope];
+  const elements = exportProgressElements(scope);
+  if (!stateForScope || !elements.root) return;
+  stateForScope.value = clamp(Math.round(finiteNumber(value, stateForScope.value || 0)), 0, 100);
+  elements.percent.textContent = `${stateForScope.value}%`;
+  elements.fill.style.width = `${stateForScope.value}%`;
+  elements.bar.setAttribute("aria-valuemin", "0");
+  elements.bar.setAttribute("aria-valuemax", "100");
+  elements.bar.setAttribute("aria-valuenow", String(stateForScope.value));
+  elements.bar.setAttribute("aria-valuetext", `已完成 ${stateForScope.value}%`);
+}
+
 function beginExportProgress(scope, options = {}) {
   const stateForScope = exportProgressState[scope];
   const elements = exportProgressElements(scope);
@@ -6924,14 +6784,13 @@ function beginExportProgress(scope, options = {}) {
   stateForScope.startedAt = Date.now();
   stateForScope.current = Number.isFinite(options.current) ? options.current : null;
   stateForScope.total = Number.isFinite(options.total) ? options.total : null;
+  stateForScope.value = 0;
   elements.root.hidden = false;
-  elements.root.className = `export-progress${scope === "handoff" ? " export-progress-compact" : ""} is-indeterminate`;
+  elements.root.className = `export-progress${scope === "handoff" ? " export-progress-compact" : ""}`;
   elements.root.querySelector(".export-progress-icon").innerHTML = '<i data-lucide="loader-circle"></i>';
   elements.title.textContent = options.title || "正在准备导出";
   elements.detail.textContent = options.detail || "系统正在处理，请不要关闭页面。";
-  elements.fill.style.width = "";
-  elements.bar.removeAttribute("aria-valuenow");
-  elements.bar.setAttribute("aria-valuetext", elements.detail.textContent);
+  setExportProgressValue(scope, Number.isFinite(options.value) ? options.value : 5);
   refreshExportProgressMeta(scope);
   stateForScope.timer = window.setInterval(() => refreshExportProgressMeta(scope), 1000);
   syncExportBusyState();
@@ -6950,24 +6809,12 @@ function updateExportProgress(scope, options = {}) {
 
   const hasCount = Number.isFinite(stateForScope.current) && Number.isFinite(stateForScope.total) && stateForScope.total > 0;
   const hasValue = Number.isFinite(options.value);
-  const determinate = options.indeterminate === true ? false : options.indeterminate === false || hasCount || hasValue;
-  elements.root.classList.toggle("is-indeterminate", !determinate);
-  if (determinate) {
-    const value = hasValue
-      ? clamp(options.value, 0, 100)
-      : clamp((stateForScope.current / stateForScope.total) * 100, 0, 100);
-    elements.fill.style.width = `${value}%`;
-    elements.bar.setAttribute("aria-valuemin", "0");
-    elements.bar.setAttribute("aria-valuemax", "100");
-    elements.bar.setAttribute("aria-valuenow", String(Math.round(value)));
-    elements.bar.setAttribute("aria-valuetext", hasCount ? `已完成 ${stateForScope.current}/${stateForScope.total}` : `已完成 ${Math.round(value)}%`);
-  } else {
-    stateForScope.current = null;
-    stateForScope.total = null;
-    elements.fill.style.width = "";
-    elements.bar.removeAttribute("aria-valuenow");
-    elements.bar.setAttribute("aria-valuetext", elements.detail.textContent || "正在处理");
-  }
+  const nextValue = hasValue
+    ? options.value
+    : hasCount
+      ? (stateForScope.current / stateForScope.total) * 100
+      : stateForScope.value;
+  setExportProgressValue(scope, Math.max(stateForScope.value, nextValue));
   refreshExportProgressMeta(scope);
 }
 
@@ -6975,23 +6822,23 @@ function finishExportProgress(scope, options = {}) {
   const stateForScope = exportProgressState[scope];
   const elements = exportProgressElements(scope);
   if (!stateForScope || !elements.root) return;
-  const success = options.success !== false;
+  const cancelled = options.cancelled === true;
+  const success = !cancelled && options.success !== false;
   const elapsed = exportElapsedSeconds(scope);
   stateForScope.active = false;
   window.clearInterval(stateForScope.timer);
   stateForScope.timer = 0;
-  elements.root.classList.remove("is-indeterminate", "is-success", "is-error");
-  elements.root.classList.add(success ? "is-success" : "is-error");
-  elements.root.querySelector(".export-progress-icon").innerHTML = `<i data-lucide="${success ? "check" : "circle-alert"}"></i>`;
-  elements.title.textContent = options.title || (success ? "导出处理完成" : "导出没有完成");
-  elements.detail.textContent = options.detail || (success ? "文件已经准备好。" : "请根据提示处理后重试。");
-  if (success) elements.fill.style.width = "100%";
-  elements.meta.textContent = `${success ? "完成" : "已停止"} · 用时 ${elapsed} 秒`;
+  elements.root.classList.remove("is-success", "is-error", "is-cancelled");
+  elements.root.classList.add(cancelled ? "is-cancelled" : success ? "is-success" : "is-error");
+  elements.root.querySelector(".export-progress-icon").innerHTML = `<i data-lucide="${cancelled ? "x" : success ? "check" : "circle-alert"}"></i>`;
+  elements.title.textContent = options.title || (cancelled ? "已取消下载" : success ? "导出处理完成" : "导出没有完成");
+  elements.detail.textContent = options.detail || (cancelled ? "没有写入或下载任何文件。" : success ? "文件已经准备好。" : "请根据提示处理后重试。");
+  setExportProgressValue(scope, success ? 100 : cancelled ? 0 : stateForScope.value);
+  elements.meta.textContent = `${cancelled ? "已取消" : success ? "完成" : "已停止"} · 用时 ${elapsed} 秒`;
   elements.bar.setAttribute("aria-valuetext", elements.detail.textContent);
-  if (success) elements.bar.setAttribute("aria-valuenow", "100");
   syncExportBusyState();
   if (window.lucide) window.lucide.createIcons();
-  const delay = Number.isFinite(options.hideAfter) ? options.hideAfter : success ? 2400 : 5200;
+  const delay = Number.isFinite(options.hideAfter) ? options.hideAfter : success || cancelled ? 2400 : 5200;
   stateForScope.hideTimer = window.setTimeout(() => resetExportProgress(scope), delay);
 }
 
@@ -7006,14 +6853,17 @@ function resetExportProgress(scope) {
   stateForScope.hideTimer = 0;
   stateForScope.current = null;
   stateForScope.total = null;
+  stateForScope.value = 0;
   elements.root.hidden = true;
   elements.root.className = `export-progress${scope === "handoff" ? " export-progress-compact" : ""}`;
+  elements.percent.textContent = "0%";
+  elements.fill.style.width = "0%";
+  elements.bar.setAttribute("aria-valuenow", "0");
   syncExportBusyState();
 }
 
 async function generateLivePackageForCanvas(canvas, pageIndex, reveal = true, serviceChecked = false, onStage = null) {
   onStage?.("validate", "正在检查实况素材和页面设置…");
-  if (state.mode === "scroll") throw new Error("实况素材暂不支持滑动截图，请切回自动分页后导出。");
   const hits = liveImageHitsForCanvas(canvas);
   if (!hits.length) return null;
   if (hits.length > 1) throw new Error(`第 ${pageIndex + 1} 页包含多段实况，稳妥首版请把它们拆到不同页面。`);
@@ -7072,6 +6922,8 @@ function closeLivePhotoHandoff() {
   els.livePhotoHandoffModal.classList.add("hidden");
   els.livePhotoHandoffPreview.innerHTML = "";
   els.livePhotoHandoffThumbnails.innerHTML = "";
+  livePhotoHandoffState.onlineFallback = false;
+  livePhotoHandoffState.onlineEntries = [];
 }
 
 function createLivePhotoHandoffPreviewFrame(pageIndex, compact = false) {
@@ -7118,7 +6970,11 @@ function selectLivePhotoHandoffPage(pageIndex) {
   els.livePhotoHandoffThumbnails.querySelectorAll("[data-handoff-page]").forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.handoffPage) === item.pageIndex);
   });
-  if (!livePhotoHandoffState.isBatch) {
+  if (livePhotoHandoffState.onlineFallback) {
+    els.livePhotoHandoffReveal.disabled = true;
+    els.livePhotoHandoffAirdrop.disabled = false;
+    els.livePhotoHandoffDownload.disabled = false;
+  } else if (!livePhotoHandoffState.isBatch) {
     els.livePhotoHandoffReveal.disabled = !result;
     els.livePhotoHandoffAirdrop.disabled = !result;
   }
@@ -7190,6 +7046,11 @@ async function revealLivePhotoHandoff() {
 }
 
 async function airdropLivePhotoHandoff() {
+  if (livePhotoHandoffState.onlineFallback) {
+    window.open(LIVE_PHOTO_LOCAL_GUIDE_URL, "_blank", "noopener,noreferrer");
+    els.status.textContent = "已打开 macOS 本地版说明；完整 Live Photo 发布包需要在本机生成。";
+    return;
+  }
   const isBatch = livePhotoHandoffState.isBatch;
   if (!isBatch && !livePhotoHandoffState.selectedJobId) return;
   els.livePhotoHandoffAirdrop.disabled = true;
@@ -7220,10 +7081,90 @@ async function airdropLivePhotoHandoff() {
   }
 }
 
+async function downloadOnlineLivePhotoAsImages() {
+  const entries = livePhotoHandoffState.onlineEntries
+    .map(([pageIndex, canvas]) => [pageIndex, canvas || state.canvases[pageIndex]])
+    .filter(([, canvas]) => canvas);
+  if (!entries.length) return;
+  if (!beginExportProgress("handoff", {
+    title: entries.length > 1 ? "正在生成全部图片版" : "正在生成当前图片版",
+    detail: "在线版会把当前画面导出为高清 PNG，不会伪装成 Live Photo。",
+    value: 5,
+  })) return;
+
+  let completed = false;
+  els.livePhotoHandoffDownload.disabled = true;
+  els.livePhotoHandoffAirdrop.disabled = true;
+  els.livePhotoHandoffReveal.disabled = true;
+  els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="loader-circle"></i>正在生成图片版…';
+  if (window.lucide) window.lucide.createIcons();
+
+  try {
+    if (entries.length === 1) {
+      const [pageIndex, canvas] = entries[0];
+      updateExportProgress("handoff", {
+        title: "正在生成当前图片版",
+        detail: `正在把第 ${pageIndex + 1} 页按当前画面导出为高清 PNG…`,
+        value: 55,
+      });
+      const filename = `layout-page-${String(pageIndex + 1).padStart(2, "0")}-static.png`;
+      const saved = await downloadCanvas(canvas, filename);
+      if (!saved) {
+        finishExportProgress("handoff", {
+          cancelled: true,
+          title: "已取消下载",
+          detail: "没有写入任何文件，视频和排版仍保留在当前项目中。",
+        });
+        return;
+      }
+    } else {
+      const packageResult = await prepareStaticCanvasSubset(entries, (progress) => {
+        updateExportProgress("handoff", {
+          title: `正在生成图片 ${progress.completed}/${progress.total}`,
+          detail: progress.type === "archive" ? "图片已经生成，正在创建 ZIP…" : `第 ${progress.pageIndex + 1} 页已处理。`,
+          current: progress.completed,
+          total: progress.total,
+          value: progress.type === "archive" ? 88 : 10 + (progress.completed / progress.total) * 70,
+        });
+      });
+      updateExportProgress("handoff", { title: "正在保存图片版", detail: "文件已经生成，正在交给浏览器下载…", value: 96 });
+      if (packageResult?.type === "zip") {
+        await saveBlob(packageResult.blob, "graphic-layout-online-images.zip");
+      } else {
+        for (const file of packageResult?.files || []) await saveBlob(file.blob, file.filename);
+      }
+    }
+
+    completed = true;
+    els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="check"></i>图片版已下载';
+    els.livePhotoHandoffHint.textContent = "下载的是普通图片，不包含“实况”标识；视频素材仍保留在当前项目中。";
+    els.status.textContent = entries.length > 1
+      ? `已下载 ${entries.length} 页普通图片版；完整 Live Photo 仍需 macOS 本地版生成。`
+      : "已下载当前普通图片版；完整 Live Photo 仍需 macOS 本地版生成。";
+    finishExportProgress("handoff", {
+      title: "普通图片版已下载",
+      detail: entries.length > 1 ? `已按原顺序导出 ${entries.length} 页图片。` : "当前页面已经导出为高清 PNG。",
+    });
+  } catch (error) {
+    els.status.textContent = error?.message || "普通图片版导出失败。";
+    finishExportProgress("handoff", { success: false, title: "图片版导出失败", detail: els.status.textContent });
+  } finally {
+    els.livePhotoHandoffDownload.disabled = false;
+    els.livePhotoHandoffAirdrop.disabled = false;
+    if (!completed) els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="download"></i>下载普通图片版';
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
 async function downloadLivePhotoBatch() {
+  if (livePhotoHandoffState.onlineFallback) {
+    await downloadOnlineLivePhotoAsImages();
+    return;
+  }
   if (!beginExportProgress("handoff", {
     title: "正在整理批量下载",
     detail: "系统正在合并 Live Photo 与普通图片…",
+    value: 5,
   })) return;
   els.livePhotoHandoffDownload.disabled = true;
   els.livePhotoHandoffAirdrop.disabled = true;
@@ -7231,20 +7172,19 @@ async function downloadLivePhotoBatch() {
   els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="loader-circle"></i>正在整理并下载…';
   if (window.lucide) window.lucide.createIcons();
   try {
-    updateExportProgress("handoff", { title: "正在整理批量发布包", detail: "正在核对实况文件和普通 PNG…", indeterminate: true });
+    updateExportProgress("handoff", { title: "正在整理批量发布包", detail: "正在核对实况文件和普通 PNG…", value: 18 });
     const batch = await ensureLivePhotoBatchPrepared();
-    updateExportProgress("handoff", { title: "正在下载批量文件", detail: "发布包已经整理完成，正在传输 ZIP…", indeterminate: true });
+    updateExportProgress("handoff", { title: "正在下载批量文件", detail: "发布包已经整理完成，正在传输 ZIP…", value: 40 });
     const response = await fetch(livePhotoApiUrl(batch.archive_url));
     if (!response.ok) throw new Error("批量压缩包下载失败。");
     const archiveBlob = await responseBlobWithProgress(response, (loaded, total) => {
       updateExportProgress("handoff", {
         title: "正在下载批量文件",
         detail: `已传输 ${(loaded / 1024 / 1024).toFixed(1)} MB / ${(total / 1024 / 1024).toFixed(1)} MB`,
-        value: (loaded / total) * 100,
-        indeterminate: false,
+        value: 40 + (loaded / total) * 50,
       });
     });
-    updateExportProgress("handoff", { title: "正在保存下载文件", detail: "传输完成，正在交给浏览器保存…", indeterminate: true });
+    updateExportProgress("handoff", { title: "正在保存下载文件", detail: "传输完成，正在交给浏览器保存…", value: 96 });
     await saveBlob(archiveBlob, batch.archive_name || "写了就发-批量导出.zip");
     els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="check"></i>已直接下载';
     els.livePhotoHandoffReveal.hidden = false;
@@ -7262,18 +7202,7 @@ async function downloadLivePhotoBatch() {
   if (window.lucide) window.lucide.createIcons();
 }
 
-function showLivePhotoHandoff(liveResults, staticEntries = [], staticPackage = null) {
-  resetExportProgress("handoff");
-  livePhotoHandoffState.liveResults = [...liveResults].sort((a, b) => a.pageIndex - b.pageIndex);
-  livePhotoHandoffState.staticPages = staticEntries.map(([index]) => index).sort((a, b) => a - b);
-  livePhotoHandoffState.staticPackage = staticPackage;
-  livePhotoHandoffState.items = [
-    ...livePhotoHandoffState.liveResults.map((result) => ({ type: "live", pageIndex: result.pageIndex, result })),
-    ...livePhotoHandoffState.staticPages.map((pageIndex) => ({ type: "static", pageIndex })),
-  ].sort((a, b) => a.pageIndex - b.pageIndex);
-  livePhotoHandoffState.isBatch = livePhotoHandoffState.items.length > 1;
-  livePhotoHandoffState.batch = null;
-  livePhotoHandoffState.batchPreparing = null;
+function renderLivePhotoHandoffThumbnails() {
   els.livePhotoHandoffThumbnails.innerHTML = "";
   for (const item of livePhotoHandoffState.items) {
     const button = document.createElement("button");
@@ -7287,6 +7216,23 @@ function showLivePhotoHandoff(liveResults, staticEntries = [], staticPackage = n
     button.addEventListener("click", () => selectLivePhotoHandoffPage(item.pageIndex));
     els.livePhotoHandoffThumbnails.append(button);
   }
+}
+
+function showLivePhotoHandoff(liveResults, staticEntries = [], staticPackage = null) {
+  resetExportProgress("handoff");
+  livePhotoHandoffState.onlineFallback = false;
+  livePhotoHandoffState.onlineEntries = [];
+  livePhotoHandoffState.liveResults = [...liveResults].sort((a, b) => a.pageIndex - b.pageIndex);
+  livePhotoHandoffState.staticPages = staticEntries.map(([index]) => index).sort((a, b) => a - b);
+  livePhotoHandoffState.staticPackage = staticPackage;
+  livePhotoHandoffState.items = [
+    ...livePhotoHandoffState.liveResults.map((result) => ({ type: "live", pageIndex: result.pageIndex, result })),
+    ...livePhotoHandoffState.staticPages.map((pageIndex) => ({ type: "static", pageIndex })),
+  ].sort((a, b) => a.pageIndex - b.pageIndex);
+  livePhotoHandoffState.isBatch = livePhotoHandoffState.items.length > 1;
+  livePhotoHandoffState.batch = null;
+  livePhotoHandoffState.batchPreparing = null;
+  renderLivePhotoHandoffThumbnails();
   const liveCount = livePhotoHandoffState.liveResults.length;
   const staticCount = livePhotoHandoffState.staticPages.length;
   const total = livePhotoHandoffState.items.length;
@@ -7321,17 +7267,71 @@ function showLivePhotoHandoff(liveResults, staticEntries = [], staticPackage = n
   if (window.lucide) window.lucide.createIcons();
 }
 
+function showOnlineLivePhotoFallback(entries) {
+  resetExportProgress("main");
+  resetExportProgress("handoff");
+  livePhotoHandoffState.onlineFallback = true;
+  livePhotoHandoffState.onlineEntries = entries;
+  livePhotoHandoffState.liveResults = [];
+  livePhotoHandoffState.staticPages = [];
+  livePhotoHandoffState.staticPackage = null;
+  livePhotoHandoffState.selectedJobId = "";
+  livePhotoHandoffState.items = entries
+    .map(([pageIndex, canvas]) => ({
+      type: liveImageHitsForCanvas(canvas).length ? "live" : "static",
+      pageIndex,
+      result: null,
+    }))
+    .sort((a, b) => a.pageIndex - b.pageIndex);
+  livePhotoHandoffState.isBatch = livePhotoHandoffState.items.length > 1;
+  livePhotoHandoffState.batch = null;
+  livePhotoHandoffState.batchPreparing = null;
+  renderLivePhotoHandoffThumbnails();
+
+  const liveCount = livePhotoHandoffState.items.filter((item) => item.type === "live").length;
+  const staticCount = livePhotoHandoffState.items.length - liveCount;
+  const total = livePhotoHandoffState.items.length;
+  els.livePhotoHandoffTitle.textContent = "在线版暂不能生成 Live Photo";
+  els.livePhotoHandoffSummary.textContent = "视频和排版没有丢失。你可以先下载普通图片版，或使用 macOS 本地版生成完整实况。";
+  els.livePhotoHandoffCount.textContent = livePhotoHandoffState.isBatch
+    ? `共 ${total} 页 · ${liveCount} 页实况${staticCount ? ` · ${staticCount} 张普通图片` : ""}`
+    : `第 ${livePhotoHandoffState.items[0]?.pageIndex + 1 || 1} 页包含实况图片`;
+  els.livePhotoHandoffDetail.textContent = livePhotoHandoffState.isBatch
+    ? "下载图片版时会按原顺序导出全部页面，实况页使用当前封面画面。"
+    : "下载图片版会保留整张卡片排版，但文件是静态 PNG，不带“实况”标识。";
+  els.livePhotoHandoffAirdrop.disabled = false;
+  els.livePhotoHandoffAirdrop.innerHTML = '<i data-lucide="laptop"></i>查看 macOS 本地版';
+  els.livePhotoHandoffDownload.hidden = false;
+  els.livePhotoHandoffDownload.disabled = false;
+  els.livePhotoHandoffDownload.innerHTML = `<i data-lucide="download"></i>${livePhotoHandoffState.isBatch ? "下载全部图片版" : "下载当前图片版"}`;
+  els.livePhotoHandoffReveal.hidden = true;
+  els.livePhotoHandoffReveal.disabled = true;
+  els.livePhotoHandoffHint.textContent = "不会把静态图片伪装成 Live Photo；完整 .pvt、Finder 与 AirDrop 需要 macOS 本地版。";
+  els.livePhotoHandoffThumbnails.hidden = !livePhotoHandoffState.isBatch;
+  els.livePhotoHandoffModal.classList.remove("hidden");
+  selectLivePhotoHandoffPage(livePhotoHandoffState.items[0]?.pageIndex ?? -1);
+  els.status.textContent = "在线版可以预览实况；完整 Live Photo 发布包需要在 macOS 本地版生成。";
+  if (window.lucide) window.lucide.createIcons();
+}
+
 async function exportCanvasAutomatically(canvas, filename, pageIndex) {
-  if (!beginExportProgress("main", {
-    title: liveImageHitsForCanvas(canvas).length ? `正在处理第 ${pageIndex + 1} 页实况` : `正在导出第 ${pageIndex + 1} 张图片`,
-    detail: "正在准备页面素材…",
-  })) return;
+  if (blockBuiltInGuideDownload()) return;
   const hits = liveImageHitsForCanvas(canvas);
+  if (hits.length && needsLivePhotoStaticFallback()) {
+    showOnlineLivePhotoFallback([[pageIndex, canvas]]);
+    return;
+  }
+  if (!beginExportProgress("main", {
+    title: hits.length ? `正在处理第 ${pageIndex + 1} 页实况` : `正在导出第 ${pageIndex + 1} 张图片`,
+    detail: "正在准备页面素材…",
+    value: 5,
+  })) return;
   if (!hits.length) {
-    updateExportProgress("main", { title: `正在导出第 ${pageIndex + 1} 张图片`, detail: "请选择保存位置，随后会生成高清 PNG。" });
+    updateExportProgress("main", { title: `正在导出第 ${pageIndex + 1} 张图片`, detail: "请选择保存位置，随后会生成高清 PNG。", value: 55 });
     const saved = await downloadCanvas(canvas, filename);
     finishExportProgress("main", {
       success: saved,
+      cancelled: !saved,
       title: saved ? "图片导出完成" : "图片导出已取消",
       detail: saved ? filename : "没有写入或下载任何文件。",
     });
@@ -7339,13 +7339,14 @@ async function exportCanvasAutomatically(canvas, filename, pageIndex) {
   }
   els.status.textContent = `正在生成第 ${pageIndex + 1} 页 Live Photo 发布包…`;
   try {
-    const result = await generateLivePackageForCanvas(canvas, pageIndex, false, false, (_stage, detail) => {
+    const result = await generateLivePackageForCanvas(canvas, pageIndex, false, false, (stage, detail) => {
       updateExportProgress("main", {
         title: `正在处理第 ${pageIndex + 1} 页实况`,
         detail,
-        indeterminate: true,
+        value: stage === "validate" ? 12 : stage === "page" ? 32 : 62,
       });
     });
+    updateExportProgress("main", { title: "正在打开实况导出面板", detail: "Live Photo 发布包已经生成。", value: 95 });
     showLivePhotoHandoff([result]);
     els.status.textContent = `第 ${pageIndex + 1} 页实况包已生成，可在电脑中显示或直接 AirDrop。`;
     finishExportProgress("main", {
@@ -7416,6 +7417,7 @@ async function saveBlob(blob, filename, writable = null) {
 }
 
 async function downloadArticleImage() {
+  if (blockBuiltInGuideDownload()) return;
   const settings = readForm();
   if (state.appMode !== "article") {
     state.appMode = "article";
@@ -7434,31 +7436,45 @@ async function downloadArticleImage() {
     return;
   }
 
-  const filename = "write-then-publish-article.png";
-  const writable = await chooseSaveTarget(filename, EXPORT_IMAGE_MIME, EXPORT_IMAGE_EXTENSION);
-  if (writable === false) {
-    els.status.textContent = "已取消下载";
-    return;
-  }
+  if (!beginExportProgress("main", {
+    title: "正在生成长文图片",
+    detail: "正在准备完整文章画面…",
+    value: 5,
+  })) return;
 
-  els.status.textContent = "正在生成长图...";
-  const canvas = await window.html2canvas(article, {
-    backgroundColor: null,
-    scale: Math.min(2, window.devicePixelRatio || 1),
-    useCORS: true,
-    imageTimeout: 15000,
-    width: article.scrollWidth,
-    height: article.scrollHeight,
-    windowWidth: Math.max(document.documentElement.clientWidth, article.scrollWidth),
-    windowHeight: Math.max(document.documentElement.clientHeight, article.scrollHeight),
-  });
-  const blob = await canvasToLosslessPngBlob(canvas);
-  if (!blob) {
-    els.status.textContent = "长图生成失败，请调整内容后再试";
-    return;
+  const filename = "write-then-publish-article.png";
+  try {
+    updateExportProgress("main", { title: "请选择保存位置", detail: "确认后会开始生成高清长图。", value: 18 });
+    const writable = await chooseSaveTarget(filename, EXPORT_IMAGE_MIME, EXPORT_IMAGE_EXTENSION);
+    if (writable === false) {
+      els.status.textContent = "已取消下载";
+      finishExportProgress("main", { cancelled: true, title: "长图下载已取消", detail: "没有写入任何文件。" });
+      return;
+    }
+
+    els.status.textContent = "正在生成长图...";
+    updateExportProgress("main", { title: "正在渲染完整长文", detail: "正在合成长文主题、文字和图片…", value: 42 });
+    const canvas = await window.html2canvas(article, {
+      backgroundColor: null,
+      scale: Math.min(2, window.devicePixelRatio || 1),
+      useCORS: true,
+      imageTimeout: 15000,
+      width: article.scrollWidth,
+      height: article.scrollHeight,
+      windowWidth: Math.max(document.documentElement.clientWidth, article.scrollWidth),
+      windowHeight: Math.max(document.documentElement.clientHeight, article.scrollHeight),
+    });
+    updateExportProgress("main", { title: "正在生成 PNG", detail: "长文画面已渲染，正在转换为高清图片…", value: 82 });
+    const blob = await canvasToLosslessPngBlob(canvas);
+    if (!blob) throw new Error("长图生成失败，请调整内容后再试");
+    updateExportProgress("main", { title: "正在保存长图", detail: "图片已经生成，正在写入下载位置…", value: 96 });
+    await saveBlob(blob, filename, writable);
+    els.status.textContent = writable ? `已保存 ${filename}` : `已交给浏览器下载 ${filename}`;
+    finishExportProgress("main", { title: "长图下载完成", detail: els.status.textContent });
+  } catch (error) {
+    els.status.textContent = error?.message || "长图下载失败，请稍后重试";
+    finishExportProgress("main", { success: false, title: "长图下载失败", detail: els.status.textContent });
   }
-  await saveBlob(blob, filename, writable);
-  els.status.textContent = writable ? `已保存 ${filename}` : `已交给浏览器下载 ${filename}`;
 }
 
 function canvasToLosslessPngBlob(canvas) {
@@ -7472,7 +7488,7 @@ async function isZipBlob(blob) {
 
 async function downloadCanvasesIndividually(onProgress = null) {
   for (const [index, canvas] of state.canvases.entries()) {
-    const filename = state.mode === "scroll" ? "layout-scroll-shot.png" : `layout-page-${String(index + 1).padStart(2, "0")}.png`;
+    const filename = `layout-page-${String(index + 1).padStart(2, "0")}.png`;
     await downloadCanvas(canvas, filename);
     onProgress?.(index + 1, state.canvases.length);
   }
@@ -7505,21 +7521,21 @@ async function prepareStaticCanvasSubset(entries, onProgress = null) {
 }
 
 async function downloadAll() {
+  if (blockBuiltInGuideDownload()) return;
   if (!state.canvases.length) return;
+  const entries = state.canvases.map((canvas, index) => [index, canvas]);
+  const liveEntries = entries.filter(([, canvas]) => liveImageHitsForCanvas(canvas).length);
+  if (liveEntries.length && needsLivePhotoStaticFallback()) {
+    showOnlineLivePhotoFallback(entries);
+    return;
+  }
   if (!beginExportProgress("main", {
     title: "正在准备批量导出",
     detail: "正在识别普通图片和 Live Photo…",
+    value: 5,
   })) return;
-
-  const entries = state.canvases.map((canvas, index) => [index, canvas]);
-  const liveEntries = entries.filter(([, canvas]) => liveImageHitsForCanvas(canvas).length);
   if (liveEntries.length) {
-    if (state.mode === "scroll") {
-      els.status.textContent = "实况素材暂不支持滑动截图，请切回自动分页后导出。";
-      finishExportProgress("main", { success: false, title: "无法批量导出", detail: els.status.textContent });
-      return;
-    }
-    updateExportProgress("main", { title: "正在检查实况服务", detail: "正在确认本机可以生成 Live Photo…", indeterminate: true });
+    updateExportProgress("main", { title: "正在检查实况服务", detail: "正在确认本机可以生成 Live Photo…", value: 10 });
     if (!(await ensureLivePhotoServiceReady())) {
       els.status.textContent = "本机实况服务没有运行。请双击项目里的「启动写了就发.command」，保留终端窗口后再试。";
       finishExportProgress("main", { success: false, title: "实况服务尚未运行", detail: els.status.textContent });
@@ -7541,15 +7557,16 @@ async function downloadAll() {
           detail: `正在处理第 ${index + 1} 页的 Live Photo 发布包…`,
           current: position,
           total: entries.length,
-          indeterminate: false,
+          value: 12 + (position / entries.length) * 72,
         });
-        liveResults.push(await generateLivePackageForCanvas(canvas, index, false, true, (_stage, detail) => {
+        liveResults.push(await generateLivePackageForCanvas(canvas, index, false, true, (stage, detail) => {
+          const stageRatio = stage === "validate" ? 0.1 : stage === "page" ? 0.35 : 0.65;
           updateExportProgress("main", {
             title: `正在生成实况 ${position + 1}/${liveEntries.length}`,
             detail,
             current: position,
             total: entries.length,
-            indeterminate: false,
+            value: 12 + ((position + stageRatio) / entries.length) * 72,
           });
         }));
         updateExportProgress("main", {
@@ -7557,7 +7574,7 @@ async function downloadAll() {
           detail: `第 ${index + 1} 页实况已经处理完成。`,
           current: position + 1,
           total: entries.length,
-          indeterminate: false,
+          value: 12 + ((position + 1) / entries.length) * 72,
         });
       }
       els.status.textContent = staticEntries.length ? "正在单独打包普通 PNG…" : "实况发布包已生成。";
@@ -7567,7 +7584,7 @@ async function downloadAll() {
           updateExportProgress("main", {
             title: "正在整理批量发布包",
             detail: "全部页面已经生成，正在整理下载文件…",
-            indeterminate: true,
+            value: 90,
           });
           return;
         }
@@ -7576,10 +7593,10 @@ async function downloadAll() {
           detail: `第 ${progress.pageIndex + 1} 页高清 PNG 已处理。`,
           current: completed,
           total: entries.length,
-          indeterminate: false,
+          value: 12 + (completed / entries.length) * 72,
         });
       });
-      updateExportProgress("main", { title: "正在打开导出面板", detail: "所有页面均已处理完成。", indeterminate: true });
+      updateExportProgress("main", { title: "正在打开导出面板", detail: "所有页面均已处理完成。", value: 96 });
       showLivePhotoHandoff(liveResults, staticEntries, staticPackage);
       els.status.textContent = `已分流完成：${liveEntries.length} 个 Live Photo${staticEntries.length ? `，${staticEntries.length} 张普通 PNG` : ""}。`;
       finishExportProgress("main", {
@@ -7601,14 +7618,14 @@ async function downloadAll() {
         detail: `已处理 ${current} 张图片。`,
         current,
         total,
-        indeterminate: false,
+        value: 10 + (current / total) * 80,
       });
     });
     finishExportProgress("main", { title: "图片已逐张处理", detail: `共处理 ${state.canvases.length} 张图片。` });
     return;
   }
 
-  const zipFilename = state.mode === "scroll" ? "graphic-layout-scroll-shot.zip" : "graphic-layout-pages.zip";
+  const zipFilename = "graphic-layout-pages.zip";
   els.status.textContent = "正在打包图片...";
   try {
     const zip = new window.JSZip();
@@ -7618,7 +7635,7 @@ async function downloadAll() {
         detail: `正在处理第 ${index + 1} 页…`,
         current: index,
         total: state.canvases.length,
-        indeterminate: false,
+        value: 10 + (index / state.canvases.length) * 65,
       });
       const blob = await canvasToLosslessPngBlob(canvas);
       if (!blob) {
@@ -7626,17 +7643,17 @@ async function downloadAll() {
         finishExportProgress("main", { success: false, title: "图片生成失败", detail: els.status.textContent });
         return;
       }
-      const filename = state.mode === "scroll" ? "layout-scroll-shot.png" : `layout-page-${String(index + 1).padStart(2, "0")}.png`;
+      const filename = `layout-page-${String(index + 1).padStart(2, "0")}.png`;
       zip.file(filename, blob);
       updateExportProgress("main", {
         title: `已生成高清图片 ${index + 1}/${state.canvases.length}`,
         detail: `第 ${index + 1} 页已经处理完成。`,
         current: index + 1,
         total: state.canvases.length,
-        indeterminate: false,
+        value: 10 + ((index + 1) / state.canvases.length) * 65,
       });
     }
-    updateExportProgress("main", { title: "正在压缩下载文件", detail: "所有图片已经生成，正在创建 ZIP 压缩包…", indeterminate: true });
+    updateExportProgress("main", { title: "正在压缩下载文件", detail: "所有图片已经生成，正在创建 ZIP 压缩包…", value: 85 });
     const blob = await zip.generateAsync({
       type: "blob",
       compression: EXPORT_ZIP_COMPRESSION,
@@ -7650,9 +7667,9 @@ async function downloadAll() {
       return;
     }
 
-    updateExportProgress("main", { title: "正在保存批量文件", detail: "ZIP 已生成，正在交给浏览器下载…", indeterminate: true });
+    updateExportProgress("main", { title: "正在保存批量文件", detail: "ZIP 已生成，正在交给浏览器下载…", value: 96 });
     await saveBlob(blob, zipFilename);
-    els.status.textContent = state.mode === "scroll" ? "已下载当前滑动截图压缩包" : `已下载 ${state.canvases.length} 张图片压缩包`;
+    els.status.textContent = `已下载 ${state.canvases.length} 张图片压缩包`;
     finishExportProgress("main", { title: "批量下载完成", detail: els.status.textContent });
   } catch (error) {
     console.error(error);
@@ -7795,11 +7812,6 @@ function bindEvents() {
   els.applyImageWidth?.addEventListener("click", applyImageWidthToAll);
   els.applyFixedImageSize?.addEventListener("click", applyFixedImageSizeToAll);
   els.avatarInput.addEventListener("change", handleAvatar);
-  els.scrollMode.addEventListener("click", () => {
-    state.mode = state.mode === "scroll" ? "auto" : "scroll";
-    state.scrollOffset = 0;
-    render();
-  });
   els.cropAvatar.addEventListener("click", () => openCropper("avatar"));
   els.cropClose.addEventListener("click", closeCropper);
   els.cropApply.addEventListener("click", applyCropper);

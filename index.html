@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>写了就发 | Write Then Publish</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317202f'/%3E%3Cpath d='M18 17h28v7H18zm0 13h20v6H18zm0 12h28v6H18z' fill='%23fff'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="src/styles.css?v=20260730-auth-split-sheet" />
+    <link rel="stylesheet" href="src/styles.css?v=20260730-progress-status" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -245,7 +245,7 @@
                   </label>
                   <label>
                     行距
-                    <input id="lineHeightInput" type="number" min="1" max="2.4" step="0.05" value="1.65" />
+                    <input id="lineHeightInput" type="number" min="1" max="2.4" step="0.05" value="1.85" />
                   </label>
                   <label>
                     中文字体
@@ -286,10 +286,6 @@
             <span id="statusText">自动分页已开启</span>
           </div>
           <div class="topbar-actions">
-            <button id="scrollModeBtn" class="secondary-button" type="button">
-              <i data-lucide="scroll-text"></i>
-              滑动截图
-            </button>
             <button id="downloadZipBtn" class="primary-button" type="button">
               <i data-lucide="download"></i>
               批量下载
@@ -307,15 +303,18 @@
               同步草稿箱
             </button>
           </div>
-          <section id="exportProgress" class="export-progress" aria-live="polite" hidden>
-            <span class="export-progress-icon" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
-            <div class="export-progress-copy">
-              <strong id="exportProgressTitle">正在准备导出</strong>
-              <span id="exportProgressDetail">系统正在处理，请不要关闭页面。</span>
-            </div>
-            <span id="exportProgressMeta" class="export-progress-meta">已用时 0 秒</span>
-            <div id="exportProgressBar" class="export-progress-track" role="progressbar" aria-label="导出进度" aria-valuetext="正在处理">
-              <span id="exportProgressFill" class="export-progress-fill"></span>
+          <section id="exportProgress" class="export-progress" aria-live="polite" aria-label="导出处理进度" hidden>
+            <div class="export-progress-card">
+              <span class="export-progress-icon" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
+              <div class="export-progress-copy">
+                <strong id="exportProgressTitle">正在准备导出</strong>
+                <span id="exportProgressDetail">系统正在处理，请不要关闭页面。</span>
+              </div>
+              <strong id="exportProgressPercent" class="export-progress-percent">0%</strong>
+              <span id="exportProgressMeta" class="export-progress-meta">已用时 0 秒</span>
+              <div id="exportProgressBar" class="export-progress-track" role="progressbar" aria-label="导出进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="正在处理">
+                <span id="exportProgressFill" class="export-progress-fill"></span>
+              </div>
             </div>
           </section>
         </div>
@@ -472,6 +471,11 @@
           <article>
             <span class="welcome-back-feature-icon"><i data-lucide="video"></i></span>
             <div><strong>实况图片</strong><p>视频可制作并批量导出 Live Photo</p></div>
+            <span class="welcome-back-feature-state">新功能</span>
+          </article>
+          <article>
+            <span class="welcome-back-feature-icon"><i data-lucide="move"></i></span>
+            <div><strong>拖动排版</strong><p>在右侧预览区直接拖动图片调整段落位置</p></div>
             <span class="welcome-back-feature-state">新功能</span>
           </article>
           <article>
@@ -668,7 +672,7 @@
         <div class="modal-head">
           <div>
             <h3 id="livePhotoModalTitle">插入实况图片</h3>
-            <p>先把视频作为内容素材插入图文；右侧下载时会自动识别并生成发布包。</p>
+            <p>先把视频作为内容素材插入图文；右侧会自动识别，在线版可下载图片版，macOS 本地版可生成完整实况。</p>
           </div>
           <button id="livePhotoCloseBtn" class="icon-button ghost" type="button" title="关闭" aria-label="关闭实况照片制作">
             <i data-lucide="x"></i>
@@ -770,15 +774,18 @@
               <strong id="livePhotoHandoffCount">1 页实况已生成</strong>
               <span id="livePhotoHandoffDetail">实况将以 Live Photo 格式导出，完整保留视频内容。</span>
             </div>
-            <section id="livePhotoHandoffProgress" class="export-progress export-progress-compact" aria-live="polite" hidden>
-              <span class="export-progress-icon" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
-              <div class="export-progress-copy">
-                <strong id="livePhotoHandoffProgressTitle">正在整理下载文件</strong>
-                <span id="livePhotoHandoffProgressDetail">请稍候，完成后会自动开始下载。</span>
-              </div>
-              <span id="livePhotoHandoffProgressMeta" class="export-progress-meta">已用时 0 秒</span>
-              <div id="livePhotoHandoffProgressBar" class="export-progress-track" role="progressbar" aria-label="批量下载进度" aria-valuetext="正在处理">
-                <span id="livePhotoHandoffProgressFill" class="export-progress-fill"></span>
+            <section id="livePhotoHandoffProgress" class="export-progress export-progress-compact" aria-live="polite" aria-label="实况下载处理进度" hidden>
+              <div class="export-progress-card">
+                <span class="export-progress-icon" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
+                <div class="export-progress-copy">
+                  <strong id="livePhotoHandoffProgressTitle">正在整理下载文件</strong>
+                  <span id="livePhotoHandoffProgressDetail">请稍候，完成后会自动开始下载。</span>
+                </div>
+                <strong id="livePhotoHandoffProgressPercent" class="export-progress-percent">0%</strong>
+                <span id="livePhotoHandoffProgressMeta" class="export-progress-meta">已用时 0 秒</span>
+                <div id="livePhotoHandoffProgressBar" class="export-progress-track" role="progressbar" aria-label="批量下载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="正在处理">
+                  <span id="livePhotoHandoffProgressFill" class="export-progress-fill"></span>
+                </div>
               </div>
             </section>
             <div class="live-photo-handoff-primary-actions">
@@ -821,6 +828,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="src/supabase-config.js?v=20260729-auth"></script>
     <script src="src/supabase.js?v=20260729-auth-redirect"></script>
-    <script src="src/app.js?v=20260730-demo-guide-v3"></script>
+    <script src="src/app.js?v=20260730-default-font-34"></script>
   </body>
 </html>

@@ -580,7 +580,7 @@ body[data-guide-readonly="true"] .editor-textarea:focus {
 }
 
 .brand-row p,
-.preview-topbar span {
+#statusText {
   display: block;
   margin: 7px 0 0;
   color: var(--muted);
@@ -1360,20 +1360,30 @@ body[data-app-mode="article"] .profile-inline {
 }
 
 .export-progress {
-  position: relative;
-  z-index: 1;
+  position: fixed;
+  inset: 0;
+  z-index: 10040;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  place-items: center;
+  width: auto;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(6px);
+}
+
+.export-progress-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px 12px;
-  width: 100%;
-  padding: 13px 14px;
+  gap: 9px 14px;
+  width: min(440px, calc(100vw - 40px));
+  padding: 24px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--active-border) 34%, var(--line));
-  border-radius: 9px;
+  border-radius: 20px;
   color: var(--ink);
   background: color-mix(in srgb, var(--active-bg) 6%, var(--popover-bg));
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
 }
 
 .export-progress[hidden] {
@@ -1382,48 +1392,70 @@ body[data-app-mode="article"] .profile-inline {
 
 .export-progress-icon {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
   place-items: center;
-  grid-row: 1;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: start;
+  margin: 2px 0 0;
   border-radius: 999px;
   color: var(--active-text);
   background: var(--active-bg);
 }
 
 .export-progress-icon svg {
-  width: 17px;
-  height: 17px;
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin: 0;
   animation: export-progress-spin 1s linear infinite;
 }
 
 .export-progress-copy {
   display: grid;
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   gap: 3px;
 }
 
 .export-progress-copy strong {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 850;
 }
 
 .export-progress-copy span,
 .export-progress-meta {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
-.export-progress-meta {
+.export-progress-percent {
+  grid-column: 3;
+  grid-row: 1;
   justify-self: end;
+  color: var(--ink);
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  letter-spacing: -0.04em;
+}
+
+.export-progress-meta {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  justify-self: start;
   white-space: nowrap;
 }
 
 .export-progress-track {
   position: relative;
   grid-column: 1 / -1;
-  height: 6px;
+  grid-row: 3;
+  height: 8px;
+  margin-top: 7px;
   overflow: hidden;
   border-radius: 999px;
   background: color-mix(in srgb, var(--line) 78%, transparent);
@@ -1438,12 +1470,7 @@ body[data-app-mode="article"] .profile-inline {
   transition: width 220ms ease;
 }
 
-.export-progress.is-indeterminate .export-progress-fill {
-  width: 38%;
-  animation: export-progress-slide 1.25s ease-in-out infinite;
-}
-
-.export-progress.is-success {
+.export-progress.is-success .export-progress-card {
   border-color: color-mix(in srgb, #16a34a 42%, var(--line));
   background: color-mix(in srgb, #16a34a 7%, var(--popover-bg));
 }
@@ -1455,11 +1482,12 @@ body[data-app-mode="article"] .profile-inline {
 }
 
 .export-progress.is-success .export-progress-icon svg,
-.export-progress.is-error .export-progress-icon svg {
+.export-progress.is-error .export-progress-icon svg,
+.export-progress.is-cancelled .export-progress-icon svg {
   animation: none;
 }
 
-.export-progress.is-error {
+.export-progress.is-error .export-progress-card {
   border-color: color-mix(in srgb, #dc2626 42%, var(--line));
   background: color-mix(in srgb, #dc2626 7%, var(--popover-bg));
 }
@@ -1470,10 +1498,22 @@ body[data-app-mode="article"] .profile-inline {
   background: #dc2626;
 }
 
+.export-progress.is-cancelled .export-progress-card {
+  border-color: color-mix(in srgb, var(--muted) 34%, var(--line));
+  background: color-mix(in srgb, var(--muted) 5%, var(--popover-bg));
+}
+
+.export-progress.is-cancelled .export-progress-icon {
+  color: var(--muted);
+  background: var(--soft);
+}
+
+.export-progress.is-cancelled .export-progress-fill {
+  background: var(--muted);
+}
+
 .export-progress-compact {
-  align-self: start;
-  padding: 12px;
-  box-shadow: none;
+  z-index: 10050;
 }
 
 body.export-busy .page-actions button,
@@ -1482,14 +1522,12 @@ body.export-busy #downloadArticleBtn {
   cursor: progress;
 }
 
-@keyframes export-progress-spin {
-  to { transform: rotate(360deg); }
+body.export-busy {
+  overflow: hidden;
 }
 
-@keyframes export-progress-slide {
-  0% { transform: translateX(-115%); }
-  55% { transform: translateX(115%); }
-  100% { transform: translateX(285%); }
+@keyframes export-progress-spin {
+  to { transform: rotate(360deg); }
 }
 
 .preview-body {
@@ -1827,22 +1865,11 @@ body.export-busy #downloadArticleBtn {
   text-align: center;
 }
 
-.pages.scroll-mode {
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-}
-
 .page-shell {
   display: grid;
   gap: 10px;
   width: min(100%, 864px);
   justify-self: center;
-}
-
-.pages.scroll-mode .page-shell {
-  width: min(620px, 100%, calc((100vh - 220px) * 0.75));
-  min-width: 360px;
 }
 
 .page-frame {
@@ -1852,10 +1879,6 @@ body.export-busy #downloadArticleBtn {
   border: 1px solid var(--line);
   background: var(--paper);
   box-shadow: var(--shadow-card);
-}
-
-.page-frame.scrollable {
-  cursor: ns-resize;
 }
 
 .page-frame canvas {
@@ -4035,11 +4058,6 @@ body.onboarding-account-step .site-footer {
 
   .pages {
     grid-template-columns: 1fr;
-  }
-
-  .pages.scroll-mode .page-shell {
-    width: min(100%, calc((100vh - 210px) * 0.75));
-    min-width: 0;
   }
 
   .crop-layout {
