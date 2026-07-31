@@ -42,6 +42,9 @@ jobs:
 
       - name: Expose the cached FFmpeg runtime
         run: |
+          for formula in mpg123 lame libvpx opus sdl3 sdl2-compat svt-av1 x264 x265 ffmpeg; do
+            brew link --overwrite "$formula" >/dev/null
+          done
           FFMPEG_BIN="$(find /usr/local/Cellar/ffmpeg -type f -path '*/bin/ffmpeg' | head -1)"
           test -x "$FFMPEG_BIN"
           echo "$(dirname "$FFMPEG_BIN")" >> "$GITHUB_PATH"
