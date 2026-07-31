@@ -1,0 +1,40 @@
+name: Cloud Live Photo Worker
+
+on:
+  repository_dispatch:
+    types: [cloud-live-photo]
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Supabase Live Photo job id
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-live-photo-${{ github.event.client_payload.job_id || inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    env:
+      LIVE_PHOTO_JOB_ID: ${{ github.event.client_payload.job_id || inputs.job_id }}
+      SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
+      CLOUD_JOB_SECRET: ${{ secrets.CLOUD_JOB_SECRET }}
+    steps:
+      - name: Check out the app
+        uses: actions/checkout@v4
+
+      - name: Prepare the macOS media tools
+        run: |
+          brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+          brew list uv >/dev/null 2>&1 || brew install uv
+          ffmpeg -version | head -1
+          uvx --version
+
+      - name: Generate and upload the Live Photo package
+        run: python3 scripts/cloud_live_photo_worker.py

@@ -550,6 +550,7 @@ def render_live_photo(form: Any) -> dict[str, Any]:
                 root_dir=job_dir,
             )
         )
+        os.chmod(archive_path, 0o600)
         handoff_token = uuid.uuid4().hex
         LIVE_PHOTO_JOBS[job_id] = {
             "package_path": package_path,
@@ -577,6 +578,9 @@ def render_live_photo(form: Any) -> dict[str, Any]:
             "package_path": str(package_path),
             "photo_path": str(jpg_path),
             "movie_path": str(mov_path),
+            "archive_name": archive_path.name,
+            "archive_url": f"/api/live-photo/download/{handoff_token}",
+            "archive_bytes": archive_path.stat().st_size,
             "handoff_url": f"http://{lan_ip}:5173/live/{handoff_token}" if lan_ip else "",
         }
     except Exception:
@@ -739,6 +743,7 @@ def prepare_live_photo_batch(form: Any) -> dict[str, Any]:
         "output_dir": str(batch_dir),
         "archive_name": archive_path.name,
         "archive_url": f"/api/live-photo/batch-download/{token}",
+        "archive_bytes": archive_path.stat().st_size,
         "count": len(airdrop_paths),
     }
 
