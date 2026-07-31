@@ -1,0 +1,65 @@
+name: Linux Live Photo POC
+
+on:
+  push:
+    branches: [codex/linux-live-photo-poc]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the app
+        uses: actions/checkout@v4
+
+      - name: Set up Python package runner
+        uses: astral-sh/setup-uv@v6
+
+      - name: Generate and validate a Linux Live Photo package
+        run: |
+          set -euo pipefail
+          mkdir -p linux-live-photo-qa
+          cd linux-live-photo-qa
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "testsrc2=size=1080x1440:rate=30:duration=5" \
+            -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=5" \
+            -c:v libx264 -preset veryfast -crf 10 -pix_fmt yuv420p \
+            -c:a aac -b:a 192k -movflags +faststart Linux-LIVE.MOV
+          ffmpeg -hide_banner -loglevel error -y \
+            -ss 0.2 -i Linux-LIVE.MOV -frames:v 1 -q:v 2 Linux-LIVE.JPG
+          uvx --from makelive==0.7.0 python - <<'PY'
+          import json
+          from pathlib import Path
+          from makelive import is_live_photo_pair, live_id, save_live_photo_pair_as_pvt
+
+          jpg = Path("Linux-LIVE.JPG")
+          mov = Path("Linux-LIVE.MOV")
+          before = {"jpg": live_id(jpg), "mov": live_id(mov)}
+          asset_id, package_path = save_live_photo_pair_as_pvt(jpg, mov)
+          package = Path(package_path)
+          result = {
+              "asset_id": asset_id,
+              "valid_pair": is_live_photo_pair(jpg, mov),
+              "before": before,
+              "jpg_id": live_id(jpg),
+              "mov_id": live_id(mov),
+              "package": package.name,
+              "files": sorted(str(path.relative_to(package)) for path in package.rglob("*") if path.is_file()),
+          }
+          print(json.dumps(result, ensure_ascii=False))
+          if not result["valid_pair"] or not package.is_dir() or not result["files"]:
+              raise SystemExit("Linux Live Photo validation failed")
+          PY
+          zip -0 -q -r linux-live-photo-test.zip Linux-LIVE.pvt
+          unzip -l linux-live-photo-test.zip
+
+      - name: Upload the phone-test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-live-photo-phone-test
+          path: linux-live-photo-qa/linux-live-photo-test.zip
+          retention-days: 1
