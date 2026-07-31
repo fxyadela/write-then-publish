@@ -73,11 +73,13 @@ jobs:
           mov = Path("Cached-LIVE.MOV")
           asset_id, package_path = save_live_photo_pair_as_pvt(jpg, mov)
           package = Path(package_path)
+          packaged_jpg = next(path for path in package.iterdir() if path.suffix.lower() in {".jpg", ".jpeg"})
+          packaged_mov = next(path for path in package.iterdir() if path.suffix.lower() == ".mov")
           result = {
               "asset_id": asset_id,
-              "valid_pair": is_live_photo_pair(jpg, mov),
-              "jpg_id": live_id(jpg),
-              "mov_id": live_id(mov),
+              "valid_pair": is_live_photo_pair(packaged_jpg, packaged_mov),
+              "jpg_id": live_id(packaged_jpg),
+              "mov_id": live_id(packaged_mov),
               "package": package.name,
               "files": sorted(str(path.relative_to(package)) for path in package.rglob("*") if path.is_file()),
           }
