@@ -3440,24 +3440,24 @@ body.export-busy {
 
 .live-photo-handoff-card {
   width: min(1400px, 100%);
-  max-height: min(860px, calc(100vh - 48px));
+  max-height: min(900px, calc(100vh - 40px));
 }
 
 .live-photo-handoff-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: minmax(500px, 1fr) minmax(500px, 0.95fr);
   min-height: 0;
   overflow: auto;
 }
 
 .live-photo-handoff-preview {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 18px;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 14px;
   align-content: start;
   min-width: 0;
   min-height: 0;
-  padding: 20px 28px 24px;
+  padding: 28px 34px 26px;
   border-right: 1px solid var(--line);
   background: var(--soft);
 }
@@ -3472,7 +3472,7 @@ body.export-busy {
 .live-photo-handoff-preview-frame {
   position: relative;
   width: auto;
-  height: min(590px, calc(100vh - 290px));
+  height: min(560px, calc(100vh - 320px));
   max-width: 100%;
   aspect-ratio: 3 / 4;
   overflow: hidden;
@@ -3480,6 +3480,18 @@ body.export-busy {
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.1);
+}
+
+.live-photo-handoff-preview-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.live-photo-handoff-preview-hint[hidden] {
+  display: none;
 }
 
 .live-photo-handoff-preview-frame > canvas {
@@ -3533,7 +3545,7 @@ body.export-busy {
 .live-photo-handoff-thumbnails {
   display: flex;
   gap: 12px;
-  min-height: 104px;
+  min-height: 112px;
   overflow-x: auto;
   padding: 2px 2px 8px;
 }
@@ -3568,13 +3580,13 @@ body.export-busy {
 
 .live-photo-handoff-results {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto auto auto;
   align-content: stretch;
-  gap: 22px;
+  gap: 16px;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
-  padding: 40px 38px;
+  overflow: auto;
+  padding: 38px 44px 30px;
 }
 
 .live-photo-handoff-device {
@@ -3601,14 +3613,12 @@ body.export-busy {
 
 .live-photo-handoff-summary-block {
   display: grid;
-  gap: 10px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--line);
+  gap: 8px;
 }
 
 .live-photo-handoff-summary-block strong {
   color: var(--ink);
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1.35;
 }
 
@@ -3621,14 +3631,235 @@ body.export-busy {
 
 .live-photo-handoff-files {
   display: grid;
-  min-height: 0;
-  overflow-y: auto;
-  border-top: 1px solid var(--line);
+  align-content: start;
+  gap: 14px;
+  min-height: auto;
+  overflow: visible;
   overscroll-behavior: contain;
 }
 
 .live-photo-handoff-files[hidden] {
   display: none;
+}
+
+.live-photo-package-card {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--popover-bg);
+}
+
+.live-photo-package-lead,
+.live-photo-package-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 82px;
+  padding: 15px 18px;
+}
+
+.live-photo-package-row + .live-photo-package-row {
+  border-top: 1px solid var(--line);
+}
+
+.live-photo-package-lead > span:nth-child(2),
+.live-photo-package-row > span,
+.live-photo-package-helper > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.live-photo-package-lead strong,
+.live-photo-package-row strong,
+.live-photo-package-helper strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.live-photo-package-lead small,
+.live-photo-package-row small,
+.live-photo-package-helper small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.live-photo-package-lead em,
+.live-photo-package-row em {
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #3f7d1c;
+  background: #eaf7df;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.live-photo-package-icon,
+.live-photo-package-row > svg {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: var(--ink);
+}
+
+.live-photo-package-icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.live-photo-package-row > svg {
+  width: 22px;
+  height: 22px;
+}
+
+.live-photo-package-contents {
+  padding: 4px 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.live-photo-package-contents > strong {
+  display: block;
+  padding: 13px 0 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.live-photo-package-contents > div {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  border-bottom: 1px solid var(--line);
+}
+
+.live-photo-package-contents > div:last-child {
+  border-bottom: 0;
+}
+
+.live-photo-package-contents svg {
+  width: 19px;
+  height: 19px;
+  color: var(--ink);
+}
+
+.live-photo-package-contents span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.live-photo-package-contents b {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.live-photo-package-contents small {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.live-photo-package-details {
+  border-top: 1px solid var(--line);
+}
+
+.live-photo-package-details summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 0 18px;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
+  list-style: none;
+}
+
+.live-photo-package-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.live-photo-package-details summary svg {
+  width: 17px;
+  height: 17px;
+}
+
+.live-photo-package-details[open] summary svg:last-child {
+  transform: rotate(180deg);
+}
+
+.live-photo-package-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 18px 14px 45px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.live-photo-package-detail-grid span {
+  display: grid;
+  gap: 2px;
+}
+
+.live-photo-package-detail-grid strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.live-photo-package-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 10px 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--soft);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.live-photo-package-note svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.live-photo-package-helper {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 15px 17px;
+  border: 1px solid color-mix(in srgb, #4f8fd8 24%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, #dcecff 38%, var(--popover-bg));
+}
+
+.live-photo-package-helper > svg {
+  width: 26px;
+  height: 26px;
+  color: #3478c7;
+}
+
+.live-photo-package-helper.is-warning {
+  border-color: color-mix(in srgb, #c78b34 30%, var(--line));
+  background: color-mix(in srgb, #fff0d5 34%, var(--popover-bg));
+}
+
+.live-photo-package-helper.is-warning > svg {
+  color: #a56816;
 }
 
 .live-photo-handoff-file {
@@ -3659,7 +3890,7 @@ body.export-busy {
 }
 
 .live-photo-handoff-primary-actions button {
-  min-height: 48px;
+  min-height: 52px;
   justify-content: center;
   font-size: 14px;
 }
@@ -3667,6 +3898,19 @@ body.export-busy {
 .live-photo-handoff-hint {
   margin: 0;
   text-align: center;
+}
+
+.live-photo-handoff-cancel {
+  justify-self: center;
+  padding: 7px 16px;
+  color: var(--ink);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.live-photo-handoff-cancel:hover {
+  color: var(--active-text);
 }
 
 .export-progress-compact .handoff-progress-card {
@@ -3728,7 +3972,26 @@ body.export-busy {
 }
 
 .export-progress-compact:is(.is-success, .is-error, .is-cancelled) .handoff-progress-ring-wrap .export-progress-percent {
-  display: none;
+  inset: auto 0 0;
+  display: block;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.export-progress-compact:is(.is-success, .is-error, .is-cancelled) .handoff-progress-ring-wrap {
+  height: 116px;
+}
+
+.export-progress-compact:is(.is-success, .is-error, .is-cancelled) .handoff-progress-ring {
+  align-self: start;
+}
+
+.export-progress-compact.is-success .handoff-progress-ring-wrap .export-progress-percent {
+  color: #15803d;
+}
+
+.export-progress-compact.is-error .handoff-progress-ring-wrap .export-progress-percent {
+  color: #b91c1c;
 }
 
 .handoff-progress-steps {

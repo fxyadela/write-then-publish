@@ -92,7 +92,7 @@
     <td width="50%">
       <img src="docs/readme/live-export-single.jpg" alt="真实视频生成的单张实况导出面板" />
       <br><strong>单张实况</strong><br>
-      macOS 本地版可直接 AirDrop，或在 Finder 中显示完整发布包。
+      在线版由云端 Mac 生成完整发布包；macOS 本地版还可直接打开 Finder 与 AirDrop。
     </td>
     <td width="50%">
       <img src="docs/readme/live-export-batch.jpg" alt="普通图片和真实实况混合批量导出" />
@@ -104,7 +104,7 @@
 
 两张截图均由真实视频生成，不使用彩条或占位素材。导出过程中会显示居中进度弹窗、具体百分比、完成页数和耗时。
 
-> 在线版可预览、裁剪、排版并下载普通图片版；完整 `.pvt + JPG + MOV`、Finder 与 AirDrop 需要 macOS 本地服务。
+> 在线版会把原视频安全上传到私有存储，由云端 Mac 生成完整 `.pvt + JPG + MOV` 下载包；浏览器不能直接唤起系统 AirDrop，下载后请在 Finder 中发送整个 `.pvt`。
 
 可靠的手机交接方式：
 
@@ -132,7 +132,7 @@
 - 登录状态有效时直接进入工作区，不强制每位用户注册；
 - Row Level Security 按 `auth.uid()` 隔离数据。
 
-自行部署账号功能时，运行 [`supabase/schema.sql`](supabase/schema.sql)，再填写 [`src/supabase-config.js`](src/supabase-config.js) 中的 Project URL 与 publishable key。不要把 `service_role` 写进前端或仓库。
+自行部署账号功能时，运行 [`supabase/schema.sql`](supabase/schema.sql)，再填写 [`src/supabase-config.js`](src/supabase-config.js) 中的 Project URL 与 publishable key。云端实况还需要应用 [`supabase/migrations/20260731_cloud_live_photo.sql`](supabase/migrations/20260731_cloud_live_photo.sql)、部署 `live-photo-jobs` Edge Function，并配置仓库专用 GitHub 触发凭证。不要把 `service_role` 或触发凭证写进前端和仓库。
 
 ### 公众号
 
@@ -148,7 +148,8 @@
 | 图文卡片、长文与图片裁剪 | ✅ | ✅ | ✅ |
 | 单张 PNG、批量 ZIP、长图 | ✅ | ✅ | ✅ |
 | Live Photo 卡片预览 | ✅ | ✅ | ✅ |
-| 完整 `.pvt`、Finder、AirDrop | — | — | ✅ |
+| 完整 `.pvt` 下载包 | ✅ 云端生成 | — | ✅ 本机生成 |
+| Finder 中显示、直接 AirDrop | — | — | ✅ |
 | Obsidian 图片读取与 ZIP 降级 | ✅ | ✅ | ✅ |
 | Obsidian 直接写回 | 视浏览器权限 | 通常不可用 | 视浏览器权限 |
 | Supabase 账号同步 | ✅ | 配置后可用 | 配置后可用 |
@@ -181,11 +182,12 @@ npm start
 
 ## 技术与边界
 
-**技术栈**：原生 HTML / CSS / JavaScript、Canvas 2D、html2canvas、JSZip、Supabase、File System Access API、Python、FFmpeg、makelive、Vercel。
+**技术栈**：原生 HTML / CSS / JavaScript、Canvas 2D、html2canvas、JSZip、Supabase、GitHub Actions macOS、Python、FFmpeg、makelive、Vercel。
 
 **明确边界**：
 
-- 在线版不会伪装成已经生成 Live Photo；
+- 在线实况使用私有签名上传，源视频会在任务结束后删除，下载链接约 1 小时失效；
+- 云端 Mac 可能排队，页面会持续显示阶段、百分比和失败原因；
 - H.264 MOV 需要重新编码，项目采用高质量参数尽量减少可见损失；
 - 平台是否保留实况效果，取决于目标 App 的上传入口与当前规则；
 - 游客历史和浏览器存储都不等于永久备份；
@@ -195,9 +197,9 @@ npm start
 ## 常见问题
 
 <details>
-<summary><strong>为什么在线版不能 AirDrop Live Photo？</strong></summary>
+<summary><strong>在线版生成后怎么传到 iPhone？</strong></summary>
 
-在线静态站点不能调用 macOS 的 FFmpeg、Finder 与 AirDrop。请在 macOS 本地版生成完整 `.pvt`。
+在线版会下载包含完整 `.pvt` 的 ZIP。解压后，在 Mac 的 Finder 中选中整个 `.pvt`，再通过系统共享菜单 AirDrop 到 iPhone。浏览器不能代替系统直接选择 AirDrop 设备。
 </details>
 
 <details>

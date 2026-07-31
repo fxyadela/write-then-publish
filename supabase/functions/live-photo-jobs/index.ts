@@ -199,14 +199,18 @@ async function createJob(req: Request, body: Record<string, unknown>): Promise<R
   const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { data: recent, error: recentError } = await admin
     .from("live_photo_jobs")
-    .select("id,status")
+    .select("id,status,created_at")
     .eq("client_hash", fingerprint)
     .gte("created_at", since)
     .limit(12);
   if (recentError) return json(req, 500, { ok: false, error: "暂时无法检查云端任务额度。" });
-  const active = (recent || []).some((job) => ["uploading", "queued", "processing"].includes(job.status));
+  const activeCutoff = Date.now() - 20 * 60 * 1000;
+  const active = (recent || []).some((job) =>
+    ["uploading", "queued", "processing"].includes(job.status)
+      && new Date(job.created_at).getTime() >= activeCutoff
+  );
   if (active) return json(req, 409, { ok: false, error: "已有一张实况正在云端处理，请等待完成后再试。" });
-  const hourlyLimit = user ? 10 : 3;
+  const hourlyLimit = user ? 12 : 6;
   if ((recent || []).length >= hourlyLimit) {
     return json(req, 429, { ok: false, error: `云端处理较忙，每小时最多生成 ${hourlyLimit} 张，请稍后再试。` });
   }
@@ -298,6 +302,22 @@ async function jobStatus(req: Request, body: Record<string, unknown>): Promise<R
   return json(req, 200, payload);
 }
 
+async function cancelJob(req: Request, body: Record<string, unknown>): Promise<Response> {
+  const job = await findJob(String(body.job_id || ""), String(body.access_token || ""));
+  if (!job) return json(req, 404, { ok: false, error: "云端实况任务不存在或已经过期。" });
+  if (["complete", "failed"].includes(job.status)) return json(req, 200, { ok: true, status: job.status });
+  const inputFiles = Array.isArray(job.input_files) ? job.input_files as InputDescriptor[] : [];
+  const paths = inputFiles.map((file) => String(file.path || "")).filter(Boolean);
+  if (paths.length) await admin.storage.from(BUCKET).remove(paths);
+  await admin.from("live_photo_jobs").update({
+    status: "failed",
+    progress: 0,
+    stage: "上传已取消",
+    error_message: "文件没有上传完整，请重新尝试。",
+  }).eq("id", job.id);
+  return json(req, 200, { ok: true, status: "failed" });
+}
+
 function workerAuthorized(req: Request): boolean {
   const expected = Deno.env.get("CLOUD_JOB_SECRET") || "";
   return Boolean(expected && req.headers.get("x-worker-secret") === expected);
@@ -373,6 +393,7 @@ Deno.serve(async (req) => {
     if (action === "create") return await createJob(req, body);
     if (action === "start") return await startJob(req, body);
     if (action === "status") return await jobStatus(req, body);
+    if (action === "cancel") return await cancelJob(req, body);
     if (action === "worker_job") return await workerJob(req, body);
     if (action === "worker_update") return await workerUpdate(req, body);
     return json(req, 404, { ok: false, error: "云端实况接口不存在。" });

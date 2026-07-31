@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>写了就发 | Write Then Publish</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317202f'/%3E%3Cpath d='M18 17h28v7H18zm0 13h20v6H18zm0 12h28v6H18z' fill='%23fff'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="src/styles.css?v=20260730-batch-airdrop" />
+    <link rel="stylesheet" href="src/styles.css?v=20260731-live-download" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -767,6 +767,7 @@
         <div class="live-photo-handoff-layout">
           <section class="live-photo-handoff-preview" aria-label="导出效果预览">
             <div id="livePhotoHandoffPreview" class="live-photo-handoff-preview-main"></div>
+            <p id="livePhotoHandoffPreviewHint" class="live-photo-handoff-preview-hint" hidden>长按预览可以查看动态效果</p>
             <div id="livePhotoHandoffThumbnails" class="live-photo-handoff-thumbnails" aria-label="全部导出页面"></div>
           </section>
           <section class="live-photo-handoff-results" aria-label="导出操作">
@@ -775,10 +776,10 @@
               <strong id="livePhotoHandoffDeviceLabel">已检测：Mac · Safari</strong>
             </div>
             <div class="live-photo-handoff-summary-block">
-              <strong id="livePhotoHandoffCount">1 页实况已生成</strong>
-              <span id="livePhotoHandoffDetail">实况将以 Live Photo 格式导出，完整保留视频内容。</span>
+              <strong id="livePhotoHandoffCount">你会下载到什么？</strong>
+              <span id="livePhotoHandoffDetail">1 张实况照片</span>
             </div>
-            <div id="livePhotoHandoffFiles" class="live-photo-handoff-files" aria-label="本次导出文件" hidden></div>
+            <div id="livePhotoHandoffFiles" class="live-photo-handoff-files" aria-label="下载包内容"></div>
             <section id="livePhotoHandoffProgress" class="export-progress export-progress-compact" aria-live="polite" aria-label="实况下载处理进度" hidden>
               <div class="export-progress-card handoff-progress-card">
                 <div class="export-progress-copy handoff-progress-copy">
@@ -797,17 +798,16 @@
               </div>
             </section>
             <div class="live-photo-handoff-primary-actions">
-              <button id="livePhotoHandoffAirdropBtn" class="primary-button" type="button">
-                <i data-lucide="share"></i>AirDrop 全部到手机
+              <button id="livePhotoHandoffDownloadBtn" class="primary-button" type="button">
+                <i data-lucide="download"></i>下载实况照片
               </button>
-              <button id="livePhotoHandoffDownloadBtn" class="secondary-button" type="button" hidden>
-                <i data-lucide="download"></i>下载全部到电脑
+              <button id="livePhotoHandoffRevealBtn" class="secondary-button" type="button" hidden>
+                <i data-lucide="folder-open"></i>在 Finder 中找到
               </button>
-              <button id="livePhotoHandoffRevealBtn" class="secondary-button" type="button">
-                <i data-lucide="folder-open"></i>在电脑中显示
-              </button>
+              <button id="livePhotoHandoffAirdropBtn" class="secondary-button" type="button" hidden aria-hidden="true" tabindex="-1"></button>
             </div>
-            <p id="livePhotoHandoffHint" class="live-photo-handoff-hint">AirDrop 整个 .pvt 到 iPhone，照片会保留“实况”标识。</p>
+            <p id="livePhotoHandoffHint" class="live-photo-handoff-hint">下载的是一个 ZIP 压缩包，解压后即可看到完整实况照片。</p>
+            <button id="livePhotoHandoffCancelBtn" class="live-photo-handoff-cancel" type="button">取消</button>
           </section>
         </div>
       </div>
@@ -835,7 +835,7 @@
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="src/supabase-config.js?v=20260729-auth"></script>
-    <script src="src/supabase.js?v=20260729-auth-redirect"></script>
-    <script src="src/app.js?v=20260730-batch-airdrop"></script>
+    <script src="src/supabase.js?v=20260731-cloud-live"></script>
+    <script src="src/app.js?v=20260731-cloud-live"></script>
   </body>
 </html>

@@ -224,8 +224,102 @@
     }
   }
 
+  async function invokeLivePhotoFunction(action, payload = {}) {
+    const session = await getSession();
+    const response = await fetch(`${url}/functions/v1/live-photo-jobs`, {
+      method: "POST",
+      headers: {
+        apikey: publishableKey,
+        Authorization: `Bearer ${session?.access_token || publishableKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error || "云端实况服务暂时不可用。");
+    }
+    return result;
+  }
+
+  async function getCloudLivePhotoJob(jobId, accessToken) {
+    return invokeLivePhotoFunction("status", {
+      job_id: jobId,
+      access_token: accessToken,
+    });
+  }
+
+  async function createCloudLivePhotoJob(files, manifest, onProgress = null) {
+    const entries = Object.entries(files || {}).filter(([, file]) => file?.blob instanceof Blob);
+    const descriptors = entries.map(([key, file]) => ({
+      key,
+      name: file.name || `${key}.bin`,
+      type: file.blob.type || "application/octet-stream",
+      size: file.blob.size,
+    }));
+    onProgress?.({ stage: "create", progress: 4, detail: "正在创建安全的云端处理任务…" });
+    const created = await invokeLivePhotoFunction("create", { files: descriptors, manifest });
+    let started = false;
+    try {
+      const uploads = new Map((created.uploads || []).map((upload) => [upload.key, upload]));
+      for (const [index, [key, file]] of entries.entries()) {
+        const upload = uploads.get(key);
+        if (!upload?.path || !upload?.token) throw new Error(`云端没有准备 ${key} 上传地址。`);
+        onProgress?.({
+          stage: "upload",
+          progress: 8 + Math.round((index / entries.length) * 22),
+          detail: key === "video" ? "正在安全上传原视频，不会压缩画质…" : "正在上传卡片画面…",
+        });
+        const { error } = await requireClient().storage.from("live-photo-jobs").uploadToSignedUrl(
+          upload.path,
+          upload.token,
+          file.blob,
+          { contentType: file.blob.type || "application/octet-stream", cacheControl: "3600" },
+        );
+        throwIfError(error);
+      }
+      onProgress?.({ stage: "queue", progress: 32, detail: "文件上传完成，正在启动云端 Mac…" });
+      await invokeLivePhotoFunction("start", {
+        job_id: created.job_id,
+        access_token: created.access_token,
+      });
+      started = true;
+
+      const deadline = Date.now() + 15 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1800));
+        const status = await getCloudLivePhotoJob(created.job_id, created.access_token);
+        onProgress?.({
+          stage: status.status,
+          progress: Math.max(32, Number(status.progress) || 32),
+          detail: status.stage || "云端正在处理实况照片…",
+        });
+        if (status.status === "complete" && status.archive_url) {
+          return {
+            ...status,
+            provider: "cloud",
+            cloud_access_token: created.access_token,
+          };
+        }
+        if (status.status === "failed") {
+          throw new Error(status.error || "云端实况生成失败，请重新尝试。");
+        }
+      }
+      throw new Error("云端实况处理超过 15 分钟，请稍后重新尝试。");
+    } catch (error) {
+      if (!started) {
+        await invokeLivePhotoFunction("cancel", {
+          job_id: created.job_id,
+          access_token: created.access_token,
+        }).catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
   window.WriteThenPublishCloud = {
     configured,
+    livePhotoConfigured: configured,
     configurationError: configured
       ? ""
       : configPresent
@@ -246,5 +340,7 @@
     uploadProjectAsset,
     downloadProjectAsset,
     deleteProjectAssets,
+    createCloudLivePhotoJob,
+    getCloudLivePhotoJob,
   };
 })();
