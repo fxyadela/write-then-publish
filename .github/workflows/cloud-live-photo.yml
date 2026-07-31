@@ -7,8 +7,13 @@ on:
     inputs:
       job_id:
         description: Supabase Live Photo job id
-        required: true
+        required: false
         type: string
+      warm_cache:
+        description: Prepare the reusable Live Photo runtime without processing a user job
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -31,11 +36,61 @@ jobs:
       - name: Check out the app
         uses: actions/checkout@v4
 
-      - name: Prepare the macOS media tools
+      - name: Restore the FFmpeg runtime
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/Cellar/ffmpeg
+            /usr/local/Cellar/mpg123
+            /usr/local/Cellar/lame
+            /usr/local/Cellar/libvpx
+            /usr/local/Cellar/opus
+            /usr/local/Cellar/sdl3
+            /usr/local/Cellar/sdl2-compat
+            /usr/local/Cellar/svt-av1
+            /usr/local/Cellar/x264
+            /usr/local/Cellar/x265
+            /usr/local/opt/ffmpeg
+            /usr/local/opt/mpg123
+            /usr/local/opt/lame
+            /usr/local/opt/libvpx
+            /usr/local/opt/opus
+            /usr/local/opt/sdl3
+            /usr/local/opt/sdl2-compat
+            /usr/local/opt/svt-av1
+            /usr/local/opt/x264
+            /usr/local/opt/x265
+          key: macos-15-intel-live-photo-ffmpeg-8.1.2-1-v2
+
+      - name: Install FFmpeg on the first cache run
         run: |
-          brew install ffmpeg uv
+          if ! find /usr/local/Cellar/ffmpeg -type f -path '*/bin/ffmpeg' -print -quit | grep -q .; then
+            brew install ffmpeg
+          fi
+
+      - name: Expose the cached FFmpeg runtime
+        run: |
+          if [[ ! -e /usr/local/opt/libvpx || ! -e /usr/local/opt/ffmpeg ]]; then
+            for formula in mpg123 lame libvpx opus sdl3 sdl2-compat svt-av1 x264 x265 ffmpeg; do
+              brew link --overwrite "$formula" >/dev/null
+            done
+          fi
+          FFMPEG_BIN="$(find /usr/local/Cellar/ffmpeg -type f -path '*/bin/ffmpeg' | head -1)"
+          test -x "$FFMPEG_BIN"
+          echo "$(dirname "$FFMPEG_BIN")" >> "$GITHUB_PATH"
           ffmpeg -version | head -1
-          uvx --version
+
+      - name: Set up the Python package runner
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: .github/workflows/cloud-live-photo.yml
+
+      - name: Warm the Live Photo package cache
+        if: github.event_name == 'workflow_dispatch' && inputs.warm_cache == true
+        run: uvx --from makelive==0.7.0 python -c "import makelive; print('Live Photo package cache ready')"
 
       - name: Generate and upload the Live Photo package
+        if: github.event_name != 'workflow_dispatch' || inputs.warm_cache != true
         run: uv run --no-project --python 3.12 python scripts/cloud_live_photo_worker.py

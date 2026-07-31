@@ -273,8 +273,8 @@ print(json.dumps({
     'movie_id': movie_id,
 }))
 """.strip()
-    cache_dir = Path("/private/tmp/write-then-publish-uv-cache")
-    tool_dir = Path("/private/tmp/write-then-publish-uv-tools")
+    cache_dir = Path(os.environ.get("UV_CACHE_DIR") or "/private/tmp/write-then-publish-uv-cache")
+    tool_dir = Path(os.environ.get("UV_TOOL_DIR") or "/private/tmp/write-then-publish-uv-tools")
     cache_dir.mkdir(parents=True, exist_ok=True)
     tool_dir.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
