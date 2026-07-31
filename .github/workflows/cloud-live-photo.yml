@@ -25,14 +25,15 @@ jobs:
       LIVE_PHOTO_JOB_ID: ${{ github.event.client_payload.job_id || inputs.job_id }}
       SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
       CLOUD_JOB_SECRET: ${{ secrets.CLOUD_JOB_SECRET }}
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
     steps:
       - name: Check out the app
         uses: actions/checkout@v4
 
       - name: Prepare the macOS media tools
         run: |
-          brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
-          brew list uv >/dev/null 2>&1 || brew install uv
+          brew install ffmpeg uv
           ffmpeg -version | head -1
           uvx --version
 

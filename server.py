@@ -17,6 +17,7 @@ import sys
 import tempfile
 import threading
 import uuid
+import zipfile
 from datetime import datetime
 from html.parser import HTMLParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -86,6 +87,20 @@ def redact_error(value: str) -> str:
 
 def command_path(name: str) -> str:
     return shutil.which(name) or ""
+
+
+def make_stored_zip(archive_path: Path, root_dir: Path, entries: list[Path]) -> Path:
+    """Archive already-compressed media without duplicating compression work."""
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
+        for entry in entries:
+            if not entry.exists():
+                continue
+            paths = [entry] if entry.is_file() else [path for path in entry.rglob("*") if path.is_file()]
+            for path in paths:
+                archive.write(path, path.relative_to(root_dir))
+    os.chmod(archive_path, 0o600)
+    return archive_path
 
 
 def live_photo_status() -> dict[str, Any]:
@@ -520,37 +535,11 @@ def render_live_photo(form: Any) -> dict[str, Any]:
 
             packaged = package_live_photo(jpg_path, mov_path)
             package_path = Path(str(packaged["package_path"])).resolve()
-            guide_path = job_dir / "使用说明.txt"
-            guide_path.write_text(
-                "\n".join(
-                    [
-                        "写了就发 · Live Photo 发布包",
-                        "",
-                        f"平台：{platform['label']}",
-                        f"时长：{target_duration:g} 秒",
-                        f"校验：JPG 与 MOV asset ID 一致（{packaged['asset_id']}）",
-                        "",
-                        "发布步骤：",
-                        f"1. 在 Finder 中选择 {package_path.name}，必须把整个 .pvt 当作一个项目。",
-                        "2. AirDrop 到 iPhone，不要把 JPG 和 MOV 分开发送。",
-                        "3. 在 iPhone 照片中确认显示“实况”。",
-                        f"4. 从{platform['label']}手机端选择这张实况照片并发布。",
-                        "",
-                        "JPG 与 MOV 是调试和备份文件；正式传手机优先使用 .pvt。",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            os.chmod(guide_path, 0o600)
-
-        archive_path = Path(
-            shutil.make_archive(
-                str(job_dir.with_name(f"{job_dir.name}-手机备份")),
-                "zip",
-                root_dir=job_dir,
-            )
+        archive_path = make_stored_zip(
+            job_dir.with_name(f"{job_dir.name}-实况照片.zip"),
+            job_dir,
+            [package_path],
         )
-        os.chmod(archive_path, 0o600)
         handoff_token = uuid.uuid4().hex
         LIVE_PHOTO_JOBS[job_id] = {
             "package_path": package_path,
@@ -710,23 +699,11 @@ def prepare_live_photo_batch(form: Any) -> dict[str, Any]:
                 raise ValueError(f"第 {page_index + 1} 页不是有效 PNG。")
             airdrop_paths.append(destination)
 
-        guide_path = batch_dir / "使用说明.txt"
-        guide_path.write_text(
-            "\n".join(
-                [
-                    "写了就发 · 批量导出",
-                    "",
-                    f"共 {len(airdrop_paths)} 页：{len(live_items)} 页实况，{len(static_fields)} 张普通图片。",
-                    "",
-                    "AirDrop 到 iPhone 时，请保留每个 .pvt 为完整项目，不要拆开发送里面的 JPG 和 MOV。",
-                    "普通页面为高清 PNG，可以和实况页面一起选择后发布。",
-                ]
-            ),
-            encoding="utf-8",
+        archive_path = make_stored_zip(
+            batch_dir.with_suffix(".zip"),
+            batch_dir,
+            sorted(batch_dir.iterdir()),
         )
-        os.chmod(guide_path, 0o600)
-        archive_path = Path(shutil.make_archive(str(batch_dir), "zip", root_dir=batch_dir))
-        os.chmod(archive_path, 0o600)
     except Exception:
         shutil.rmtree(batch_dir, ignore_errors=True)
         raise

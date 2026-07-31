@@ -7223,14 +7223,6 @@ async function prepareCloudLivePhotoBatch() {
   for (const file of livePhotoHandoffState.staticPackage?.files || []) {
     zip.file(`${String(file.pageIndex + 1).padStart(2, "0")}-图片.png`, file.blob);
   }
-  zip.file("使用说明.txt", [
-    "写了就发 · 云端批量导出",
-    "",
-    `共 ${livePhotoHandoffState.items.length} 页：${livePhotoHandoffState.liveResults.length} 页实况，${livePhotoHandoffState.staticPages.length} 张普通图片。`,
-    "",
-    "请保持每个 .pvt 完整，不要拆开发送里面的 JPG、MOV 和识别信息。",
-    "在 Mac 上解压 ZIP 后，可以在 Finder 中把 .pvt 通过隔空投送发送到 iPhone。",
-  ].join("\n"));
   const archiveBlob = await zip.generateAsync({
     type: "blob",
     compression: EXPORT_ZIP_COMPRESSION,
@@ -7555,7 +7547,7 @@ async function downloadLivePhotoBatch() {
   const isBatch = livePhotoHandoffState.isBatch;
   if (!beginExportProgress("handoff", {
     title: isBatch ? "正在生成全部内容" : "正在准备实况照片",
-    detail: isBatch ? "系统正在处理 Live Photo 与普通图片…" : "正在整理完整 .pvt 和说明文件…",
+    detail: isBatch ? "系统正在处理 Live Photo 与普通图片…" : "正在整理完整 .pvt…",
     value: 5,
     current: isBatch ? 0 : null,
     total: isBatch ? livePhotoHandoffState.items.length : null,
@@ -7604,8 +7596,8 @@ async function downloadLivePhotoBatch() {
     els.livePhotoHandoffReveal.hidden = cloudArchive;
     els.livePhotoHandoffHint.textContent = "下载已完成。解压 ZIP 后，请保留每个 .pvt 的完整结构。";
     els.status.textContent = isBatch
-      ? `已下载 ${livePhotoHandoffState.items.length} 页内容，ZIP 内包含全部 .pvt、PNG 和使用说明。`
-      : "实况照片 ZIP 已下载，里面包含完整 .pvt、JPG、MOV 和使用说明。";
+      ? `已下载 ${livePhotoHandoffState.items.length} 页内容，ZIP 内只包含全部 .pvt 和普通 PNG。`
+      : "实况照片 ZIP 已下载，解压后只有一个完整 .pvt。";
     updateLivePhotoHandoffProgressSteps(-1, livePhotoHandoffState.items.map((item) => item.pageIndex));
     finishExportProgress("handoff", {
       title: isBatch ? "全部内容下载完成" : "实况照片下载完成",
