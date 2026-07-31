@@ -2876,8 +2876,17 @@ function normalizeLiveMediaSettings(settings = {}) {
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    try {
+      const sourceUrl = new URL(String(src || ""), window.location.href);
+      if (["http:", "https:"].includes(sourceUrl.protocol) && sourceUrl.origin !== window.location.origin) {
+        img.crossOrigin = "anonymous";
+        img.referrerPolicy = "no-referrer";
+      }
+    } catch {
+      // data:、blob: 和内置 SVG 不需要跨域设置。
+    }
     img.onload = () => resolve(img);
-    img.onerror = reject;
+    img.onerror = () => reject(new Error("图片无法以可导出的方式加载。"));
     img.src = src;
   });
 }
@@ -7946,7 +7955,20 @@ async function downloadArticleImage() {
 }
 
 function canvasToLosslessPngBlob(canvas) {
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), EXPORT_IMAGE_MIME));
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("图片生成失败，请刷新页面后重试。"));
+      }, EXPORT_IMAGE_MIME);
+    } catch (error) {
+      if (error?.name === "SecurityError" || /tainted canvas/i.test(String(error?.message || ""))) {
+        reject(new Error("当前内容包含浏览器不允许导出的网络图片。请重新上传头像或相关图片后再试。"));
+        return;
+      }
+      reject(error);
+    }
+  });
 }
 
 async function isZipBlob(blob) {
