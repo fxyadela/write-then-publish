@@ -37,4 +37,4 @@ jobs:
           uvx --version
 
       - name: Generate and upload the Live Photo package
-        run: python3 scripts/cloud_live_photo_worker.py
+        run: uv run --no-project --python 3.12 python scripts/cloud_live_photo_worker.py
