@@ -1,4 +1,4 @@
-name: Linux Live Photo POC
+name: Cached macOS Live Photo POC
 
 on:
   push:
@@ -10,46 +10,72 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-intel
     timeout-minutes: 10
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
     steps:
       - name: Check out the app
         uses: actions/checkout@v4
 
+      - name: Restore the FFmpeg runtime
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/Cellar/ffmpeg
+            /usr/local/Cellar/mpg123
+            /usr/local/Cellar/lame
+            /usr/local/Cellar/libvpx
+            /usr/local/Cellar/opus
+            /usr/local/Cellar/sdl3
+            /usr/local/Cellar/sdl2-compat
+            /usr/local/Cellar/svt-av1
+            /usr/local/Cellar/x264
+            /usr/local/Cellar/x265
+          key: macos-15-intel-live-photo-ffmpeg-8.1.2-1-v1
+
+      - name: Install FFmpeg on the first cache run
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: brew install ffmpeg
+
+      - name: Expose the cached FFmpeg runtime
+        run: |
+          FFMPEG_BIN="$(find /usr/local/Cellar/ffmpeg -type f -path '*/bin/ffmpeg' | head -1)"
+          test -x "$FFMPEG_BIN"
+          echo "$(dirname "$FFMPEG_BIN")" >> "$GITHUB_PATH"
+
       - name: Set up Python package runner
         uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: .github/workflows/linux-live-photo-poc.yml
 
-      - name: Install Linux media tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg
-
-      - name: Generate and validate a Linux Live Photo package
+      - name: Generate and validate a cached macOS Live Photo package
         run: |
           set -euo pipefail
-          mkdir -p linux-live-photo-qa
-          cd linux-live-photo-qa
+          mkdir -p live-photo-qa
+          cd live-photo-qa
           ffmpeg -hide_banner -loglevel error -y \
             -f lavfi -i "testsrc2=size=1080x1440:rate=30:duration=5" \
             -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=5" \
-            -c:v libx264 -preset veryfast -crf 10 -pix_fmt yuv420p \
-            -c:a aac -b:a 192k -movflags +faststart Linux-LIVE.MOV
+            -c:v libx264 -preset slow -crf 10 -pix_fmt yuv420p \
+            -c:a aac -b:a 192k -movflags +faststart Cached-LIVE.MOV
           ffmpeg -hide_banner -loglevel error -y \
-            -ss 0.2 -i Linux-LIVE.MOV -frames:v 1 -q:v 2 Linux-LIVE.JPG
+            -ss 0.2 -i Cached-LIVE.MOV -frames:v 1 -q:v 2 Cached-LIVE.JPG
           uvx --from makelive==0.7.0 python - <<'PY'
           import json
           from pathlib import Path
           from makelive import is_live_photo_pair, live_id, save_live_photo_pair_as_pvt
 
-          jpg = Path("Linux-LIVE.JPG")
-          mov = Path("Linux-LIVE.MOV")
-          before = {"jpg": live_id(jpg), "mov": live_id(mov)}
+          jpg = Path("Cached-LIVE.JPG")
+          mov = Path("Cached-LIVE.MOV")
           asset_id, package_path = save_live_photo_pair_as_pvt(jpg, mov)
           package = Path(package_path)
           result = {
               "asset_id": asset_id,
               "valid_pair": is_live_photo_pair(jpg, mov),
-              "before": before,
               "jpg_id": live_id(jpg),
               "mov_id": live_id(mov),
               "package": package.name,
@@ -57,14 +83,14 @@ jobs:
           }
           print(json.dumps(result, ensure_ascii=False))
           if not result["valid_pair"] or not package.is_dir() or not result["files"]:
-              raise SystemExit("Linux Live Photo validation failed")
+              raise SystemExit("Cached macOS Live Photo validation failed")
           PY
-          zip -0 -q -r linux-live-photo-test.zip Linux-LIVE.pvt
-          unzip -l linux-live-photo-test.zip
+          zip -0 -q -r cached-live-photo-test.zip Cached-LIVE.pvt
+          unzip -l cached-live-photo-test.zip
 
       - name: Upload the phone-test package
         uses: actions/upload-artifact@v4
         with:
-          name: linux-live-photo-phone-test
-          path: linux-live-photo-qa/linux-live-photo-test.zip
+          name: cached-live-photo-phone-test
+          path: live-photo-qa/cached-live-photo-test.zip
           retention-days: 1
