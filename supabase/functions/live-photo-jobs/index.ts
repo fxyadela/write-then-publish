@@ -355,8 +355,9 @@ async function workerUpdate(req: Request, body: Record<string, unknown>): Promis
   if (!/^[0-9a-f-]{36}$/i.test(jobId) || !["processing", "complete", "failed"].includes(status)) {
     return json(req, 400, { ok: false, error: "Invalid worker update" });
   }
-  const { data: job } = await admin.from("live_photo_jobs").select("input_files").eq("id", jobId).maybeSingle();
+  const { data: job } = await admin.from("live_photo_jobs").select("input_files,status").eq("id", jobId).maybeSingle();
   if (!job) return json(req, 404, { ok: false, error: "Job not found" });
+  if (job.status === "failed") return json(req, 200, { ok: true, ignored: true });
   const progress = status === "complete" ? 100 : Math.round(finiteNumber(body.progress, 10, 0, 99));
   const update: Record<string, unknown> = {
     status,

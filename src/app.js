@@ -449,6 +449,10 @@ const livePhotoHandoffState = {
   pendingEntries: [],
   prepared: false,
 };
+const livePhotoPrewarmState = {
+  jobs: new Map(),
+  timer: 0,
+};
 const exportProgressState = {
   main: { active: false, startedAt: 0, timer: 0, hideTimer: 0, current: null, total: null, value: 0 },
   handoff: { active: false, startedAt: 0, timer: 0, hideTimer: 0, current: null, total: null, value: 0 },
@@ -6199,6 +6203,91 @@ async function render() {
   state.canvases = pages.map((page, index) => renderPage(page, index, pages.length));
   drawPreview(state.canvases);
   saveState();
+  scheduleLivePhotoPrewarm();
+}
+
+async function cancelStaleLivePhotoPrewarm(entry) {
+  if (!entry || entry.stale) return;
+  entry.stale = true;
+  if (entry.cancel) {
+    await entry.cancel().catch(() => undefined);
+    return;
+  }
+  if (entry.promise) await entry.promise.catch(() => undefined);
+}
+
+async function prewarmLivePhotoCanvas(canvas, pageIndex) {
+  const hits = liveImageHitsForCanvas(canvas);
+  if (hits.length !== 1) return null;
+  const imageId = String(hits[0].imageId);
+  const image = state.images[imageId];
+  if (!image || image.demoOnly || !liveMediaFiles.get(String(image.videoKey || imageId))?.blob) return null;
+
+  const previous = livePhotoPrewarmState.jobs.get(imageId);
+  if (previous?.canvas === canvas && (previous.promise || previous.result || previous.status === "failed")) {
+    return previous.result || previous.promise;
+  }
+  if (previous) {
+    await cancelStaleLivePhotoPrewarm(previous);
+    if (livePhotoPrewarmState.jobs.get(imageId) === previous) livePhotoPrewarmState.jobs.delete(imageId);
+  }
+
+  const entry = {
+    canvas,
+    pageIndex,
+    status: "preparing",
+    result: null,
+    promise: null,
+    jobId: "",
+    cancel: null,
+    stale: false,
+    error: "",
+  };
+  livePhotoPrewarmState.jobs.set(imageId, entry);
+  entry.promise = (async () => {
+    try {
+      if (!(await ensureLivePhotoServiceReady())) throw new Error("云端实况服务暂时不可用。");
+      if (livePhotoPrewarmState.jobs.get(imageId) !== entry) return null;
+      const result = await generateLivePackageForCanvas(
+        canvas,
+        pageIndex,
+        false,
+        true,
+        (stage, detail, cloudProgress, meta = {}) => {
+          if (meta.jobId) entry.jobId = meta.jobId;
+          if (meta.cancel) entry.cancel = meta.cancel;
+          entry.status = stage === "complete" ? "complete" : "processing";
+        },
+      );
+      if (livePhotoPrewarmState.jobs.get(imageId) !== entry || entry.stale) return null;
+      entry.result = result;
+      entry.status = "complete";
+      entry.promise = null;
+      els.status.textContent = "实况已在后台准备完成，点击下载时会直接使用。";
+      return result;
+    } catch (error) {
+      if (livePhotoPrewarmState.jobs.get(imageId) === entry && !entry.stale) {
+        entry.status = "failed";
+        entry.error = error?.message || "后台实况准备失败。";
+        entry.promise = null;
+      }
+      throw error;
+    }
+  })();
+  els.status.textContent = "实况正在后台准备；你可以继续编辑内容。";
+  return entry.promise;
+}
+
+function scheduleLivePhotoPrewarm() {
+  window.clearTimeout(livePhotoPrewarmState.timer);
+  livePhotoPrewarmState.timer = window.setTimeout(() => {
+    livePhotoPrewarmState.timer = 0;
+    if (!cloudLivePhotoAvailable() || !state.canvases.length) return;
+    state.canvases.forEach((canvas, pageIndex) => {
+      const hits = liveImageHitsForCanvas(canvas);
+      if (hits.length === 1) void prewarmLivePhotoCanvas(canvas, pageIndex).catch(() => undefined);
+    });
+  }, 1200);
 }
 
 function drawPreview(canvases) {
@@ -7093,7 +7182,7 @@ async function generateLivePackageForCanvas(canvas, pageIndex, reveal = true, se
         mask: { blob: maskBlob, name: "live-well-mask.png" },
       },
       manifest,
-      ({ detail, progress }) => onStage?.("package", detail, progress),
+      ({ detail, progress, jobId, cancel }) => onStage?.("package", detail, progress, { jobId, cancel }),
     );
     result.pageIndex = pageIndex;
     result.platform_label = settings.platform === "wechat" ? "微信公众号" : "小红书";
@@ -7114,6 +7203,30 @@ async function generateLivePackageForCanvas(canvas, pageIndex, reveal = true, se
   if (!response.ok || !result.ok) throw new Error(result.error || `第 ${pageIndex + 1} 页实况发布包生成失败。`);
   result.pageIndex = pageIndex;
   return result;
+}
+
+async function prepareLivePhotoPackageForCanvas(canvas, pageIndex, reveal = false, serviceChecked = false, onStage = null) {
+  const hits = liveImageHitsForCanvas(canvas);
+  const imageId = hits.length === 1 ? String(hits[0].imageId) : "";
+  const cached = imageId ? livePhotoPrewarmState.jobs.get(imageId) : null;
+  if (cached?.canvas === canvas) {
+    if (cached.result) {
+      onStage?.("package", "已复用后台准备好的实况发布包。", 100);
+      return { ...cached.result, pageIndex };
+    }
+    if (cached.promise) {
+      try {
+        const result = await cached.promise;
+        if (result) return { ...result, pageIndex };
+      } catch {
+        if (livePhotoPrewarmState.jobs.get(imageId) === cached) livePhotoPrewarmState.jobs.delete(imageId);
+      }
+    }
+  } else if (cached) {
+    await cancelStaleLivePhotoPrewarm(cached);
+    if (livePhotoPrewarmState.jobs.get(imageId) === cached) livePhotoPrewarmState.jobs.delete(imageId);
+  }
+  return generateLivePackageForCanvas(canvas, pageIndex, reveal, serviceChecked, onStage);
 }
 
 function closeLivePhotoHandoff() {
@@ -7293,7 +7406,7 @@ async function preparePendingLivePhotoHandoffBatch() {
       total: entries.length,
       value: 8 + (completedPageIndexes.length / entries.length) * 72,
     });
-    const result = await generateLivePackageForCanvas(canvas, pageIndex, false, true, (stage, detail, cloudProgress) => {
+    const result = await prepareLivePhotoPackageForCanvas(canvas, pageIndex, false, true, (stage, detail, cloudProgress) => {
       const stageRatio = Number.isFinite(cloudProgress)
         ? Math.max(0.1, Number(cloudProgress) / 100)
         : stage === "validate" ? 0.1 : stage === "page" ? 0.35 : 0.68;
@@ -7802,7 +7915,7 @@ async function exportCanvasAutomatically(canvas, filename, pageIndex) {
   }
   els.status.textContent = `正在生成第 ${pageIndex + 1} 页 Live Photo 发布包…`;
   try {
-    const result = await generateLivePackageForCanvas(canvas, pageIndex, false, false, (stage, detail, cloudProgress) => {
+    const result = await prepareLivePhotoPackageForCanvas(canvas, pageIndex, false, false, (stage, detail, cloudProgress) => {
       updateExportProgress("main", {
         title: `正在处理第 ${pageIndex + 1} 页实况`,
         detail,

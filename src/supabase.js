@@ -249,6 +249,13 @@
     });
   }
 
+  async function cancelCloudLivePhotoJob(jobId, accessToken) {
+    return invokeLivePhotoFunction("cancel", {
+      job_id: jobId,
+      access_token: accessToken,
+    });
+  }
+
   async function createCloudLivePhotoJob(files, manifest, onProgress = null) {
     const entries = Object.entries(files || {}).filter(([, file]) => file?.blob instanceof Blob);
     const descriptors = entries.map(([key, file]) => ({
@@ -259,6 +266,17 @@
     }));
     onProgress?.({ stage: "create", progress: 4, detail: "正在创建安全的云端处理任务…" });
     const created = await invokeLivePhotoFunction("create", { files: descriptors, manifest });
+    const cancel = () => invokeLivePhotoFunction("cancel", {
+      job_id: created.job_id,
+      access_token: created.access_token,
+    });
+    onProgress?.({
+      stage: "created",
+      progress: 4,
+      detail: "云端任务已创建，正在上传素材…",
+      jobId: created.job_id,
+      cancel,
+    });
     let started = false;
     try {
       const uploads = new Map((created.uploads || []).map((upload) => [upload.key, upload]));
@@ -342,5 +360,6 @@
     deleteProjectAssets,
     createCloudLivePhotoJob,
     getCloudLivePhotoJob,
+    cancelCloudLivePhotoJob,
   };
 })();
