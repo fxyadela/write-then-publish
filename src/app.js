@@ -411,6 +411,7 @@ const cropper = {
 
 let imageEditDrag = null;
 let previewImageDrag = null;
+let previewImageSelection = null;
 let wechatCoverData = "";
 let wechatServiceReady = false;
 let wechatSyncing = false;
@@ -6294,6 +6295,9 @@ function drawPreview(canvases) {
   els.pages.innerHTML = "";
   els.pages.className = "pages";
   els.articleSettings.hidden = true;
+  if (previewImageSelection && !String(els.content.value || "").includes(`[[image:${previewImageSelection.imageId}]]`)) {
+    previewImageSelection = null;
+  }
   if (!canvases.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
@@ -6312,6 +6316,9 @@ function drawPreview(canvases) {
     frame.append(createImageEditLayer(canvas));
     frame.append(createTextHitLayer(canvas));
     attachPreviewImageDropHandlers(frame);
+    frame.addEventListener("pointerdown", (event) => {
+      if (!event.target.closest(".preview-image-box, .preview-text-hit")) clearPreviewImageSelection();
+    });
 
     const actions = document.createElement("div");
     actions.className = "page-actions";
@@ -6351,6 +6358,7 @@ function createImageEditLayer(canvas) {
     const box = document.createElement("div");
     box.className = "preview-image-box";
     box.classList.toggle("is-live", isLive);
+    box.classList.toggle("is-selected", previewImageSelectionMatchesHit(hit));
     box.dataset.imageId = hit.imageId;
     box.dataset.baseWidth = String(hit.baseWidth || hit.width);
     box.dataset.maxWidth = String(hit.maxWidth || CARD_CONTENT_WIDTH);
@@ -6358,11 +6366,28 @@ function createImageEditLayer(canvas) {
     box.dataset.sourceStart = String(hit.sourceStart);
     box.dataset.sourceEnd = String(hit.sourceEnd);
     box.tabIndex = 0;
-    box.title = isLive ? "拖动可调整位置；右上角编辑，顶部调整对齐，右下角缩放" : "拖动可调整位置；右上角裁剪，顶部调整对齐，右下角缩放";
+    box.setAttribute("role", "button");
+    box.setAttribute("aria-label", `选择${isLive ? "实况" : "图片"} ${image?.name || hit.imageId}`);
+    box.setAttribute("aria-selected", previewImageSelectionMatchesHit(hit) ? "true" : "false");
+    box.title = isLive
+      ? "点击选中后按 Backspace 删除；拖动可调整位置，右上角编辑，顶部调整对齐，右下角缩放"
+      : "点击选中后按 Backspace 删除；拖动可调整位置，右上角裁剪，顶部调整对齐，右下角缩放";
     applyImageBoxStyle(box, hit);
     box.addEventListener("pointerdown", startPreviewImageMove);
     box.addEventListener("click", (event) => {
+      selectPreviewImage({
+        imageId: hit.imageId,
+        sourceStart: hit.sourceStart,
+        sourceEnd: hit.sourceEnd,
+      });
       if (event.target === box) box.focus({ preventScroll: true });
+    });
+    box.addEventListener("focus", () => {
+      selectPreviewImage({
+        imageId: hit.imageId,
+        sourceStart: hit.sourceStart,
+        sourceEnd: hit.sourceEnd,
+      });
     });
 
     if (isLive) {
@@ -6419,6 +6444,131 @@ function createImageEditLayer(canvas) {
   return layer;
 }
 
+function previewImageSelectionMatchesHit(hit) {
+  if (!previewImageSelection || String(previewImageSelection.imageId) !== String(hit?.imageId || "")) return false;
+  if (!Number.isFinite(previewImageSelection.sourceStart) || !Number.isFinite(hit?.sourceStart)) return true;
+  return previewImageSelection.sourceStart === hit.sourceStart
+    && previewImageSelection.sourceEnd === hit.sourceEnd;
+}
+
+function selectPreviewImage(selection) {
+  if (!selection?.imageId || !state.images[selection.imageId]) return;
+  previewImageSelection = {
+    imageId: String(selection.imageId),
+    sourceStart: Number(selection.sourceStart),
+    sourceEnd: Number(selection.sourceEnd),
+  };
+  document.querySelectorAll(".preview-image-box").forEach((box) => {
+    const selected = previewImageSelectionMatchesHit({
+      imageId: box.dataset.imageId,
+      sourceStart: Number(box.dataset.sourceStart),
+      sourceEnd: Number(box.dataset.sourceEnd),
+    });
+    box.classList.toggle("is-selected", selected);
+    box.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+}
+
+function clearPreviewImageSelection() {
+  previewImageSelection = null;
+  document.querySelectorAll(".preview-image-box.is-selected").forEach((box) => {
+    box.classList.remove("is-selected");
+    box.setAttribute("aria-selected", "false");
+  });
+}
+
+function isEditablePreviewDeleteTarget(target) {
+  const element = target instanceof Element ? target : null;
+  if (!element) return false;
+  return Boolean(element.closest("input, textarea, select, [contenteditable='true']"));
+}
+
+function selectedPreviewImageHit(content) {
+  if (!previewImageSelection) return null;
+  const imageId = String(previewImageSelection.imageId || "");
+  const tag = `[[image:${imageId}]]`;
+  if (!tag || !content.includes(tag)) return null;
+  const expectedStart = Number(previewImageSelection.sourceStart);
+  const expectedEnd = Number(previewImageSelection.sourceEnd);
+  if (Number.isFinite(expectedStart) && Number.isFinite(expectedEnd) && content.slice(expectedStart, expectedEnd) === tag) {
+    return { imageId, sourceStart: expectedStart, sourceEnd: expectedEnd };
+  }
+  const candidates = Array.from(content.matchAll(new RegExp(`\\[\\[image:${escapeRegExp(imageId)}\\]\\]`, "g")), (match) => match.index);
+  const fallbackStart = candidates.sort((a, b) => Number.isFinite(expectedStart)
+    ? Math.abs(a - expectedStart) - Math.abs(b - expectedStart)
+    : a - b)[0];
+  return !Number.isFinite(fallbackStart)
+    ? null
+    : { imageId, sourceStart: fallbackStart, sourceEnd: fallbackStart + tag.length };
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function cleanUpDeletedImageAsset(imageId, image) {
+  if (image?.kind !== "live") return;
+  const key = String(image.videoKey || imageId);
+  const prewarm = livePhotoPrewarmState.jobs.get(imageId);
+  if (prewarm) {
+    prewarm.stale = true;
+    livePhotoPrewarmState.jobs.delete(imageId);
+    void cancelStaleLivePhotoPrewarm(prewarm).catch(() => undefined);
+  }
+  const cached = liveMediaFiles.get(key);
+  if (cached?.url) URL.revokeObjectURL(cached.url);
+  liveMediaFiles.delete(key);
+  try {
+    await deleteLiveMediaBlob(key);
+  } catch {
+    // The image has already been removed from the document; cache cleanup can retry later.
+  }
+}
+
+async function deleteSelectedPreviewImage() {
+  if (isBuiltInProjectId(state.currentProjectId)) {
+    els.status.textContent = "内置说明书不可修改，请先点击左上角“+”新建内容";
+    return;
+  }
+  const content = String(els.content.value || "");
+  const selected = selectedPreviewImageHit(content);
+  if (!selected) {
+    clearPreviewImageSelection();
+    return;
+  }
+
+  const removal = imageRemovalRange(content, selected.sourceStart, selected.sourceEnd);
+  const image = state.images[selected.imageId];
+  commitTextHistory();
+  els.content.value = `${content.slice(0, removal.start)}${content.slice(removal.end)}`;
+  const stillReferenced = els.content.value.includes(`[[image:${selected.imageId}]]`);
+  if (!stillReferenced) delete state.images[selected.imageId];
+  clearPreviewImageSelection();
+  updateImageList();
+  saveState();
+  commitTextHistory();
+  await render();
+  if (!stillReferenced) void cleanUpDeletedImageAsset(selected.imageId, image);
+  els.status.textContent = `已删除${image?.kind === "live" ? "实况" : "图片"}${image?.name ? `：${image.name}` : ""}`;
+}
+
+function handlePreviewImageDeleteKey(event) {
+  if (event.isComposing || !["Backspace", "Delete"].includes(event.key)) return;
+  if (isEditablePreviewDeleteTarget(event.target)) return;
+  const activeElement = document.activeElement;
+  const activeBox = activeElement?.closest?.(".preview-image-box");
+  const targetBox = event.target?.closest?.(".preview-image-box");
+  if (!previewImageSelection || (!activeBox && !targetBox)) return;
+  if (activeElement?.matches?.("button, input, textarea, select")) return;
+  if (isBuiltInProjectId(state.currentProjectId)) {
+    event.preventDefault();
+    els.status.textContent = "内置说明书不可修改，请先点击左上角“+”新建内容";
+    return;
+  }
+  event.preventDefault();
+  void deleteSelectedPreviewImage();
+}
+
 function attachPreviewImageDropHandlers(frame) {
   const indicator = document.createElement("div");
   indicator.className = "preview-image-drop-line";
@@ -6427,8 +6577,14 @@ function attachPreviewImageDropHandlers(frame) {
 }
 
 function startPreviewImageMove(event) {
-  if (event.button !== 0 || event.target.closest("button, .preview-image-resize")) return;
   const box = event.currentTarget;
+  selectPreviewImage({
+    imageId: box.dataset.imageId,
+    sourceStart: Number(box.dataset.sourceStart),
+    sourceEnd: Number(box.dataset.sourceEnd),
+  });
+  if (event.button !== 0 || event.target.closest("button, .preview-image-resize")) return;
+  box.focus({ preventScroll: true });
   const sourceStart = Number(box.dataset.sourceStart);
   const sourceEnd = Number(box.dataset.sourceEnd);
   if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceEnd)) return;
@@ -6659,6 +6815,13 @@ function movePreviewImageMarkdown(imageId, sourceStart, sourceEnd, target) {
     if (!chunk.endsWith("\n")) chunk = `${chunk}\n`;
   }
   els.content.value = `${withoutSource.slice(0, insertionIndex)}${chunk}${withoutSource.slice(insertionIndex)}`;
+  const movedTag = `[[image:${imageId}]]`;
+  const movedSourceStart = els.content.value.indexOf(movedTag, Math.max(0, insertionIndex - 1));
+  previewImageSelection = {
+    imageId: String(imageId),
+    sourceStart: movedSourceStart,
+    sourceEnd: movedSourceStart === -1 ? -1 : movedSourceStart + movedTag.length,
+  };
   els.content.focus({ preventScroll: true });
   els.content.setSelectionRange(insertionIndex, insertionIndex + chunk.length);
   scrollTextareaToRange(insertionIndex);
@@ -8289,6 +8452,7 @@ function bindEvents() {
     requestRender();
   });
   els.content.addEventListener("keydown", handleTextShortcut);
+  document.addEventListener("keydown", handlePreviewImageDeleteKey);
   els.content.addEventListener("paste", handleEditorPaste);
   els.content.addEventListener("dragover", (event) => {
     if (Array.from(event.dataTransfer?.types || []).includes("Files")) event.preventDefault();

@@ -1956,6 +1956,25 @@ body.export-busy {
   background: #05070b;
 }
 
+.preview-image-box.is-selected {
+  z-index: 5;
+  border-color: var(--active-border);
+  outline: 2px solid color-mix(in srgb, var(--active-border) 52%, transparent);
+  outline-offset: 2px;
+  background: rgba(37, 99, 235, 0.08);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--active-border) 12%, transparent), 0 12px 30px rgba(15, 23, 42, 0.18);
+}
+
+.preview-image-box.is-selected .preview-image-align,
+.preview-image-box.is-selected .preview-image-crop {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.preview-image-box.is-selected .preview-image-crop {
+  transform: translateY(0);
+}
+
 .preview-live-video {
   position: absolute;
   inset: 0;
