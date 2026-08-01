@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>写了就发 | Write Then Publish</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317202f'/%3E%3Cpath d='M18 17h28v7H18zm0 13h20v6H18zm0 12h28v6H18z' fill='%23fff'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="src/styles.css?v=20260731-live-download" />
+    <link rel="stylesheet" href="src/styles.css?v=20260802-trim2" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -737,8 +737,27 @@
               </label>
             </div>
 
-            <input id="livePhotoStartInput" type="hidden" value="0" />
+            <div id="livePhotoTrimRow" class="live-photo-trim" hidden>
+              <div class="live-photo-trim-head">
+                <span>截取片段</span>
+                <output id="livePhotoTrimOutput">第 0.0 – 5.0 秒</output>
+              </div>
+              <div id="livePhotoTrimTrack" class="live-photo-trim-track" role="slider" tabindex="0"
+                   aria-label="拖动选择实况片段" aria-valuemin="0" aria-valuenow="0" aria-valuemax="0">
+                <div id="livePhotoTrimStrip" class="live-photo-trim-strip" aria-hidden="true"></div>
+                <div id="livePhotoTrimWindow" class="live-photo-trim-window" aria-hidden="true">
+                  <span class="live-photo-trim-grip"></span>
+                </div>
+              </div>
+              <input id="livePhotoStartInput" type="hidden" value="0" />
+              <small id="livePhotoTrimHint">拖动方框选择要做成实况的片段</small>
+            </div>
             <input id="livePhotoCoverInput" type="hidden" value="0.2" />
+
+            <label class="live-photo-sound-row">
+              <input id="livePhotoSoundInput" type="checkbox" checked />
+              <span>保留原视频声音<small>实况在 iPhone 上长按播放时会有声音</small></span>
+            </label>
 
             <div id="livePhotoServiceStatus" class="wechat-service-status">实况设置会跟随这段视频保存，右侧下载时自动应用。</div>
             <div class="live-photo-actions">
@@ -831,11 +850,14 @@
     </div>
 
     <script src="src/vendor/jszip.min.js?v=3.10.1"></script>
+    <script src="src/vendor/mp4box.all.min.js?v=0.5.3" defer></script>
+    <script src="src/vendor/mp4muxer.js?v=5.2.1" defer></script>
+    <script src="src/live-photo-browser.js?v=20260801-browser-live" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="src/supabase-config.js?v=20260729-auth"></script>
-    <script src="src/supabase.js?v=20260731-cloud-live"></script>
-    <script src="src/app.js?v=20260731-preview-delete"></script>
+    <script src="src/supabase.js?v=20260802-browser-live"></script>
+    <script src="src/app.js?v=20260802-trim2"></script>
   </body>
 </html>

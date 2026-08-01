@@ -3469,6 +3469,37 @@ body.export-busy {
   overflow: auto;
 }
 
+/* 只有一张时左右分栏会把弹窗撑到 1000px 以上，右半边基本是空的。
+   改成预览在上、信息在下的单栏，弹窗同时收窄。多张仍走两栏卡片布局。 */
+.live-photo-handoff-card.is-single {
+  width: min(560px, 100%);
+}
+
+.live-photo-handoff-card.is-single .live-photo-handoff-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.live-photo-handoff-card.is-single .live-photo-handoff-preview {
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 22px 22px 18px;
+}
+
+.live-photo-handoff-card.is-single .live-photo-handoff-preview-frame {
+  height: min(300px, calc(100vh - 470px));
+  min-height: 180px;
+}
+
+.live-photo-handoff-card.is-single .live-photo-handoff-thumbnails {
+  display: none;
+}
+
+.live-photo-handoff-card.is-single .live-photo-handoff-results {
+  align-content: start;
+  gap: 16px;
+  padding: 22px 22px 20px;
+}
+
 .live-photo-handoff-preview {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto auto;
@@ -3599,9 +3630,11 @@ body.export-busy {
 
 .live-photo-handoff-results {
   display: grid;
-  grid-template-rows: auto auto auto auto auto;
-  align-content: stretch;
-  gap: 16px;
+  /* 行高按内容走并整体居中：拉伸会把行距均摊到剩余空间，
+     信息精简之后就会在下载按钮和取消之间留出一大片空白。 */
+  grid-template-rows: repeat(5, min-content);
+  align-content: center;
+  gap: 18px;
   min-width: 0;
   min-height: 0;
   overflow: auto;
@@ -3716,6 +3749,156 @@ body.export-busy {
   font-style: normal;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.live-photo-trim {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.live-photo-trim-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.live-photo-trim-head output {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-photo-trim-track {
+  position: relative;
+  overflow: hidden;
+  height: 56px;
+  border-radius: 8px;
+  background: var(--line);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.live-photo-trim-track.is-dragging {
+  cursor: grabbing;
+}
+
+.live-photo-trim-track:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.live-photo-trim-strip {
+  display: flex;
+  height: 100%;
+}
+
+.live-photo-trim-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  background-position: center;
+  background-size: cover;
+  opacity: 0.5;
+}
+
+/* 选中的那一段保持原亮度，未选中的被上面的 0.5 透明度压暗，对比一眼可见。 */
+.live-photo-trim-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 0 0 9999px rgba(15, 20, 28, 0.34);
+  pointer-events: none;
+}
+
+.live-photo-trim-grip {
+  width: 26px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ink);
+  opacity: 0.85;
+}
+
+.live-photo-trim small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.live-photo-sound-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.live-photo-sound-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.live-photo-sound-row span {
+  display: grid;
+  gap: 2px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.live-photo-sound-row small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* 拿到文件之后要做的三步，比罗列包内文件更有用。横排一行，占的竖向空间更少。 */
+.live-photo-package-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.live-photo-package-steps li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.live-photo-package-steps span {
+  display: grid;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .live-photo-package-icon,

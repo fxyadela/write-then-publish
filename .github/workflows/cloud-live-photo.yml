@@ -35,6 +35,12 @@ jobs:
     steps:
       - name: Check out the app
         uses: actions/checkout@v4
+        with:
+          # worker 只需要 server.py 和 scripts/，仓库里 docs/screenshots 就有 25MB。
+          sparse-checkout: |
+            server.py
+            scripts
+          sparse-checkout-cone-mode: false
 
       - name: Restore the FFmpeg runtime
         id: ffmpeg-cache
@@ -87,9 +93,23 @@ jobs:
           enable-cache: true
           cache-dependency-glob: .github/workflows/cloud-live-photo.yml
 
-      - name: Warm the Live Photo package cache
-        if: github.event_name == 'workflow_dispatch' && inputs.warm_cache == true
-        run: uvx --from makelive==0.7.0 python -c "import makelive; print('Live Photo package cache ready')"
+      # makelive 依赖整套 pyobjc，冷装约 12 秒 / 86MB。setup-uv 的缓存会 prune 掉纯 wheel
+      # （实测恢复出来只有 455KB），所以这里单独缓存一个装好的 venv，直接跨任务复用。
+      - name: Restore the Live Photo packaging runtime
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/write-then-publish-makelive
+          key: macos-15-intel-makelive-0.7.0-py312-v1
+
+      - name: Prepare the Live Photo packaging runtime
+        run: |
+          VENV="$HOME/.cache/write-then-publish-makelive"
+          if [[ ! -x "$VENV/bin/python" ]]; then
+            uv venv --python 3.12 "$VENV"
+            uv pip install --python "$VENV/bin/python" makelive==0.7.0
+          fi
+          "$VENV/bin/python" -c "import makelive; print('Live Photo packaging runtime ready')"
+          echo "WRITE_THEN_PUBLISH_MAKELIVE_PYTHON=$VENV/bin/python" >> "$GITHUB_ENV"
 
       - name: Generate and upload the Live Photo package
         if: github.event_name != 'workflow_dispatch' || inputs.warm_cache != true

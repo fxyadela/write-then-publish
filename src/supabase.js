@@ -280,14 +280,12 @@
     let started = false;
     try {
       const uploads = new Map((created.uploads || []).map((upload) => [upload.key, upload]));
-      for (const [index, [key, file]] of entries.entries()) {
+      // 视频、卡片、遮罩互不依赖，串行上传等于把三段等待时间相加；并行让它们共用同一条上行带宽。
+      let finished = 0;
+      onProgress?.({ stage: "upload", progress: 8, detail: "正在安全上传原视频，不会压缩画质…" });
+      await Promise.all(entries.map(async ([key, file]) => {
         const upload = uploads.get(key);
         if (!upload?.path || !upload?.token) throw new Error(`云端没有准备 ${key} 上传地址。`);
-        onProgress?.({
-          stage: "upload",
-          progress: 8 + Math.round((index / entries.length) * 22),
-          detail: key === "video" ? "正在安全上传原视频，不会压缩画质…" : "正在上传卡片画面…",
-        });
         const { error } = await requireClient().storage.from("live-photo-jobs").uploadToSignedUrl(
           upload.path,
           upload.token,
@@ -295,7 +293,15 @@
           { contentType: file.blob.type || "application/octet-stream", cacheControl: "3600" },
         );
         throwIfError(error);
-      }
+        finished += 1;
+        onProgress?.({
+          stage: "upload",
+          progress: 8 + Math.round((finished / entries.length) * 22),
+          detail: finished === entries.length
+            ? "素材已全部上传，正在启动云端 Mac…"
+            : "正在安全上传原视频，不会压缩画质…",
+        });
+      }));
       onProgress?.({ stage: "queue", progress: 32, detail: "文件上传完成，正在启动云端 Mac…" });
       await invokeLivePhotoFunction("start", {
         job_id: created.job_id,

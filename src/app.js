@@ -3,6 +3,9 @@ const CANVAS_HEIGHT = 1152;
 const CANVAS_RENDER_SCALE = 2;
 const OUTPUT_CANVAS_WIDTH = CANVAS_WIDTH * CANVAS_RENDER_SCALE;
 const OUTPUT_CANVAS_HEIGHT = CANVAS_HEIGHT * CANVAS_RENDER_SCALE;
+// 实况成片固定 1080x1440，服务端 ffmpeg 也按这个尺寸缩放卡片。
+const LIVE_PAGE_WIDTH = 1080;
+const LIVE_PAGE_HEIGHT = 1440;
 const CARD_SIDE_PADDING = 42;
 const CARD_CONTENT_WIDTH = CANVAS_WIDTH - CARD_SIDE_PADDING * 2;
 const CARD_MAX_IMAGE_HEIGHT = CANVAS_HEIGHT - CARD_SIDE_PADDING - 62;
@@ -21,6 +24,7 @@ const OBSIDIAN_VAULT_STORE = "settings";
 const OBSIDIAN_VAULT_KEY = "directoryHandle";
 const LIVE_MEDIA_DB = "writeThenPublishLiveMedia";
 const LIVE_MEDIA_STORE = "videos";
+const IMAGE_MEDIA_STORE = "images";
 const STORAGE_KEY = "graphicTextLayoutState.v1";
 const PROJECTS_STORAGE_KEY = "graphicTextLayoutProjects.v1";
 const AUTHOR_PROFILE_STORAGE_KEY = "writeThenPublishAuthorProfile.v1";
@@ -50,6 +54,8 @@ function cloudLivePhotoAvailable() {
 }
 
 function needsLivePhotoStaticFallback() {
+  // 浏览器自己能合成实况时，既不需要本机服务也不需要云端，不该再提示“无法生成实况”。
+  if (window.WriteThenPublishBrowserLivePhoto?.supported()) return false;
   const localHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
   if (window.location.protocol === "file:") return true;
   return /^https?:$/.test(window.location.protocol)
@@ -222,6 +228,13 @@ const els = {
   livePhotoDurationHint: $("#livePhotoDurationHint"),
   livePhotoStart: $("#livePhotoStartInput"),
   livePhotoCover: $("#livePhotoCoverInput"),
+  livePhotoSound: $("#livePhotoSoundInput"),
+  livePhotoTrimRow: $("#livePhotoTrimRow"),
+  livePhotoTrimOutput: $("#livePhotoTrimOutput"),
+  livePhotoTrimHint: $("#livePhotoTrimHint"),
+  livePhotoTrimTrack: $("#livePhotoTrimTrack"),
+  livePhotoTrimStrip: $("#livePhotoTrimStrip"),
+  livePhotoTrimWindow: $("#livePhotoTrimWindow"),
   livePhotoServiceStatus: $("#livePhotoServiceStatus"),
   livePhotoGenerate: $("#livePhotoGenerateBtn"),
   livePhotoHandoffModal: $("#livePhotoHandoffModal"),
@@ -1079,7 +1092,10 @@ function saveState() {
       current,
       ...state.projects.filter((project) => project.id !== current.id),
     ].slice(0, MAX_PROJECTS);
-    storageForScope().setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(data));
+    storageForScope().setItem(
+      scopedStorageKey(STORAGE_KEY),
+      JSON.stringify(withExternalizedImages(data, current.id)),
+    );
     saveProjectStore();
     scheduleCloudProjectSync(current);
     updateProjectHistory();
@@ -1866,6 +1882,15 @@ async function prepareProjectForCloud(project) {
   for (const [id, sourceImage] of Object.entries(sourceImages)) {
     const cloudImage = cloudImages[id];
     if (!sourceImage || !cloudImage || typeof sourceImage !== "object") continue;
+    // 非当前项目的画面还留在 IndexedDB 里没读回来，先取回再决定要不要上传。
+    if (!sourceImage.src && sourceImage.srcKey && !sourceImage.storagePath) {
+      try {
+        const restored = await readImageSource(sourceImage.srcKey);
+        if (restored) sourceImage.src = restored;
+      } catch {
+        // 读不回来就跳过上传，本机草稿仍然完整。
+      }
+    }
     if (!sourceImage.storagePath && sourceImage.src && !/^https?:/i.test(sourceImage.src)) {
       try {
         const blob = await fetch(sourceImage.src).then((response) => response.blob());
@@ -2092,7 +2117,10 @@ function saveProjectStore() {
     scopedStorageKey(PROJECTS_STORAGE_KEY),
     JSON.stringify({
       activeId: state.currentProjectId,
-      projects: state.projects.filter((project) => !isBuiltInProject(project)).slice(0, MAX_PROJECTS),
+      projects: state.projects
+        .filter((project) => !isBuiltInProject(project))
+        .slice(0, MAX_PROJECTS)
+        .map((project) => ({ ...project, data: withExternalizedImages(project.data, project.id) })),
     }),
   );
 }
@@ -2762,11 +2790,14 @@ function openLiveMediaDatabase() {
       reject(new Error("当前浏览器不支持保存视频素材。"));
       return;
     }
-    const request = window.indexedDB.open(LIVE_MEDIA_DB, 1);
+    const request = window.indexedDB.open(LIVE_MEDIA_DB, 2);
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(LIVE_MEDIA_STORE)) {
         database.createObjectStore(LIVE_MEDIA_STORE);
+      }
+      if (!database.objectStoreNames.contains(IMAGE_MEDIA_STORE)) {
+        database.createObjectStore(IMAGE_MEDIA_STORE);
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -2815,6 +2846,83 @@ async function deleteLiveMediaBlob(key) {
   } finally {
     database.close();
   }
+}
+
+// 图片的 base64 会把 localStorage 顶爆（单张手机照片约 1.5MB，配额只有 5MB），
+// 所以正文只在 localStorage 留元数据，画面本体和实况视频一样放 IndexedDB。
+async function writeImageSource(key, src) {
+  const database = await openLiveMediaDatabase();
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(IMAGE_MEDIA_STORE, "readwrite");
+      transaction.objectStore(IMAGE_MEDIA_STORE).put(src, key);
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error("图片素材保存失败。"));
+      transaction.onabort = () => reject(transaction.error || new Error("图片素材保存已取消。"));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function readImageSource(key) {
+  const database = await openLiveMediaDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = database.transaction(IMAGE_MEDIA_STORE, "readonly");
+      const request = transaction.objectStore(IMAGE_MEDIA_STORE).get(key);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error("图片素材读取失败。"));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+function imageSourceKey(projectId, imageId) {
+  return `${projectId || "current"}::${imageId}`;
+}
+
+/** 只有内容图会外置；示例图和 http 图保持原样，避免给内置说明书也建索引。 */
+function isExternalizableImageSource(src) {
+  return typeof src === "string" && src.startsWith("data:") && src.length > 4096;
+}
+
+/** 写入前把 images[].src 换成占位，交给 IndexedDB 保存，localStorage 只留元数据。 */
+function withExternalizedImages(data, projectId) {
+  const images = data?.images;
+  if (!images || typeof images !== "object") return data;
+  let changed = false;
+  const nextImages = {};
+  for (const [id, image] of Object.entries(images)) {
+    if (image && typeof image === "object" && isExternalizableImageSource(image.src)) {
+      const { src, ...rest } = image;
+      nextImages[id] = { ...rest, src: "", srcKey: imageSourceKey(projectId, id) };
+      changed = true;
+      void writeImageSource(imageSourceKey(projectId, id), src).catch(() => undefined);
+    } else {
+      nextImages[id] = image;
+    }
+  }
+  return changed ? { ...data, images: nextImages } : data;
+}
+
+/** 读回时把外置的画面填回内存，渲染和云端上传都仍然拿得到 src。 */
+async function hydrateImageSourcesForState() {
+  const pending = Object.entries(state.images).filter(
+    ([, image]) => image && typeof image === "object" && !image.src && image.srcKey,
+  );
+  if (!pending.length) return;
+  await Promise.all(
+    pending.map(async ([, image]) => {
+      try {
+        const src = await readImageSource(image.srcKey);
+        if (src) image.src = src;
+      } catch {
+        // 画面丢失时保持占位，导出会提示重新上传。
+      }
+    }),
+  );
 }
 
 function replaceLiveMediaCache(key, blob, name = "video.mov") {
@@ -2874,12 +2982,18 @@ function normalizeLiveMediaSettings(settings = {}) {
     coverOffset: clamp(finiteNumber(settings.coverOffset, 0.2), 0, duration - 0.05),
     focusX: clamp(finiteNumber(settings.focusX, 50), 0, 100),
     focusY: clamp(finiteNumber(settings.focusY, 50), 0, 100),
+    // 实况本来就带声音，默认保留；老数据没有这个字段时同样按开启处理。
+    sound: settings.sound !== false,
     crop,
   };
 }
 
+const imageCache = new Map();
+
 function loadImage(src) {
-  return new Promise((resolve, reject) => {
+  const cached = imageCache.get(src);
+  if (cached) return cached;
+  const promise = new Promise((resolve, reject) => {
     const img = new Image();
     try {
       const sourceUrl = new URL(String(src || ""), window.location.href);
@@ -2891,9 +3005,11 @@ function loadImage(src) {
       // data:、blob: 和内置 SVG 不需要跨域设置。
     }
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("图片无法以可导出的方式加载。"));
+    img.onerror = () => { imageCache.delete(src); reject(new Error("图片无法以可导出的方式加载。")); };
     img.src = src;
   });
+  imageCache.set(src, promise);
+  return promise;
 }
 
 function isImageFile(file) {
@@ -4401,10 +4517,11 @@ function splitTokenText(token) {
   return units;
 }
 
+const graphemeSegmenter = window.Intl?.Segmenter ? new Intl.Segmenter("zh", { granularity: "grapheme" }) : null;
+
 function graphemeSegments(text) {
-  if (window.Intl?.Segmenter) {
-    const segmenter = new Intl.Segmenter("zh", { granularity: "grapheme" });
-    return Array.from(segmenter.segment(text), (part) => ({
+  if (graphemeSegmenter) {
+    return Array.from(graphemeSegmenter.segment(text), (part) => ({
       text: part.segment,
       start: part.index,
       end: part.index + part.segment.length,
@@ -4741,25 +4858,15 @@ async function buildPages(settings) {
 }
 
 function renderPage(page, index, total) {
-  const legacyCanvas = document.createElement("canvas");
-  legacyCanvas.width = CANVAS_WIDTH;
-  legacyCanvas.height = CANVAS_HEIGHT;
-  const legacyContext = legacyCanvas.getContext("2d");
-  legacyContext.imageSmoothingQuality = "high";
-  drawPageToContext(legacyContext, page);
-
   const canvas = document.createElement("canvas");
   canvas.width = OUTPUT_CANVAS_WIDTH;
   canvas.height = OUTPUT_CANVAS_HEIGHT;
   canvas.dataset.page = String(index + 1);
   canvas._page = page;
   const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(legacyCanvas, 0, 0, OUTPUT_CANVAS_WIDTH, OUTPUT_CANVAS_HEIGHT);
-  ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.setTransform(CANVAS_RENDER_SCALE, 0, 0, CANVAS_RENDER_SCALE, 0, 0);
-  drawPageMediaToContext(ctx, page);
+  drawPageToContext(ctx, page);
   canvas._textHits = collectTextHits(ctx, page);
   canvas._imageHits = collectImageHits(page);
   canvas._imageDropTargets = collectImageDropTargets(page);
@@ -4776,15 +4883,6 @@ function drawPageToContext(ctx, page) {
     if (item.type === "image") drawImageBlock(ctx, item);
     if (item.type === "table") drawTableBlock(ctx, item, page.settings);
     if (item.type === "text") drawTextLine(ctx, item, page.settings);
-  }
-}
-
-function drawPageMediaToContext(ctx, page) {
-  if (page.showHeader !== false) {
-    drawHeaderMedia(ctx, page.settings, page.avatar, page.badge);
-  }
-  for (const item of page.items) {
-    if (item.type === "image") drawImageBlock(ctx, item);
   }
 }
 
@@ -4897,26 +4995,6 @@ function drawHeader(ctx, settings, avatar, badge) {
     ctx.beginPath();
     ctx.arc(769 + i * 16, 79, 5, 0, Math.PI * 2);
     ctx.fill();
-  }
-}
-
-function drawHeaderMedia(ctx, settings, avatar, badge) {
-  const x = 42;
-  const y = 38;
-  const size = 82;
-  if (avatar) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
-    ctx.clip();
-    drawSourceCoverImage(ctx, avatar, getImageSourceRect(avatar, settings.avatarCrop), x, y, size, size);
-    ctx.restore();
-  }
-  if (badge) {
-    const textX = 152;
-    ctx.font = `650 30px ${fontFamilyForText(settings.displayName, settings)}`;
-    const name = clampText(ctx, settings.displayName, 430);
-    drawVerifiedBadge(ctx, badge, textX + ctx.measureText(name).width + 24, 59);
   }
 }
 
@@ -5898,6 +5976,139 @@ function seekLivePhotoPreview(toCover = false) {
   els.livePhotoVideo.currentTime = Math.min(livePhotoState.sourceDuration, start + offset);
 }
 
+/**
+ * 视频比目标时长（小红书 5 秒 / 微信 3 秒）长时，让用户在缩略图时间轴上直接拖方框选片段。
+ * 刚好等于或短于目标时长就没得选，整条时间轴收起来。
+ */
+function updateLivePhotoTrimUi(start, target, availableStart) {
+  if (!els.livePhotoTrimRow) return;
+  const trimmable = livePhotoState.sourceDuration > target + 0.05;
+  els.livePhotoTrimRow.hidden = !trimmable;
+  if (!trimmable) return;
+  const total = livePhotoState.sourceDuration;
+  const end = Math.min(total, start + target);
+  if (els.livePhotoTrimOutput) {
+    els.livePhotoTrimOutput.textContent = `第 ${start.toFixed(1)} – ${end.toFixed(1)} 秒`;
+  }
+  if (els.livePhotoTrimHint) {
+    els.livePhotoTrimHint.textContent = `视频共 ${formatLivePhotoDuration(total)}，方框就是会被做成实况的那一段`;
+  }
+  if (els.livePhotoTrimWindow) {
+    els.livePhotoTrimWindow.style.width = `${(target / total) * 100}%`;
+    els.livePhotoTrimWindow.style.left = `${(start / total) * 100}%`;
+  }
+  if (els.livePhotoTrimTrack) {
+    els.livePhotoTrimTrack.setAttribute("aria-valuemin", "0");
+    els.livePhotoTrimTrack.setAttribute("aria-valuemax", availableStart.toFixed(1));
+    els.livePhotoTrimTrack.setAttribute("aria-valuenow", start.toFixed(1));
+    els.livePhotoTrimTrack.setAttribute("aria-valuetext", `第 ${start.toFixed(1)} 到 ${end.toFixed(1)} 秒`);
+  }
+}
+
+/** 沿时间轴均匀抽几帧铺成缩略图条，让人一眼看出每一段是什么画面。 */
+async function buildLivePhotoTrimStrip() {
+  const strip = els.livePhotoTrimStrip;
+  if (!strip || !livePhotoState.objectUrl || !livePhotoState.sourceDuration) return;
+  const token = `${livePhotoState.objectUrl}:${livePhotoState.sourceDuration}`;
+  if (strip.dataset.token === token) return;
+  strip.dataset.token = token;
+  strip.innerHTML = "";
+
+  const total = livePhotoState.sourceDuration;
+  const count = 8;
+  const width = 96;
+  const height = Math.round(width * (livePhotoState.sourceHeight || 16) / (livePhotoState.sourceWidth || 9));
+  const probe = document.createElement("video");
+  probe.src = livePhotoState.objectUrl;
+  probe.muted = true;
+  probe.playsInline = true;
+  probe.preload = "auto";
+  probe.style.cssText = "position:fixed;left:-9999px;width:2px;height:2px";
+  document.body.appendChild(probe);
+  try {
+    await Promise.race([
+      new Promise((resolve) => { probe.onloadeddata = resolve; }),
+      new Promise((_, reject) => window.setTimeout(() => reject(new Error("timeout")), 6000)),
+    ]);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = Math.max(1, height);
+    const context = canvas.getContext("2d");
+    for (let index = 0; index < count; index += 1) {
+      if (strip.dataset.token !== token) return;   // 期间换了视频就放弃这一轮
+      const at = (total * (index + 0.5)) / count;
+      await new Promise((resolve) => {
+        let settled = false;
+        probe.onseeked = () => { if (!settled) { settled = true; resolve(); } };
+        probe.currentTime = Math.min(at, Math.max(0, total - 0.05));
+        window.setTimeout(() => { if (!settled) { settled = true; resolve(); } }, 900);
+      });
+      context.drawImage(probe, 0, 0, canvas.width, canvas.height);
+      const cell = document.createElement("span");
+      cell.className = "live-photo-trim-cell";
+      cell.style.backgroundImage = `url(${canvas.toDataURL("image/jpeg", 0.6)})`;
+      strip.append(cell);
+    }
+  } catch {
+    strip.dataset.token = "";   // 抽帧失败就留空条，不影响拖动
+  } finally {
+    probe.removeAttribute("src");
+    probe.remove();
+  }
+}
+
+/** 在时间轴上按下/拖动都直接定位片段起点，方框跟着走，预览同步跳过去。 */
+function bindLivePhotoTrimTrack() {
+  const track = els.livePhotoTrimTrack;
+  if (!track) return;
+  let dragging = false;
+
+  const applyFromPointer = (clientX) => {
+    const target = livePhotoDuration();
+    const total = livePhotoState.sourceDuration;
+    if (!total || total <= target) return;
+    const rect = track.getBoundingClientRect();
+    if (!rect.width) return;
+    const windowRatio = target / total;
+    // 以指针为方框中心，再夹进 [0, 可选最大起点]
+    const ratio = clamp((clientX - rect.left) / rect.width - windowRatio / 2, 0, 1 - windowRatio);
+    els.livePhotoStart.value = String(Number((ratio * total).toFixed(1)));
+    normalizeLivePhotoTiming();
+    seekLivePhotoPreview(false);
+  };
+
+  track.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    track.setPointerCapture?.(event.pointerId);
+    track.classList.add("is-dragging");
+    applyFromPointer(event.clientX);
+    event.preventDefault();
+  });
+  track.addEventListener("pointermove", (event) => {
+    if (dragging) applyFromPointer(event.clientX);
+  });
+  const stop = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    track.releasePointerCapture?.(event.pointerId);
+    track.classList.remove("is-dragging");
+  };
+  track.addEventListener("pointerup", stop);
+  track.addEventListener("pointercancel", stop);
+
+  track.addEventListener("keydown", (event) => {
+    const step = event.shiftKey ? 1 : 0.1;
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const current = Math.max(0, Number(els.livePhotoStart.value) || 0);
+    const available = Math.max(0, livePhotoState.sourceDuration - livePhotoDuration());
+    const next = clamp(current + (event.key === "ArrowRight" ? step : -step), 0, available);
+    els.livePhotoStart.value = String(Number(next.toFixed(1)));
+    normalizeLivePhotoTiming();
+    seekLivePhotoPreview(false);
+    event.preventDefault();
+  });
+}
+
 function normalizeLivePhotoTiming() {
   const target = livePhotoDuration();
   const availableStart = Math.max(0, livePhotoState.sourceDuration - target);
@@ -5909,6 +6120,7 @@ function normalizeLivePhotoTiming() {
   els.livePhotoCover.max = String(latestCover);
   const cover = Math.min(latestCover, Math.max(0, finiteNumber(els.livePhotoCover.value, 0.2)));
   els.livePhotoCover.value = String(Number(cover.toFixed(1)));
+  updateLivePhotoTrimUi(normalizedStart, target, availableStart);
   if (livePhotoState.file && livePhotoState.sourceDuration < target) {
     setLivePhotoServiceMessage(`当前视频只有 ${formatLivePhotoDuration(livePhotoState.sourceDuration)}，不足以生成 ${target} 秒版本。`, "error");
   } else if (livePhotoState.file) {
@@ -5991,7 +6203,36 @@ function handleLivePhotoMetadata() {
   normalizeLivePhotoTiming();
   setLivePhotoAspect(livePhotoState.aspect, { preserveCropSize: Boolean(livePhotoState.savedCrop) });
   seekLivePhotoPreview(false);
-  els.livePhotoVideo.play().catch(() => drawLivePhotoCropper());
+  applyLivePhotoPreviewSound();
+  void buildLivePhotoTrimStrip();
+  els.livePhotoVideo.play().catch(() => {
+    // 带声音起播被拦时退回静音，至少画面要动起来。
+    els.livePhotoVideo.muted = true;
+    els.livePhotoVideo.play().catch(() => drawLivePhotoCropper());
+  });
+}
+
+/**
+ * 编辑器里的预览跟着「保留原视频声音」走，让人当场听得到。
+ * 卡片列表里的预览是自动播放的，浏览器不允许带声音自动播放，所以那些保持静音。
+ */
+function applyLivePhotoPreviewSound() {
+  if (!els.livePhotoVideo) return;
+  const wantSound = els.livePhotoSound ? els.livePhotoSound.checked : true;
+  els.livePhotoVideo.muted = !wantSound;
+  if (wantSound) {
+    els.livePhotoVideo.removeAttribute("muted");
+    els.livePhotoVideo.volume = 1;
+  } else {
+    els.livePhotoVideo.setAttribute("muted", "");
+  }
+  // 取消静音后浏览器可能已经把播放挂起，重新推一把；失败就退回静音继续放画面。
+  if (wantSound && els.livePhotoVideo.paused && livePhotoState.sourceDuration) {
+    els.livePhotoVideo.play().catch(() => {
+      els.livePhotoVideo.muted = true;
+      els.livePhotoVideo.play().catch(() => {});
+    });
+  }
 }
 
 function keepLivePhotoPreviewInRange() {
@@ -6039,6 +6280,8 @@ function resetLivePhotoForm(settings = {}) {
   setLivePhotoAspect(normalized.aspect, { preserveCropSize: Boolean(normalized.crop) });
   els.livePhotoStart.value = String(normalized.start);
   els.livePhotoCover.value = String(normalized.coverOffset);
+  if (els.livePhotoSound) els.livePhotoSound.checked = normalized.sound;
+  applyLivePhotoPreviewSound();
   updateLivePhotoPreview();
 }
 
@@ -6151,6 +6394,7 @@ async function applyLivePhotoAsset(event) {
       customAspect: livePhotoState.customAspect,
       start: Number(els.livePhotoStart.value) || 0,
       coverOffset: Number(els.livePhotoCover.value) || 0,
+      sound: els.livePhotoSound ? els.livePhotoSound.checked : true,
       crop: normalizedLivePhotoCrop(),
     });
     await writeLiveMediaBlob(videoKey, livePhotoState.file);
@@ -6191,7 +6435,7 @@ async function applyLivePhotoAsset(event) {
 }
 
 async function render() {
-  await hydrateLiveMediaForState();
+  await Promise.all([hydrateLiveMediaForState(), hydrateImageSourcesForState()]);
   const settings = readForm();
   updateAppMode();
   updateArticleControls();
@@ -7061,61 +7305,50 @@ function renderLivePhotoHandoffFiles() {
     return;
   }
 
-  if (livePhotoHandoffState.isBatch) {
-    const liveRow = liveCount
-      ? `<div class="live-photo-package-row">
+  // 用户要的是「我会拿到什么、接下来干什么」，不是 .pvt 里有哪几个文件。
+  // 实现细节（JPG / MOV / 识别信息）一律不出现在界面上。
+  const steps = `
+    <ol class="live-photo-package-steps">
+      <li><span>1</span>解压下载的 ZIP</li>
+      <li><span>2</span>隔空投送给 iPhone</li>
+      <li><span>3</span>在相册里长按播放</li>
+    </ol>`;
+
+  if (!livePhotoHandoffState.isBatch) {
+    const single = livePhotoHandoffState.liveResults[0];
+    const platform = single?.platform_label ? `${single.platform_label} · ${single.duration} 秒` : "";
+    els.livePhotoHandoffFiles.innerHTML = `
+      <div class="live-photo-package-card">
+        <div class="live-photo-package-row">
           <i data-lucide="aperture" aria-hidden="true"></i>
-          <span><strong>实况照片 .pvt</strong><small>完整的实况照片，里面已经包含封面和动态视频。</small></span>
-          <em>${liveCount} 个</em>
-        </div>`
-      : "";
-    const staticRow = staticCount
-      ? `<div class="live-photo-package-row">
-          <i data-lucide="image" aria-hidden="true"></i>
-          <span><strong>高清图片 .png</strong><small>${staticCount} 张普通图片，可以直接上传到各个平台。</small></span>
-          <em>${staticCount} 张</em>
-        </div>`
-      : "";
-    els.livePhotoHandoffFiles.innerHTML = `
-      <div class="live-photo-package-card">
-        ${liveRow}${staticRow}
-        ${liveCount ? `<details class="live-photo-package-details">
-          <summary><i data-lucide="file-text" aria-hidden="true"></i><span>想了解 .pvt 里面的文件</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
-          <div class="live-photo-package-detail-grid">
-            <span><strong>JPG</strong> 封面画面</span>
-            <span><strong>MOV</strong> 动态视频</span>
-            <span><strong>识别信息</strong> 让 iPhone 识别实况</span>
-          </div>
-        </details>
-        <p class="live-photo-package-note"><i data-lucide="lock-keyhole" aria-hidden="true"></i>它相当于一个实况照片文件夹，请不要拆开里面的 JPG、MOV 和识别信息。</p>` : ""}
-      </div>
-      <div class="live-photo-package-helper">
-        <i data-lucide="folder" aria-hidden="true"></i>
-        <span><strong>下载后怎么用？</strong><small>解压 ZIP，在 Finder 中选中 .pvt → 点共享 → 隔空投送到 iPhone。手机会收到一张可播放的实况照片。</small></span>
-      </div>
-    `;
-  } else {
-    els.livePhotoHandoffFiles.innerHTML = `
-      <div class="live-photo-package-card">
-        <div class="live-photo-package-lead">
-          <span class="live-photo-package-icon"><i data-lucide="aperture" aria-hidden="true"></i></span>
-          <span><strong>实况照片 .pvt</strong><small>它看起来像一个文件，里面已经装好了封面、动态视频和识别信息。</small></span>
-          <em>完整实况</em>
+          <span><strong>实况照片</strong>${platform ? `<small>${platform}</small>` : ""}</span>
         </div>
-        <div class="live-photo-package-contents">
-          <strong>里面包含</strong>
-          <div><i data-lucide="image" aria-hidden="true"></i><span><b>JPG 封面图</b><small>打开时先看到的画面</small></span></div>
-          <div><i data-lucide="video" aria-hidden="true"></i><span><b>MOV 动态视频</b><small>长按时播放的部分</small></span></div>
-          <div><i data-lucide="contact" aria-hidden="true"></i><span><b>识别信息</b><small>让 iPhone 把它识别成实况</small></span></div>
-        </div>
-        <p class="live-photo-package-note"><i data-lucide="lock-keyhole" aria-hidden="true"></i>这些文件需要待在一起，请不要打开或拆分 .pvt。</p>
       </div>
-      <div class="live-photo-package-helper">
-        <i data-lucide="folder" aria-hidden="true"></i>
-        <span><strong>下载后怎么用？</strong><small>解压 ZIP，在 Finder 中选中 .pvt → 点共享 → 隔空投送到 iPhone。发送成功后，相册里会出现一张可长按播放的实况照片。</small></span>
-      </div>
+      ${steps}
     `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
   }
+
+  const rows = [];
+  if (liveCount) {
+    rows.push(`<div class="live-photo-package-row">
+      <i data-lucide="aperture" aria-hidden="true"></i>
+      <span><strong>实况照片</strong></span>
+      <em>${liveCount} 张</em>
+    </div>`);
+  }
+  if (staticCount) {
+    rows.push(`<div class="live-photo-package-row">
+      <i data-lucide="image" aria-hidden="true"></i>
+      <span><strong>高清图片</strong></span>
+      <em>${staticCount} 张</em>
+    </div>`);
+  }
+  els.livePhotoHandoffFiles.innerHTML = `
+    <div class="live-photo-package-card">${rows.join("")}</div>
+    ${liveCount ? steps : ""}
+  `;
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -7301,13 +7534,55 @@ async function generateLivePackageForCanvas(canvas, pageIndex, reveal = true, se
   if (image?.demoOnly) {
     throw new Error("这是内置实况演示。请点击左上角“+”新建内容，再上传自己的视频后导出。");
   }
-  if (!serviceChecked && !(await ensureLivePhotoServiceReady())) {
+  const browserEngine = window.WriteThenPublishBrowserLivePhoto;
+  const canRenderInBrowser = Boolean(browserEngine?.supported());
+  if (!canRenderInBrowser && !serviceChecked && !(await ensureLivePhotoServiceReady())) {
     throw new Error("本机实况服务没有运行。请双击项目里的「启动写了就发.command」，保留终端窗口后再试。");
   }
   const media = liveMediaFiles.get(String(image.videoKey || hit.imageId));
   if (!media?.blob) throw new Error("实况原视频已经丢失，请在左侧重新上传这段视频。");
+
+  // 浏览器自己就能合成实况，不必把原视频传上云再等一台云端 Mac。
+  if (canRenderInBrowser) {
+    const settings = normalizeLiveMediaSettings(image.liveSettings);
+    const scale = 1080 / CANVAS_WIDTH;
+    const wellX = clamp(Math.round(hit.x * scale), 0, 1080);
+    const wellY = clamp(Math.round(hit.y * scale), 0, 1440);
+    const result = await browserEngine.renderLivePhoto({
+      videoBlob: media.blob,
+      pageCanvas: canvas,
+      well: {
+        x: wellX,
+        y: wellY,
+        width: clamp(Math.round(hit.width * scale), 40, 1080 - wellX),
+        height: clamp(Math.round(hit.height * scale), 40, 1440 - wellY),
+      },
+      platform: settings.platform,
+      start: settings.start,
+      coverOffset: settings.coverOffset,
+      focusX: settings.focusX,
+      focusY: settings.focusY,
+      sound: settings.sound,
+      crop: settings.crop || null,
+      title: `${projectTitleFromData(readForm())}-第${pageIndex + 1}页`,
+      onProgress: ({ progress, detail }) => onStage?.("package", detail, progress),
+    });
+    return {
+      ok: true,
+      provider: "browser",
+      pageIndex,
+      job_id: result.assetId,
+      asset_id: result.assetId,
+      archive_blob: result.blob,
+      archive_name: result.archiveName,
+      archive_bytes: result.blob.size,
+      archive_parts: result.parts,
+      platform_label: settings.platform === "wechat" ? "微信公众号" : "小红书",
+      duration: settings.platform === "wechat" ? 3 : 5,
+    };
+  }
   onStage?.("page", `正在生成第 ${pageIndex + 1} 页高清卡片…`);
-  const pageBlob = await canvasToLosslessPngBlob(canvas);
+  const pageBlob = await canvasToLivePagePngBlob(canvas);
   if (!pageBlob) throw new Error("卡片页面生成失败，请调整内容后再试。");
   const scale = 1080 / CANVAS_WIDTH;
   const wellX = clamp(Math.round(hit.x * scale), 0, 1080);
@@ -7329,6 +7604,7 @@ async function generateLivePackageForCanvas(canvas, pageIndex, reveal = true, se
     well_width: wellWidth,
     well_height: wellHeight,
     title,
+    sound: settings.sound ? "1" : "0",
     ...(settings.crop ? {
       crop_x: settings.crop.x,
       crop_y: settings.crop.y,
@@ -7455,8 +7731,9 @@ function selectLivePhotoHandoffPage(pageIndex) {
     els.livePhotoHandoffReveal.disabled = true;
     els.livePhotoHandoffDownload.disabled = false;
   } else if (!livePhotoHandoffState.isBatch) {
-    els.livePhotoHandoffReveal.disabled = !result || result.provider === "cloud";
-    els.livePhotoHandoffDownload.disabled = !result?.archive_url;
+    // 浏览器和云端生成的包都不在本机磁盘上，「在访达中显示」对它们没有意义。
+    els.livePhotoHandoffReveal.disabled = !result || result.provider === "cloud" || result.provider === "browser";
+    els.livePhotoHandoffDownload.disabled = !(result?.archive_url || result?.archive_blob);
   }
   if (window.lucide) window.lucide.createIcons();
 }
@@ -7515,12 +7792,48 @@ async function prepareCloudLivePhotoBatch() {
   };
 }
 
+/** 只有一张时收窄弹窗并改成上下排布——左右分栏会让右半边空一大片。 */
+function syncLivePhotoHandoffDensity() {
+  const card = els.livePhotoHandoffModal?.querySelector(".live-photo-handoff-card");
+  if (!card) return;
+  card.classList.toggle("is-single", livePhotoHandoffState.items.length <= 1);
+}
+
+/** 把浏览器生成的多页实况和普通页拼成一个 ZIP，全程不经过服务端。 */
+async function prepareBrowserLivePhotoBatch() {
+  if (!window.JSZip) throw new Error("打包组件没有加载，请刷新页面后重试。");
+  const zip = new window.JSZip();
+  for (const result of livePhotoHandoffState.liveResults) {
+    const prefix = `${String(result.pageIndex + 1).padStart(2, "0")}-实况`;
+    for (const part of result.archive_parts || []) {
+      zip.file(`${prefix}/${part.path}`, part.bytes);
+    }
+  }
+  for (const file of livePhotoHandoffState.staticPackage?.files || []) {
+    zip.file(`${String(file.pageIndex + 1).padStart(2, "0")}-图片.png`, file.blob);
+  }
+  const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+  return {
+    ok: true,
+    provider: "browser",
+    archive_blob: blob,
+    archive_name: `${projectTitleFromData(readForm())}-全部内容.zip`,
+    archive_bytes: blob.size,
+  };
+}
+
 async function ensureLivePhotoBatchPrepared() {
   if (livePhotoHandoffState.batch) return livePhotoHandoffState.batch;
   if (livePhotoHandoffState.batchPreparing) return livePhotoHandoffState.batchPreparing;
   const prepare = async () => {
     if (livePhotoHandoffState.liveResults.some((result) => result.provider === "cloud")) {
       const result = await prepareCloudLivePhotoBatch();
+      livePhotoHandoffState.batch = result;
+      return result;
+    }
+    // 浏览器生成的实况没有服务端任务号，总包直接在本地拼。
+    if (livePhotoHandoffState.liveResults.some((result) => result.provider === "browser")) {
+      const result = await prepareBrowserLivePhotoBatch();
       livePhotoHandoffState.batch = result;
       return result;
     }
@@ -7552,7 +7865,8 @@ async function preparePendingLivePhotoHandoffBatch() {
 
   const liveEntries = entries.filter(([, canvas]) => liveImageHitsForCanvas(canvas).length);
   const staticEntries = entries.filter(([, canvas]) => !liveImageHitsForCanvas(canvas).length);
-  if (!(await ensureLivePhotoServiceReady())) {
+  const browserLiveReady = Boolean(window.WriteThenPublishBrowserLivePhoto?.supported());
+  if (!browserLiveReady && !(await ensureLivePhotoServiceReady())) {
     throw new Error("实况生成服务暂时不可用，请检查网络后重试。");
   }
   const invalid = liveEntries.find(([, canvas]) => liveImageHitsForCanvas(canvas).length > 1);
@@ -7560,33 +7874,54 @@ async function preparePendingLivePhotoHandoffBatch() {
 
   const completedPageIndexes = [];
   const liveResults = [];
-  for (const [position, [pageIndex, canvas]] of liveEntries.entries()) {
-    updateLivePhotoHandoffProgressSteps(pageIndex, completedPageIndexes);
+  const pendingPageIndexes = new Set();
+  // 云端每页是一次互相独立的 GitHub Actions 运行，串行等待会把耗时按页数叠加；
+  // 浏览器合成走同一块硬件编码器，开两路让解码和编码互相错开就够；
+  // 本机 ffmpeg 是单机 CPU 密集任务，并发只会互相抢核，所以仍然逐页处理。
+  const liveConcurrency = browserLiveReady
+    ? Math.min(2, liveEntries.length)
+    : livePhotoState.serviceMode === "cloud"
+      ? Math.min(3, liveEntries.length)
+      : 1;
+
+  function refreshLiveBatchProgress(detail, stageRatio = 0) {
+    const current = Math.min(...pendingPageIndexes, staticEntries[0]?.[0] ?? Infinity);
+    updateLivePhotoHandoffProgressSteps(Number.isFinite(current) ? current : -1, completedPageIndexes);
     updateExportProgress("handoff", {
       title: "正在生成全部内容",
-      detail: `正在处理第 ${pageIndex + 1} / ${entries.length} 页 · 原生 Live Photo`,
+      detail,
       current: completedPageIndexes.length,
       total: entries.length,
-      value: 8 + (completedPageIndexes.length / entries.length) * 72,
+      value: 8 + ((completedPageIndexes.length + stageRatio) / entries.length) * 72,
     });
-    const result = await prepareLivePhotoPackageForCanvas(canvas, pageIndex, false, true, (stage, detail, cloudProgress) => {
-      const stageRatio = Number.isFinite(cloudProgress)
-        ? Math.max(0.1, Number(cloudProgress) / 100)
-        : stage === "validate" ? 0.1 : stage === "page" ? 0.35 : 0.68;
-      updateExportProgress("handoff", {
-        title: "正在生成全部内容",
-        detail,
-        current: completedPageIndexes.length,
-        total: entries.length,
-        value: 8 + ((completedPageIndexes.length + stageRatio) / entries.length) * 72,
-      });
-    });
-    liveResults.push(result);
-    completedPageIndexes.push(pageIndex);
-    const nextLive = liveEntries[position + 1]?.[0];
-    const nextStatic = staticEntries[0]?.[0];
-    updateLivePhotoHandoffProgressSteps(nextLive ?? nextStatic ?? -1, completedPageIndexes);
   }
+
+  async function processLiveEntry([pageIndex, canvas]) {
+    pendingPageIndexes.add(pageIndex);
+    refreshLiveBatchProgress(`正在处理第 ${pageIndex + 1} / ${entries.length} 页 · 原生 Live Photo`);
+    try {
+      const result = await prepareLivePhotoPackageForCanvas(canvas, pageIndex, false, true, (stage, detail, cloudProgress) => {
+        const stageRatio = Number.isFinite(cloudProgress)
+          ? Math.max(0.1, Number(cloudProgress) / 100)
+          : stage === "validate" ? 0.1 : stage === "page" ? 0.35 : 0.68;
+        refreshLiveBatchProgress(detail, stageRatio);
+      });
+      liveResults.push(result);
+      completedPageIndexes.push(pageIndex);
+    } finally {
+      pendingPageIndexes.delete(pageIndex);
+    }
+    refreshLiveBatchProgress(`已完成第 ${pageIndex + 1} / ${entries.length} 页 · 原生 Live Photo`);
+  }
+
+  const liveQueue = [...liveEntries];
+  await Promise.all(
+    Array.from({ length: Math.max(1, liveConcurrency) }, async () => {
+      while (liveQueue.length) {
+        await processLiveEntry(liveQueue.shift());
+      }
+    }),
+  );
 
   let staticPackage = null;
   if (staticEntries.length) {
@@ -7650,11 +7985,20 @@ async function responseBlobWithProgress(response, onProgress = null) {
   return new Blob(chunks, { type: response.headers.get("content-type") || "application/octet-stream" });
 }
 
+/** 只有本机服务生成的包才真的落在磁盘上；浏览器和云端生成的都由浏览器保存。 */
+function livePhotoHandoffHasLocalFile() {
+  const batchProvider = livePhotoHandoffState.batch?.provider;
+  if (batchProvider === "cloud" || batchProvider === "browser") return false;
+  const current = livePhotoHandoffState.liveResults.find(
+    (result) => result.job_id === livePhotoHandoffState.selectedJobId,
+  ) || livePhotoHandoffState.liveResults[0];
+  return current?.provider !== "cloud" && current?.provider !== "browser";
+}
+
 async function revealLivePhotoHandoff() {
   const isBatch = livePhotoHandoffState.isBatch;
-  const selected = livePhotoHandoffState.liveResults.find((result) => result.job_id === livePhotoHandoffState.selectedJobId);
-  if (selected?.provider === "cloud" || livePhotoHandoffState.batch?.provider === "cloud") {
-    els.status.textContent = "云端下载由浏览器保存；请打开浏览器下载列表查看文件。";
+  if (!livePhotoHandoffHasLocalFile()) {
+    els.status.textContent = "这个实况包由浏览器保存，请到浏览器的下载列表里查看。";
     return;
   }
   if (!isBatch && !livePhotoHandoffState.selectedJobId) return;
@@ -7678,7 +8022,39 @@ async function revealLivePhotoHandoff() {
   els.status.textContent = isBatch ? "已在 Finder 中显示本次批量导出。" : "已在 Finder 中显示这个实况包。";
 }
 
+/** 当前选中的这一页是不是浏览器生成、且系统分享面板可用（面板里就有隔空投送）。 */
+function browserShareTargetForHandoff() {
+  const engine = window.WriteThenPublishBrowserLivePhoto;
+  if (!engine?.canShareLive || livePhotoHandoffState.isBatch) return null;
+  const result = livePhotoHandoffState.liveResults.find(
+    (item) => item.job_id === livePhotoHandoffState.selectedJobId,
+  ) || livePhotoHandoffState.liveResults[0];
+  if (result?.provider !== "browser" || !result.archive_parts) return null;
+  const stem = result.archive_name.replace(/\.zip$/i, "");
+  return engine.canShareLive(result.archive_parts, stem) ? { result, stem } : null;
+}
+
 async function airdropLivePhotoHandoff() {
+  // 浏览器生成的实况没有落在本机磁盘上，走系统分享面板把 JPG + MOV 一起送出去，
+  // iOS 会按身份码把它们认成同一张实况。
+  const shareTarget = browserShareTargetForHandoff();
+  if (shareTarget) {
+    els.livePhotoHandoffAirdrop.disabled = true;
+    try {
+      const shared = await window.WriteThenPublishBrowserLivePhoto.shareLive(
+        shareTarget.result.archive_parts,
+        shareTarget.stem,
+        "实况照片",
+      );
+      els.status.textContent = shared
+        ? "已打开系统分享面板，选择隔空投送就能直接发到 iPhone。"
+        : "已取消分享。";
+    } catch (error) {
+      els.status.textContent = error?.message || "系统分享面板没有打开，请改用下载。";
+    }
+    els.livePhotoHandoffAirdrop.disabled = false;
+    return;
+  }
   if (livePhotoHandoffState.onlineFallback) {
     window.open(LIVE_PHOTO_LOCAL_GUIDE_URL, "_blank", "noopener,noreferrer");
     els.status.textContent = "已打开 macOS 本地版说明；完整 Live Photo 发布包需要在本机生成。";
@@ -7868,9 +8244,8 @@ async function downloadLivePhotoBatch() {
     const archiveName = archive.archive_name || (isBatch ? "写了就发-批量导出.zip" : "写了就发-实况照片.zip");
     await saveBlob(archiveBlob, archiveName);
     els.livePhotoHandoffDownload.innerHTML = `<i data-lucide="check"></i>${isBatch ? "全部内容已下载" : "实况照片已下载"}`;
-    const cloudArchive = archive.provider === "cloud";
-    els.livePhotoHandoffReveal.hidden = cloudArchive;
-    els.livePhotoHandoffHint.textContent = "下载已完成。解压 ZIP 后，请保留每个 .pvt 的完整结构。";
+    els.livePhotoHandoffReveal.hidden = !livePhotoHandoffHasLocalFile();
+    els.livePhotoHandoffHint.textContent = "";
     els.status.textContent = isBatch
       ? `已下载 ${livePhotoHandoffState.items.length} 页内容，ZIP 内只包含全部 .pvt 和普通 PNG。`
       : "实况照片 ZIP 已下载，解压后只有一个完整 .pvt。";
@@ -7886,9 +8261,8 @@ async function downloadLivePhotoBatch() {
     finishExportProgress("handoff", { success: false, title: isBatch ? "批量下载失败" : "实况照片下载失败", detail: els.status.textContent });
   }
   els.livePhotoHandoffAirdrop.disabled = false;
-    const currentResult = livePhotoHandoffState.liveResults.find((result) => result.job_id === livePhotoHandoffState.selectedJobId);
-    const cloudArchive = livePhotoHandoffState.batch?.provider === "cloud" || currentResult?.provider === "cloud";
-    els.livePhotoHandoffReveal.disabled = cloudArchive || (livePhotoHandoffState.isBatch ? !livePhotoHandoffState.batch : !livePhotoHandoffState.selectedJobId);
+  els.livePhotoHandoffReveal.disabled = !livePhotoHandoffHasLocalFile()
+    || (livePhotoHandoffState.isBatch ? !livePhotoHandoffState.batch : !livePhotoHandoffState.selectedJobId);
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -7910,10 +8284,10 @@ function renderLivePhotoHandoffThumbnails() {
 
 function applyBatchLivePhotoHandoffCopy(liveCount, staticCount, total) {
   els.livePhotoHandoffTitle.textContent = "下载全部内容";
-  els.livePhotoHandoffSummary.textContent = "系统会把实况照片和普通图片一起整理成一个下载包。";
+  els.livePhotoHandoffSummary.textContent = "";
   els.livePhotoHandoffDevice.hidden = true;
-  els.livePhotoHandoffCount.textContent = "这个下载包里有什么？";
-  els.livePhotoHandoffDetail.textContent = `共 ${total} 页 · ${liveCount} 张实况 · ${staticCount} 张图片`;
+  els.livePhotoHandoffCount.textContent = "你会得到";
+  els.livePhotoHandoffDetail.textContent = `${liveCount ? `${liveCount} 张实况照片` : ""}${liveCount && staticCount ? " · " : ""}${staticCount ? `${staticCount} 张图片` : ""}`;
   renderLivePhotoHandoffFiles();
   els.livePhotoHandoffAirdrop.hidden = true;
   els.livePhotoHandoffDownload.hidden = false;
@@ -7921,7 +8295,7 @@ function applyBatchLivePhotoHandoffCopy(liveCount, staticCount, total) {
   els.livePhotoHandoffDownload.innerHTML = '<i data-lucide="download"></i>下载全部内容';
   els.livePhotoHandoffReveal.hidden = true;
   els.livePhotoHandoffReveal.innerHTML = '<i data-lucide="folder-open"></i>在 Finder 中找到';
-  els.livePhotoHandoffHint.textContent = "下载的是一个 ZIP 压缩包，解压后即可看到全部文件。";
+  els.livePhotoHandoffHint.textContent = "";
   els.livePhotoHandoffPreviewHint.hidden = true;
   els.livePhotoHandoffThumbnails.hidden = false;
 }
@@ -7955,6 +8329,7 @@ function showPendingLivePhotoBatchHandoff(entries) {
   const liveCount = livePhotoHandoffState.items.filter((item) => item.type === "live").length;
   const staticCount = livePhotoHandoffState.items.length - liveCount;
   applyBatchLivePhotoHandoffCopy(liveCount, staticCount, livePhotoHandoffState.items.length);
+  syncLivePhotoHandoffDensity();
   els.livePhotoHandoffModal.classList.remove("hidden");
   selectLivePhotoHandoffPage(livePhotoHandoffState.items[0]?.pageIndex ?? -1);
   els.status.textContent = `已识别 ${livePhotoHandoffState.items.length} 页内容，可以下载完整 ZIP。`;
@@ -7987,20 +8362,23 @@ function showLivePhotoHandoff(liveResults, staticEntries = [], staticPackage = n
     const result = livePhotoHandoffState.liveResults[0];
     els.livePhotoHandoffDevice.hidden = true;
     els.livePhotoHandoffTitle.textContent = "下载实况照片";
-    els.livePhotoHandoffSummary.textContent = "这一页会整理成一张可在 iPhone 播放的实况照片。";
-    els.livePhotoHandoffCount.textContent = "你会下载到什么？";
+    els.livePhotoHandoffSummary.textContent = "";
+    els.livePhotoHandoffCount.textContent = "你会得到";
     els.livePhotoHandoffDetail.textContent = `1 张实况照片${result.archive_bytes ? ` · ${formatLivePhotoFileSize(result.archive_bytes)}` : ""}`;
     renderLivePhotoHandoffFiles();
+    // 暂不暴露系统分享：canShare 会对 JPG+MOV 返回 true，但 Chrome/macOS 的面板里
+    // 实测没有隔空投送，按钮点了等于没反应。等确认哪些浏览器真能投再放出来。
     els.livePhotoHandoffAirdrop.hidden = true;
     els.livePhotoHandoffDownload.hidden = false;
-    els.livePhotoHandoffDownload.disabled = !result.archive_url;
+    els.livePhotoHandoffDownload.disabled = !(result.archive_url || result.archive_blob);
     els.livePhotoHandoffDownload.innerHTML = `<i data-lucide="download"></i>下载实况照片${result.archive_bytes ? `　${formatLivePhotoFileSize(result.archive_bytes)}` : ""}`;
     els.livePhotoHandoffReveal.hidden = true;
     els.livePhotoHandoffReveal.innerHTML = '<i data-lucide="folder-open"></i>在 Finder 中找到';
-    els.livePhotoHandoffHint.textContent = "下载的是一个 ZIP 压缩包，解压后只有一个完整 .pvt 实况照片。";
+    els.livePhotoHandoffHint.textContent = "";
     els.livePhotoHandoffPreviewHint.hidden = false;
     els.livePhotoHandoffThumbnails.hidden = false;
   }
+  syncLivePhotoHandoffDensity();
   els.livePhotoHandoffModal.classList.remove("hidden");
   selectLivePhotoHandoffPage(livePhotoHandoffState.items[0]?.pageIndex ?? -1);
   if (window.lucide) window.lucide.createIcons();
@@ -8047,6 +8425,7 @@ function showOnlineLivePhotoFallback(entries) {
   els.livePhotoHandoffHint.textContent = "这里下载的是普通 PNG，不会显示“实况”标识。";
   els.livePhotoHandoffPreviewHint.hidden = livePhotoHandoffState.isBatch;
   els.livePhotoHandoffThumbnails.hidden = false;
+  syncLivePhotoHandoffDensity();
   els.livePhotoHandoffModal.classList.remove("hidden");
   selectLivePhotoHandoffPage(livePhotoHandoffState.items[0]?.pageIndex ?? -1);
   els.status.textContent = "在线版可以预览实况，但云端 .pvt 生成服务尚未接通。";
@@ -8237,6 +8616,19 @@ function canvasToLosslessPngBlob(canvas) {
       reject(error);
     }
   });
+}
+
+// 实况合成时 ffmpeg 会把卡片缩到 1080x1440 再叠视频，所以按 1728x2304 上传纯属浪费：
+// 云端要多传约 3MB，runner 还要再下载一次。这里先缩到成片尺寸，画质与服务端缩放等价。
+function canvasToLivePagePngBlob(canvas) {
+  const target = document.createElement("canvas");
+  target.width = LIVE_PAGE_WIDTH;
+  target.height = LIVE_PAGE_HEIGHT;
+  const context = target.getContext("2d");
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(canvas, 0, 0, LIVE_PAGE_WIDTH, LIVE_PAGE_HEIGHT);
+  return canvasToLosslessPngBlob(target);
 }
 
 async function isZipBlob(blob) {
@@ -8602,11 +8994,9 @@ function bindEvents() {
       updateLivePhotoPreview();
     }
   });
-  els.livePhotoStart.addEventListener("input", () => {
-    normalizeLivePhotoTiming();
-    seekLivePhotoPreview(false);
-  });
+  bindLivePhotoTrimTrack();
   els.livePhotoCover.addEventListener("input", () => seekLivePhotoPreview(true));
+  els.livePhotoSound?.addEventListener("change", applyLivePhotoPreviewSound);
   els.ratioButtons.forEach((button) => {
     button.addEventListener("click", () => setCropAspect(button.dataset.ratio));
   });
