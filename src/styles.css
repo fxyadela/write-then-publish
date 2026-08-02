@@ -135,8 +135,47 @@ button:disabled {
   backdrop-filter: blur(12px);
 }
 
+/* 署名同时是作者主页入口，所以要能点；分隔点用伪元素画，不占 DOM。 */
 .site-credit {
-  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 12px;
+}
+
+.site-credit-by {
+  color: var(--muted);
+}
+
+.site-credit a {
+  position: relative;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.site-credit a::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+  transform: translateY(-50%);
+}
+
+.site-credit a:hover,
+.site-credit a:focus-visible {
+  color: var(--ink);
+}
+
+.site-credit a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 .account-dock {

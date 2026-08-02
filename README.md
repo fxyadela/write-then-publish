@@ -247,6 +247,17 @@ Apple 需要依靠配对标记识别完整 Live Photo。分开发送可能丢失
 
 </details>
 
+## 作者
+
+这个工具由 **捏捏番茄** 独立开发和维护。用它做出来的内容，大多发在下面这几个地方：
+
+| | |
+|---|---|
+| X（Twitter） | [@iamcora13](https://x.com/iamcora13) |
+| 小红书 | [捏捏番茄](https://www.xiaohongshu.com/user/profile/67952aba000000000e01356a) |
+| 抖音 | [捏捏番茄](https://www.douyin.com/user/MS4wLjABAAAA8HEddoRiC7edoHeoDC48MvCoZuZMcY_EPjBv551akE8) |
+| GitHub | [@fxyadela](https://github.com/fxyadela) |
+
 ## 贡献与许可
 
 欢迎通过 Issues 或 Pull Requests 提交最小复现、预期结果、实际结果和相关截图。
