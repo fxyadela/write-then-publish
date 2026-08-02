@@ -63,6 +63,8 @@ function needsLivePhotoStaticFallback() {
     && !cloudLivePhotoAvailable();
 }
 const MAX_PROJECTS = 24;
+// 超过这个体积的原片不做云端备份：实况生成不需要它，自动上传几百 MB 只会拖慢同步。
+const MAX_CLOUD_BACKUP_VIDEO_BYTES = 80 * 1024 * 1024;
 const BUILT_IN_PROJECT_PREFIX = "guide_";
 const GUIDE_CARDS_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}cards`;
 const GUIDE_ARTICLE_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}article`;
@@ -1908,7 +1910,12 @@ async function prepareProjectForCloud(project) {
       const videoKey = String(sourceImage.videoKey || id);
       try {
         const cachedBlob = liveMediaFiles.get(videoKey)?.blob || await readLiveMediaBlob(videoKey);
-        if (cachedBlob) {
+        // 生成实况只用本地素材，云端备份纯粹是为了换设备时还能继续编辑。
+        // 一段几百 MB 的原片自动传上去，用户既没要求也未必愿意等，所以超过阈值就跳过：
+        // 项目本身照常同步，只是这段视频留在本机。
+        if (cachedBlob && cachedBlob.size > MAX_CLOUD_BACKUP_VIDEO_BYTES) {
+          sourceImage.videoBackupSkipped = true;
+        } else if (cachedBlob) {
           sourceImage.videoStoragePath = await api.uploadProjectAsset(
             project.id,
             `${id}-video`,
@@ -1920,6 +1927,7 @@ async function prepareProjectForCloud(project) {
         console.error("实况视频上传失败", error);
       }
     }
+    if (sourceImage.videoBackupSkipped) cloudImage.videoBackupSkipped = true;
     if (sourceImage.videoStoragePath) cloudImage.videoStoragePath = sourceImage.videoStoragePath;
     if (sourceImage.kind === "live" && !String(sourceImage.previewVideoSrc || "").startsWith("docs/")) {
       delete cloudImage.previewVideoSrc;
@@ -6157,8 +6165,17 @@ function releaseLivePhotoObjectUrl() {
 function handleLivePhotoVideo(event) {
   const file = event.target.files?.[0] || null;
   if (!file) return;
-  if (file.size > 350 * 1024 * 1024) {
-    setLivePhotoServiceMessage("视频超过 350MB，请先裁短或压缩后再试。", "error");
+  // 浏览器本地合成只解所选的几秒，46 分钟 / 416MB 实测 0.1 秒就能取到片段，
+  // 所以只有真要上传到云端时才需要卡体积；本地路径放宽到内存扛得住的范围。
+  const canRenderLocally = Boolean(window.WriteThenPublishBrowserLivePhoto?.supported());
+  const sizeLimit = canRenderLocally ? 1024 * 1024 * 1024 : 350 * 1024 * 1024;
+  if (file.size > sizeLimit) {
+    setLivePhotoServiceMessage(
+      canRenderLocally
+        ? "视频超过 1GB，浏览器可能撑不住，请先裁短后再试。"
+        : "视频超过 350MB，请先裁短或压缩后再试。",
+      "error",
+    );
     event.target.value = "";
     return;
   }

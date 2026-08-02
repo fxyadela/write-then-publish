@@ -77,7 +77,10 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
+  /* 工作区一行、页脚一行：页脚要真的占位，不能浮在内容上面挡住卡片。 */
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100vh;
   overflow: hidden;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--ink);
@@ -103,7 +106,8 @@ button:disabled {
 .workspace {
   display: grid;
   grid-template-columns: var(--history-width-collapsed, 48px) 6px minmax(360px, var(--editor-width, 500px)) 6px minmax(360px, 1fr);
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
 }
 
 .workspace.history-open {
@@ -111,16 +115,18 @@ button:disabled {
 }
 
 .site-footer {
-  position: fixed;
-  right: 18px;
-  bottom: 14px;
+  position: relative;
   z-index: 220;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 18px;
+  min-height: 46px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
 }
 
-.site-credit,
 .account-dock-button {
   padding: 7px 10px;
   border: 1px solid var(--line);
@@ -135,47 +141,78 @@ button:disabled {
   backdrop-filter: blur(12px);
 }
 
-/* 署名同时是作者主页入口，所以要能点；分隔点用伪元素画，不占 DOM。 */
+/* 页脚里的署名与作者主页入口：排在最左，账号按钮靠右。 */
 .site-credit {
+  order: -1;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding-right: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-weight: 650;
+  line-height: 1;
 }
 
+/* 中线本来就是对齐的，视觉上不齐是因为字比图标矮 5px（12px 对 17px）。
+   中文字形基本占满 em，所以字号往图标高度靠，两者才像在同一行上。 */
 .site-credit-by {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
   color: var(--muted);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1;
 }
 
 .site-credit a {
-  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
   color: var(--muted);
   text-decoration: none;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
-.site-credit a::before {
-  content: "";
-  position: absolute;
-  left: -4px;
-  top: 50%;
-  width: 2px;
-  height: 2px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.45;
-  transform: translateY(-50%);
+.site-credit a svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+
+/* 小红书的官方标志是横向文字商标（约 2.8:1），塞进方框字会糊成一团红渍，
+   所以按它自身比例给宽度，viewBox 也裁到字带的实际边界。 */
+.site-credit a.is-wordmark {
+  width: auto;
+  padding: 0 6px;
+}
+
+.site-credit a.is-wordmark svg {
+  width: 44px;
+  height: 16px;
+}
+
+/* 单色 mark 跟随文字色，彩色 mark（小红书、抖音）平时压一点饱和度，悬停回满。 */
+.site-credit a svg [fill^="#"] {
+  opacity: 0.78;
+  transition: opacity 0.15s ease;
 }
 
 .site-credit a:hover,
 .site-credit a:focus-visible {
   color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.site-credit a:hover svg [fill^="#"],
+.site-credit a:focus-visible svg [fill^="#"] {
+  opacity: 1;
 }
 
 .site-credit a:focus-visible {
   outline: 2px solid var(--ink);
-  outline-offset: 3px;
-  border-radius: 4px;
+  outline-offset: 2px;
 }
 
 .account-dock {

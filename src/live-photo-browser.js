@@ -20,6 +20,9 @@
   // 服务端等价设置是 libx264 CRF 18；1080x1440 30fps 下约 6Mbps 与之体积相当。
   const VIDEO_BITRATE = 6_000_000;
   const CODEC_CANDIDATES = ["avc1.4d0028", "avc1.640028", "avc1.42e01e"];
+  // 分批交付样本，够用就停；批次太大等于一次性提取整段，大文件会卡住主线程。
+  const VIDEO_BATCH = 120;
+  const AUDIO_BATCH = 400;
 
   function supported() {
     return Boolean(
@@ -34,7 +37,7 @@
 
   /* ---------------------------------------------------------------- 解复用 */
 
-  async function demuxVideo(blob) {
+  async function demuxVideo(blob, windowStart = 0, windowEnd = Infinity) {
     const buffer = await blob.arrayBuffer();
     const file = window.MP4Box.createFile();
     const samples = [];
@@ -46,15 +49,23 @@
 
     await new Promise((resolve, reject) => {
       let settled = false;
-      const finish = () => { if (!settled) { settled = true; resolve(); } };
-      const fail = (message) => { if (!settled) { settled = true; reject(new Error(message)); } };
-      // onSamples 可能分批到达，样本数也未必和 nb_samples 严格相等，
-      // 所以不拿计数当完成条件：每来一批就重置一个短定时器，安静下来即视为取完。
+      let stopped = false;
+      const stop = () => {
+        if (stopped) return;
+        stopped = true;
+        try { file.stop(); } catch { /* 已经停了就算了 */ }
+      };
+      const finish = () => { if (!settled) { settled = true; stop(); resolve(); } };
+      const fail = (message) => { if (!settled) { settled = true; stop(); reject(new Error(message)); } };
+      // 样本分批到达，批与批之间可能隔很久（大文件尤其明显），
+      // 所以既不拿计数也不拿「安静多久」当完成条件，而是看需要的时间窗有没有覆盖到。
       let idleTimer = 0;
       const markIdle = () => {
         window.clearTimeout(idleTimer);
-        idleTimer = window.setTimeout(finish, 120);
+        idleTimer = window.setTimeout(finish, 400);
       };
+      const covered = (bucket) => bucket.length
+        && bucket[bucket.length - 1].cts / bucket[bucket.length - 1].timescale >= windowEnd;
 
       file.onError = (error) => fail(`无法解析这段视频：${error}`);
       file.onReady = (info) => {
@@ -84,22 +95,29 @@
           } catch {
             audioDescription = null;
           }
-          file.setExtractionOptions(audioTrack.id, "audio", { nbSamples: 1_000_000 });
+          file.setExtractionOptions(audioTrack.id, "audio", { nbSamples: AUDIO_BATCH });
         }
-        file.setExtractionOptions(track.id, null, { nbSamples: 1_000_000 });
+        // 小批交付、取够就停：一次性提取整段（nbSamples 给很大）会让 mp4box 把所有样本
+        // 复制一遍，106MB / 40 秒的视频实测要 39 秒且全程阻塞主线程，而我们只要其中几秒。
+        file.setExtractionOptions(track.id, null, { nbSamples: VIDEO_BATCH });
         file.start();
         markIdle();
       };
       file.onSamples = (_id, user, chunk) => {
         const bucket = user === "audio" ? audioSamples : samples;
         for (const sample of chunk) bucket.push(sample);
+        if (covered(samples) && (!audioTrack || covered(audioSamples))) {
+          window.clearTimeout(idleTimer);
+          finish();
+          return;
+        }
         markIdle();
       };
       buffer.fileStart = 0;
       file.appendBuffer(buffer);
       file.flush();
-      // 兜底：万一 mp4box 既不报错也不回调，也要让调用方拿到明确结果而不是一直转圈。
-      window.setTimeout(() => (samples.length ? finish() : fail("这段视频的画面无法读取，请换一段视频。")), 15000);
+      // 兜底：只有在完全没拿到画面时才判失败；大文件解析慢不该被误判成坏文件。
+      window.setTimeout(() => (samples.length ? finish() : fail("这段视频的画面无法读取，请换一段视频。")), 90000);
     });
 
     if (!samples.length) throw new Error("这段视频没有可用的画面帧。");
@@ -480,7 +498,9 @@
     const suffix = platform === "wechat" ? "WECHAT_3S" : "XHS_5S";
 
     onProgress?.({ stage: "demux", progress: 6, detail: "正在读取视频画面…" });
-    const { samples, track, description, audioSamples, audioTrack, audioDescription } = await demuxVideo(videoBlob);
+    // 只解出所选时间窗，末尾留两帧余量给解码器补参考帧。
+    const { samples, track, description, audioSamples, audioTrack, audioDescription } =
+      await demuxVideo(videoBlob, start, start + durationSeconds + 2 / OUTPUT_FPS);
 
     const available = track.duration / track.timescale;
     if (start + durationSeconds > available + 0.05) {
