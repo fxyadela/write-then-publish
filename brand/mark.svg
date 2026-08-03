@@ -1,5 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="写了就发">
   <rect width="64" height="64" rx="14" fill="#17202f"/>
-  <path d="M14 50 L17 39 L35 21 L44 30 L26 48 Z" fill="#fff"/>
-  <path d="M47 4 Q49.9 12.1 59 16 Q49.9 19.9 47 28 Q44.1 19.9 35 16 Q44.1 12.1 47 4 Z" fill="#fff"/>
+  <!-- 原始构图的包围盒中心在 (36.5, 27)，比画布中心偏右上，四周留白不均，
+       四角星几乎贴着上边缘。统一往左下挪正；scripts/build_brand_icons.py 用同一组偏移。 -->
+  <g transform="translate(-4.5 5)">
+    <path d="M14 50 L17 39 L35 21 L44 30 L26 48 Z" fill="#fff"/>
+    <path d="M47 4 Q49.9 12.1 59 16 Q49.9 19.9 47 28 Q44.1 19.9 35 16 Q44.1 12.1 47 4 Z" fill="#fff"/>
+  </g>
 </svg>

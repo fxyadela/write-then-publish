@@ -11,10 +11,12 @@
     <!-- 图标必须是可抓取的真实文件：Google 不索引 data: URI 的 favicon。
          另外爬虫会直接去要根目录的 /favicon.ico，只声明 <link> 未必够，
          所以这里 .ico 放在最前面，且根目录必须真的有这个文件。 -->
-    <link rel="icon" href="/favicon.ico" sizes="48x48" />
-    <link rel="shortcut icon" href="/favicon.ico" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any" />
-    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <!-- 浏览器缓存图标非常久，换图必须带版本号，否则老用户还是看到旧的那张。
+         根目录仍留一份不带参数的 /favicon.ico 供爬虫直接抓取。 -->
+    <link rel="icon" href="/favicon.ico?v=20260803" sizes="48x48" />
+    <link rel="shortcut icon" href="/favicon.ico?v=20260803" />
+    <link rel="icon" href="/favicon.svg?v=20260803" type="image/svg+xml" sizes="any" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png?v=20260803" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#17202f" />
 
