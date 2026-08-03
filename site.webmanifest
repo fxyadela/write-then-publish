@@ -1,0 +1,14 @@
+{
+  "name": "写了就发 | Write Then Publish",
+  "short_name": "写了就发",
+  "description": "一份 Markdown，排成小红书图文卡片或公众号长文。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#17202f",
+  "icons": [
+    { "src": "/brand/icon-96.png", "sizes": "96x96", "type": "image/png" },
+    { "src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
