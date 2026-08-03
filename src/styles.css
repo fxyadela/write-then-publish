@@ -2832,6 +2832,14 @@ body.export-busy {
   background: #f0fdf4;
 }
 
+/* 从重置邮件回来时只该看到「设置新密码」一个输入框，
+   登录/注册切换、邮箱、原密码这些都跟这一步无关。 */
+.account-auth-form.is-resetting .account-auth-mode,
+.account-auth-form.is-resetting > label:not(#accountNewPasswordField),
+.account-auth-form.is-resetting .account-resend-confirmation {
+  display: none;
+}
+
 .account-resend-confirmation {
   justify-self: center;
   min-height: 34px;

@@ -590,11 +590,18 @@
               <span>再次输入密码</span>
               <input id="accountPasswordConfirmInput" type="password" autocomplete="new-password" minlength="8" placeholder="再次输入相同密码" />
             </label>
+            <label id="accountNewPasswordField" hidden>
+              <span>设置新密码</span>
+              <input id="accountNewPasswordInput" type="password" autocomplete="new-password" minlength="8" placeholder="至少 8 位" />
+            </label>
             <div class="account-auth-actions">
               <button id="accountSignInBtn" class="primary-button" type="submit">登录</button>
             </div>
             <button id="accountResendConfirmationBtn" class="account-resend-confirmation" type="button" hidden>
               没有收到确认邮件？<span>重新发送</span>
+            </button>
+            <button id="accountForgotPasswordBtn" class="account-resend-confirmation" type="button">
+              忘记密码？<span>发送重置邮件</span>
             </button>
           </form>
 

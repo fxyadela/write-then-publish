@@ -114,6 +114,9 @@ const els = {
   accountClose: $("#accountCloseBtn"),
   accountConfigNotice: $("#accountConfigNotice"),
   accountResendConfirmation: $("#accountResendConfirmationBtn"),
+  accountForgotPassword: $("#accountForgotPasswordBtn"),
+  accountNewPasswordField: $("#accountNewPasswordField"),
+  accountNewPassword: $("#accountNewPasswordInput"),
   accountAuthForm: $("#accountAuthForm"),
   accountEmail: $("#accountEmailInput"),
   accountPassword: $("#accountPasswordInput"),
@@ -1189,8 +1192,26 @@ function authRedirectErrorMessage() {
 }
 
 function setAccountAuthMode(mode, { keepNotice = false } = {}) {
-  accountAuthMode = mode === "signup" ? "signup" : "signin";
+  accountAuthMode = ["signup", "reset"].includes(mode) ? mode : "signin";
   const signingUp = accountAuthMode === "signup";
+  const resetting = accountAuthMode === "reset";
+  // 改密码时把登录/注册那一套整个藏起来，只留「设置新密码」一个输入框。
+  els.accountAuthForm?.classList.toggle("is-resetting", resetting);
+  if (els.accountNewPasswordField) els.accountNewPasswordField.hidden = !resetting;
+  if (els.accountNewPassword) {
+    els.accountNewPassword.required = resetting;
+    if (!resetting) els.accountNewPassword.value = "";
+  }
+  if (els.accountForgotPassword) {
+    els.accountForgotPassword.hidden = resetting || signingUp || Boolean(cloudState.user) || !cloudApi()?.configured;
+  }
+  if (resetting) {
+    if (els.accountSignIn) els.accountSignIn.textContent = "保存新密码";
+    if (els.accountResendConfirmation) els.accountResendConfirmation.hidden = true;
+    setAccountPasswordVisible(false);
+    if (!keepNotice && cloudApi()?.configured) setAccountNotice("");
+    return;
+  }
   els.accountSignInMode?.classList.toggle("is-active", !signingUp);
   els.accountSignInMode?.setAttribute("aria-selected", String(!signingUp));
   els.accountSignUp?.classList.toggle("is-active", signingUp);
@@ -1225,7 +1246,12 @@ function accountAuthErrorMessage(error, mode) {
     return "这个邮箱已经注册过，请切换到“登录”并输入原密码。";
   }
   if (code === "email_address_not_authorized" || message.includes("email address not authorized")) {
-    return "当前邮件服务暂时无法向这个邮箱发送确认邮件，请稍后再试。";
+    // 这个不是「稍后再试」能解决的：说明站点还没接自定义 SMTP，
+    // Supabase 内置发信只发给项目团队成员。
+    return "这个站点的邮件服务还没配置好，暂时发不出确认邮件。可以先用游客模式，或者联系作者。";
+  }
+  if (code === "over_email_send_rate_limit" || message.includes("rate limit")) {
+    return "刚刚注册的人有点多，发信排队了。请等几分钟再点一次「重新发送」。";
   }
   return error?.message || "注册失败，请稍后再试。";
 }
@@ -1710,6 +1736,16 @@ async function initializeCloudAccount() {
     return;
   }
   api.onAuthStateChange((event, session) => {
+    // 点重置邮件回来时 supabase-js 会先给一个临时会话再抛这个事件，
+    // 这里必须把界面切到「设置新密码」，否则用户只是莫名其妙被登录了。
+    if (event === "PASSWORD_RECOVERY") {
+      window.setTimeout(() => {
+        openAccountModal();
+        setAccountAuthMode("reset");
+        setAccountNotice("请设置一个新密码，保存后即可用它登录。");
+      }, 0);
+      return;
+    }
     if (!["SIGNED_IN", "SIGNED_OUT", "USER_UPDATED"].includes(event)) return;
     if (event === "SIGNED_OUT") {
       if (!cloudState.signingOut && entryState.mode === "account") {
@@ -1854,9 +1890,51 @@ async function resendAccountConfirmation() {
   }
 }
 
+async function requestPasswordReset() {
+  const email = els.accountEmail.value.trim() || localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
+  if (!email) {
+    setAccountNotice("请先填写注册时使用的邮箱。", "error");
+    els.accountEmail.focus();
+    return;
+  }
+  setAccountBusy(true);
+  setAccountNotice("正在发送重置邮件…");
+  try {
+    await cloudApi().sendPasswordReset(email);
+    localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, email);
+    setAccountNotice(`重置邮件已发送到 ${email}，点击邮件里的链接就能设置新密码。`, "success");
+  } catch (error) {
+    setAccountNotice(accountAuthErrorMessage(error, "signup"), "error");
+  } finally {
+    setAccountBusy(false);
+  }
+}
+
+async function applyNewPassword() {
+  const password = els.accountNewPassword.value;
+  if (password.length < 8) {
+    setAccountNotice("新密码至少 8 位。", "error");
+    els.accountNewPassword.focus();
+    return;
+  }
+  setAccountBusy(true);
+  setAccountNotice("正在保存新密码…");
+  try {
+    await cloudApi().updatePassword(password);
+    els.accountNewPassword.value = "";
+    setAccountAuthMode("signin", { keepNotice: true });
+    setAccountNotice("新密码已保存，下次可以直接用它登录。", "success");
+  } catch (error) {
+    setAccountNotice(error?.message || "密码保存失败，请重新发一次重置邮件。", "error");
+  } finally {
+    setAccountBusy(false);
+  }
+}
+
 async function submitAccountAuth(event) {
   event.preventDefault();
-  if (accountAuthMode === "signup") await signUpAccount();
+  if (accountAuthMode === "reset") await applyNewPassword();
+  else if (accountAuthMode === "signup") await signUpAccount();
   else await signInAccount();
 }
 
@@ -9098,6 +9176,7 @@ function bindEvents() {
     els.accountPassword.focus();
   });
   els.accountResendConfirmation.addEventListener("click", resendAccountConfirmation);
+  els.accountForgotPassword?.addEventListener("click", () => void requestPasswordReset());
   els.accountSignOut.addEventListener("click", signOutAccount);
   els.accountImportLocal.addEventListener("click", importLocalProjectsToAccount);
   document.addEventListener("pointerdown", (event) => {

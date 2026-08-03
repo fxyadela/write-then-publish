@@ -57,6 +57,19 @@
     return data;
   }
 
+  async function sendPasswordReset(email) {
+    // 回跳带上标记，落地后才知道这次是来改密码的，而不是普通登录。
+    const { error } = await requireClient().auth.resetPasswordForEmail(email, {
+      redirectTo: `${redirectUrl()}?reset=1`,
+    });
+    throwIfError(error);
+  }
+
+  async function updatePassword(password) {
+    const { error } = await requireClient().auth.updateUser({ password });
+    throwIfError(error);
+  }
+
   async function signOut() {
     const { error } = await requireClient().auth.signOut();
     throwIfError(error);
@@ -352,6 +365,8 @@
     signUp,
     signIn,
     resendSignUp,
+    sendPasswordReset,
+    updatePassword,
     signOut,
     getSession,
     onAuthStateChange,

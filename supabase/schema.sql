@@ -88,7 +88,7 @@ values (
   'project-assets',
   'project-assets',
   false,
-  367001600,
+  83886080,
   array[
     'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
     'video/mp4', 'video/quicktime', 'video/webm', 'application/octet-stream'
