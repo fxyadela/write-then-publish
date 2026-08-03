@@ -7,10 +7,12 @@
     <meta name="description" content="一份 Markdown，排成小红书图文卡片或公众号长文。图片、实况照片、Obsidian 同步和导出都在同一个工作区完成；实况在浏览器本地合成，生成过程不上传原视频。" />
     <link rel="canonical" href="https://fawen.fun/" />
 
-    <!-- 图标必须是可抓取的真实文件：Google 不索引 data: URI 的 favicon，
-         之前搜索结果里只显示默认地球图标就是这个原因。 -->
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="icon" href="/brand/icon-96.png" sizes="96x96" type="image/png" />
+    <!-- 图标必须是可抓取的真实文件：Google 不索引 data: URI 的 favicon。
+         另外爬虫会直接去要根目录的 /favicon.ico，只声明 <link> 未必够，
+         所以这里 .ico 放在最前面，且根目录必须真的有这个文件。 -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any" />
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#17202f" />
