@@ -147,19 +147,19 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 7px;
   font-weight: 650;
   line-height: 1;
 }
 
-/* 中线本来就是对齐的，视觉上不齐是因为字比图标矮 5px（12px 对 17px）。
+/* 中线本来就是对齐的，视觉上不齐是因为字比图标矮。
    中文字形基本占满 em，所以字号往图标高度靠，两者才像在同一行上。 */
 .site-credit-by {
   display: inline-flex;
   align-items: center;
-  height: 26px;
+  height: 21px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 750;
   line-height: 1;
 }
@@ -167,30 +167,27 @@ button:disabled {
 .site-credit a {
   display: inline-grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
+  width: 21px;
+  height: 21px;
+  border-radius: 6px;
   color: var(--muted);
   text-decoration: none;
   transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
 .site-credit a svg {
-  width: 17px;
-  height: 17px;
+  width: 14px;
+  height: 14px;
   display: block;
 }
 
-/* 小红书的官方标志是横向文字商标（约 2.8:1），塞进方框字会糊成一团红渍，
-   所以按它自身比例给宽度，viewBox 也裁到字带的实际边界。 */
-.site-credit a.is-wordmark {
-  width: auto;
-  padding: 0 6px;
-}
-
-.site-credit a.is-wordmark svg {
-  width: 44px;
-  height: 16px;
+/* 小红书没有方形的单色官方 mark，官方标志是横向文字商标（约 2.8:1），
+   塞进这一行会比其他三个宽出一截。所以这里用「红」字，尺寸和另外三个对齐。 */
+.site-credit a.is-cjk span {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 /* 单色 mark 跟随文字色，彩色 mark（小红书、抖音）平时压一点饱和度，悬停回满。 */
@@ -1878,6 +1875,54 @@ body.export-busy {
   height: 13px;
 }
 
+/* 和 LIVE 角标对角摆，避免压住画面主体。 */
+.article-live-actions {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: inline-flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.article-live-stage:hover .article-live-actions,
+.article-live-actions:focus-within {
+  opacity: 1;
+}
+
+.article-live-action {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(5, 8, 14, 0.56);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.article-live-action:hover {
+  color: #05080e;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.article-live-action svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* 触摸设备没有 hover，直接常显。 */
+@media (hover: none) {
+  .article-live-actions {
+    opacity: 1;
+  }
+}
+
 .article-table-wrap {
   overflow-x: auto;
   border: 1px solid color-mix(in srgb, var(--article-accent) 26%, #d7dde5);
@@ -3336,8 +3381,8 @@ body.export-busy {
 
 .live-photo-badge {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  bottom: 14px;
+  left: 14px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -3403,15 +3448,48 @@ body.export-busy {
   text-align: right;
 }
 
-.live-photo-file-button {
+/* 文件名可能很长，必须能收缩并省略，否则会把「更换素材」挤出按钮外。
+   选择器要带上 .live-photo-section：后面那条 `.live-photo-section label { display: grid }`
+   权重更高，只写类名会被它按成两行网格。 */
+.live-photo-section label.live-photo-file-button {
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   width: 100%;
   min-height: 44px;
-  justify-content: center;
+  padding: 0 12px;
   cursor: pointer;
+}
+
+.live-photo-file-button > i {
+  flex: none;
+}
+
+.live-photo-file-button > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.live-photo-file-swap {
+  flex: none;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--paper);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.live-photo-file-button:hover .live-photo-file-swap {
+  color: var(--ink);
+  border-color: var(--ink);
 }
 
 .live-photo-file-button input {
@@ -3450,23 +3528,20 @@ body.export-busy {
   grid-template-columns: repeat(4, 1fr);
 }
 
-.live-photo-custom-ratio {
-  display: grid;
-  min-height: 64px;
+/* 不选「自由」时这一行必须真正折叠。此前只是 opacity: 0 + visibility: hidden，
+   min-height 和边框仍在，于是比例和截取片段之间留了一个空白框。
+   同样要带 .live-photo-section 前缀压过下面那条通配的 label 规则。 */
+.live-photo-section label.live-photo-custom-ratio {
+  display: none;
   gap: 7px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--soft);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
 }
 
-.live-photo-custom-ratio.is-visible {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
+.live-photo-section label.live-photo-custom-ratio.is-visible {
+  display: grid;
 }
 
 .live-photo-custom-ratio > span {

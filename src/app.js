@@ -221,6 +221,7 @@ const els = {
   livePhotoEmpty: $("#livePhotoEmpty"),
   livePhotoVideoInput: $("#livePhotoVideoInput"),
   livePhotoFileLabel: $("#livePhotoFileLabel"),
+  livePhotoFileSwap: $("#livePhotoFileSwap"),
   livePhotoVideoMeta: $("#livePhotoVideoMeta"),
   livePhotoPlatformButtons: document.querySelectorAll("[data-live-platform]"),
   livePhotoRatioButtons: document.querySelectorAll("[data-live-ratio]"),
@@ -565,7 +566,7 @@ const cardsGuideText = `# 图文卡片说明书
 
 [[image:guide_live]]
 
-上面是可播放的内置实况演示。新建内容后请换成自己的视频；右侧下载会自动识别实况页。在线版会由云端 Mac 生成完整 Live Photo 发布包，本地版还可以直接打开 Finder 和 AirDrop。
+上面是可播放的内置实况演示。新建内容后请换成自己的视频；右侧下载会自动识别实况页，直接在本机浏览器里合成完整 Live Photo 发布包，原视频不会上传。本地版还可以直接打开 Finder 和 AirDrop。
 
 混合批量下载会保持原始顺序：普通页面保留为高清 PNG，实况页面保留为完整 \`.pvt\`。在线版下载 ZIP 后，在 Finder 中把整个 \`.pvt\` AirDrop 到 iPhone。
 
@@ -809,7 +810,8 @@ function normalizeAuthorProfile(data = {}) {
     : null;
   return {
     displayName,
-    handle: normalizeHandle(data.handle || DEFAULT_HANDLE),
+    // 留空是合法状态：清掉之后不要再被默认值顶回来。
+    handle: normalizeHandle(data.handle),
     avatar: typeof data.avatar === "string" && data.avatar ? data.avatar : sampleAvatar,
     avatarCrop,
   };
@@ -939,7 +941,8 @@ function updateAppMode() {
   els.downloadZip.hidden = state.appMode === "article";
   els.downloadArticle.hidden = state.appMode !== "article";
   els.copyWechat.hidden = state.appMode !== "article";
-  els.syncWechat.hidden = state.appMode !== "article";
+  // 草稿箱同步整体还不完善，先全站下线；功能做好后把这里改回按 appMode 判断即可。
+  els.syncWechat.hidden = true;
   els.headerModeToggle.hidden = state.appMode === "article";
 }
 
@@ -974,9 +977,19 @@ async function setArticleOption(type, value) {
 }
 
 function normalizeHandle(value) {
-  const trimmed = (value || "").trim();
-  if (!trimmed) return "@profile";
-  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+  // 不再强制补「@」，也不给默认值：这一栏留空即可，由用户自由填写。
+  return (value || "").trim();
+}
+
+/** 浏览器自带 WebCodecs 就能本地合成实况，不用云端也不用本机中继。 */
+function livePhotoBrowserRenderSupported() {
+  return Boolean(window.WriteThenPublishBrowserLivePhoto?.supported());
+}
+
+/** 本机版跑在 localhost / 127.0.0.1 上，只有它才有本机中继可用。 */
+function isLocalHostSite() {
+  return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(window.location.hostname)
+    || window.location.protocol === "file:";
 }
 
 function normalizeArticleTheme(value) {
@@ -1629,7 +1642,7 @@ async function loadCloudWorkspace(session) {
     if (!resolvedProfile) {
       const cached = loadStoredAuthorProfile() || normalizeAuthorProfile({
         displayName: user.user_metadata?.full_name || user.email?.split("@")[0] || "未命名作者",
-        handle: user.email ? `@${user.email.split("@")[0]}` : "@profile",
+        handle: "",
       });
       resolvedProfile = await api.upsertProfile(cached);
     }
@@ -2023,7 +2036,7 @@ function migrateStoredState(data) {
     "“请你从某个领域里，选择一个研究生水平的概念。然后写一个寓言故事，用间接的方式把这个概念讲清楚。不要一开始就说答案，尽量到故事快结束的时候，才让人意识到原来讲的是这个概念。故事结束后，再解释这个概念，以及故事里的隐喻分别对应什么。”",
   );
   if (["380", "520"].includes(String(data.imageHeight))) data.imageHeight = String(CARD_MAX_IMAGE_HEIGHT);
-  if (!data.handle || data.handle === "@heytomato") data.handle = DEFAULT_HANDLE;
+  if (data.handle === "@heytomato") data.handle = DEFAULT_HANDLE;
   if (!Number.isFinite(Number(data.fontSize)) || Math.abs(Number(data.fontSize) - 31) < 0.001) {
     data.fontSize = String(DEFAULT_CARD_FONT_SIZE);
   }
@@ -5378,8 +5391,28 @@ function hydrateArticleLiveMedia(article, images) {
     const badge = document.createElement("span");
     badge.className = "article-live-badge";
     badge.innerHTML = '<i data-lucide="aperture"></i>LIVE';
-    stage.append(video, badge);
+    stage.append(video, badge, buildArticleLiveActions(imageId));
   });
+}
+
+/** 长文预览里每段实况自带「编辑」入口，否则改这段实况只能先切回图文卡片。 */
+function buildArticleLiveActions(imageId) {
+  const actions = document.createElement("div");
+  actions.className = "article-live-actions";
+
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "article-live-action";
+  edit.title = "编辑这段实况";
+  edit.setAttribute("aria-label", "编辑这段实况");
+  edit.innerHTML = '<i data-lucide="pencil"></i>';
+  edit.addEventListener("click", (event) => {
+    event.preventDefault();
+    void openLivePhotoEditor(imageId);
+  });
+
+  actions.append(edit);
+  return actions;
 }
 
 const WECHAT_STYLE_PROPERTIES = [
@@ -5458,7 +5491,7 @@ function serializeArticleForWechat() {
   const cloneNodes = [clone, ...clone.querySelectorAll("*")];
   sourceNodes.forEach((source, index) => copyComputedWechatStyles(source, cloneNodes[index]));
   sourceNodes.forEach((source, index) => {
-    if (source.matches?.("video, .article-live-badge")) cloneNodes[index]?.remove();
+    if (source.matches?.("video, .article-live-badge, .article-live-actions")) cloneNodes[index]?.remove();
   });
   clone.querySelectorAll("[data-live-image-id]").forEach((node) => node.removeAttribute("data-live-image-id"));
 
@@ -5680,6 +5713,9 @@ async function syncArticleToWechatDraft() {
   }
 }
 
+/** 自由裁剪时选区的最小边长，按源视频像素算。 */
+const LIVE_CROP_MIN_SIZE = 32;
+
 function livePhotoDuration() {
   return livePhotoState.platform === "wechat" ? 3 : 5;
 }
@@ -5725,6 +5761,12 @@ function setLivePhotoAspect(value, options = {}) {
   els.livePhotoCustomRatioRow.hidden = false;
   els.livePhotoCustomRatioRow.classList.toggle("is-visible", customRatioVisible);
   els.livePhotoCustomRatioRow.setAttribute("aria-hidden", customRatioVisible ? "false" : "true");
+  if (customRatioVisible && !options.applyCustomRatio) {
+    // 切到「自由」不该把已经框好的选区重新拍成滑杆的比例，保留现状、让滑杆去对齐它。
+    syncLivePhotoCustomAspect();
+    drawLivePhotoCropper();
+    return;
+  }
   const ratio = livePhotoAspectRatio();
   els.livePhotoCustomRatioOutput.value = ratio.toFixed(2);
   fitLivePhotoCropToAspect(ratio, Boolean(options.preserveCropSize));
@@ -5890,10 +5932,22 @@ function drawLivePhotoCropper() {
     context.lineTo(crop.x + crop.width, crop.y + (crop.height * i) / 3);
     context.stroke();
   }
+  // 自由模式下四条边也能拖，得把边手柄画出来，不然用户不知道存在。
+  if (livePhotoState.aspect === "free") {
+    const bar = Math.min(26, crop.width / 3, crop.height / 3);
+    context.fillStyle = "rgba(255, 255, 255, 0.92)";
+    [
+      [crop.x + crop.width / 2 - bar / 2, crop.y - 2, bar, 4],
+      [crop.x + crop.width / 2 - bar / 2, crop.y + crop.height - 2, bar, 4],
+      [crop.x - 2, crop.y + crop.height / 2 - bar / 2, 4, bar],
+      [crop.x + crop.width - 2, crop.y + crop.height / 2 - bar / 2, 4, bar],
+    ].forEach(([x, y, w, h]) => context.fillRect(x, y, w, h));
+  }
+
   context.fillStyle = "#fff";
   [[crop.x, crop.y], [crop.x + crop.width, crop.y], [crop.x, crop.y + crop.height], [crop.x + crop.width, crop.y + crop.height]].forEach(([x, y]) => {
     context.beginPath();
-    context.arc(x, y, 11, 0, Math.PI * 2);
+    context.arc(x, y, 9, 0, Math.PI * 2);
     context.fill();
     context.strokeStyle = "rgba(23, 32, 47, 0.62)";
     context.lineWidth = 2;
@@ -5910,17 +5964,59 @@ function animateLivePhotoCropper() {
   }
 }
 
+/** 自由模式下的裁剪：四角 + 四边都能拖，且不锁宽高比。
+    锁比例时仍走 resizeCropRect —— 那条路径要维持比例，只认四角。 */
+function resizeLiveCropRect(handle, startRect, point, source, aspect) {
+  if (aspect) return resizeCropRect(handle, startRect, point, source, aspect);
+  const min = LIVE_CROP_MIN_SIZE;
+  let left = startRect.x;
+  let top = startRect.y;
+  let right = startRect.x + startRect.width;
+  let bottom = startRect.y + startRect.height;
+  if (handle.includes("w")) left = clamp(point.x, 0, right - min);
+  if (handle.includes("e")) right = clamp(point.x, left + min, source.width);
+  if (handle.includes("n")) top = clamp(point.y, 0, bottom - min);
+  if (handle.includes("s")) bottom = clamp(point.y, top + min, source.height);
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
 function detectLivePhotoCropHit(point) {
   const crop = livePhotoSourceToCanvasRect(livePhotoState.crop);
-  const corners = {
-    nw: [crop.x, crop.y], ne: [crop.x + crop.width, crop.y],
-    sw: [crop.x, crop.y + crop.height], se: [crop.x + crop.width, crop.y + crop.height],
-  };
-  for (const [handle, [x, y]] of Object.entries(corners)) {
-    if (Math.hypot(point.x - x, point.y - y) <= 48) return handle;
+  // 手柄画出来才 r=11，之前却按 48 判定命中：裁剪框一小，四个角的判定区就连成一片，
+  // 「移动」永远点不到，看起来就像框选失灵。所以既压半径，也按框自身尺寸再收一次。
+  const reach = Math.max(10, Math.min(22, crop.width / 3, crop.height / 3));
+  const spanX = point.x >= crop.x - reach && point.x <= crop.x + crop.width + reach;
+  const spanY = point.y >= crop.y - reach && point.y <= crop.y + crop.height + reach;
+
+  let handle = "";
+  if (spanX && Math.abs(point.y - crop.y) <= reach) handle += "n";
+  else if (spanX && Math.abs(point.y - (crop.y + crop.height)) <= reach) handle += "s";
+  if (spanY && Math.abs(point.x - crop.x) <= reach) handle += "w";
+  else if (spanY && Math.abs(point.x - (crop.x + crop.width)) <= reach) handle += "e";
+
+  if (handle) {
+    if (handle.length === 2 || livePhotoState.aspect === "free") return handle;
+    // 锁比例时边手柄没法同时定住宽和高，把它补成离指针最近的那个角。
+    const cornerX = point.x < crop.x + crop.width / 2 ? "w" : "e";
+    const cornerY = point.y < crop.y + crop.height / 2 ? "n" : "s";
+    return handle === "n" || handle === "s" ? handle + cornerX : cornerY + handle;
   }
   if (point.x >= crop.x && point.x <= crop.x + crop.width && point.y >= crop.y && point.y <= crop.y + crop.height) return "move";
   return "move-new";
+}
+
+const LIVE_CROP_CURSORS = {
+  nw: "nwse-resize", se: "nwse-resize", ne: "nesw-resize", sw: "nesw-resize",
+  n: "ns-resize", s: "ns-resize", w: "ew-resize", e: "ew-resize",
+  move: "grab", "move-new": "crosshair",
+};
+
+/** 不拖的时候也要让指针形状说明哪里能抓，否则手柄等于隐藏的。 */
+function updateLivePhotoCropCursor(event) {
+  if (livePhotoState.cropDrag || !livePhotoState.crop || !livePhotoState.sourceWidth) return;
+  livePhotoState.cropDisplay = getLivePhotoCropDisplay();
+  const hit = detectLivePhotoCropHit(livePhotoCanvasPoint(event));
+  els.livePhotoCropCanvas.style.cursor = LIVE_CROP_CURSORS[hit] || "default";
 }
 
 function startLivePhotoCropDrag(event) {
@@ -5928,7 +6024,10 @@ function startLivePhotoCropDrag(event) {
   livePhotoState.cropDisplay = getLivePhotoCropDisplay();
   const canvasPoint = livePhotoCanvasPoint(event);
   const display = livePhotoState.cropDisplay;
-  if (canvasPoint.x < display.x || canvasPoint.x > display.x + display.width || canvasPoint.y < display.y || canvasPoint.y > display.y + display.height) return;
+  // 留一点余量：选区贴着画面边缘时，手柄的判定区有一半在画面外，卡死就抓不住了。
+  const slack = 24;
+  if (canvasPoint.x < display.x - slack || canvasPoint.x > display.x + display.width + slack
+    || canvasPoint.y < display.y - slack || canvasPoint.y > display.y + display.height + slack) return;
   event.preventDefault();
   const sourcePoint = livePhotoSourcePoint(canvasPoint);
   const source = livePhotoSourceBounds();
@@ -5965,9 +6064,22 @@ function moveLivePhotoCropDrag(event) {
       y: drag.startRect.y + point.y - drag.startY,
     }, source);
   } else {
-    livePhotoState.crop = resizeCropRect(drag.action, drag.startRect, point, source, livePhotoAspectRatio());
+    // 「自由」就要真的自由：这里以前照样传比例进去，于是四角拖动仍被滑杆锁死，
+    // 自由模式实际只是「换一个固定比例」，用户根本框不出想要的形状。
+    const locked = livePhotoState.aspect === "free" ? 0 : livePhotoAspectRatio();
+    livePhotoState.crop = resizeLiveCropRect(drag.action, drag.startRect, point, source, locked);
+    if (!locked) syncLivePhotoCustomAspect();
   }
   drawLivePhotoCropper();
+}
+
+/** 自由拖完之后，把滑杆和读数对回框的实际比例，两边才不会互相打架。 */
+function syncLivePhotoCustomAspect() {
+  const crop = livePhotoState.crop;
+  if (!crop || !crop.height) return;
+  livePhotoState.customAspect = clamp(crop.width / crop.height, 0.4, 2.5);
+  els.livePhotoCustomRatio.value = String(livePhotoState.customAspect);
+  els.livePhotoCustomRatioOutput.value = livePhotoState.customAspect.toFixed(2);
 }
 
 function stopLivePhotoCropDrag(event) {
@@ -6132,12 +6244,15 @@ function normalizeLivePhotoTiming() {
   if (livePhotoState.file && livePhotoState.sourceDuration < target) {
     setLivePhotoServiceMessage(`当前视频只有 ${formatLivePhotoDuration(livePhotoState.sourceDuration)}，不足以生成 ${target} 秒版本。`, "error");
   } else if (livePhotoState.file) {
+    // 浏览器能自己合成时就别再说「上传到云端 Mac」——那条路径已经不会走了。
     setLivePhotoServiceMessage(
-      needsLivePhotoStaticFallback()
-        ? "设置会跟随视频插入图文；当前站点尚未连接云端实况服务。"
-        : cloudLivePhotoAvailable() && !["localhost", "127.0.0.1"].includes(window.location.hostname)
-          ? "设置会跟随视频插入图文；右侧下载时会安全上传原视频并由云端 Mac 生成实况。"
-          : "设置会跟随视频插入图文；右侧下载时自动生成 Live Photo 发布包。",
+      livePhotoBrowserRenderSupported()
+        ? "设置会跟随视频插入图文；右侧下载时在本机浏览器里合成，原视频不会上传。"
+        : needsLivePhotoStaticFallback()
+          ? "设置会跟随视频插入图文；当前站点尚未连接云端实况服务。"
+          : cloudLivePhotoAvailable() && !isLocalHostSite()
+            ? "设置会跟随视频插入图文；右侧下载时会安全上传原视频并由云端 Mac 生成实况。"
+            : "设置会跟随视频插入图文；右侧下载时自动生成 Live Photo 发布包。",
       "ready",
     );
   }
@@ -6198,6 +6313,7 @@ function handleLivePhotoVideo(event) {
   els.livePhotoVideo.src = livePhotoState.objectUrl;
   els.livePhotoPreview.classList.add("has-video");
   els.livePhotoFileLabel.textContent = file.name;
+  if (els.livePhotoFileSwap) els.livePhotoFileSwap.hidden = false;
   els.livePhotoVideoMeta.textContent = `${formatLivePhotoFileSize(file.size)} · 正在读取视频…`;
   updateLivePhotoGenerateState();
   els.livePhotoModal.classList.remove("hidden");
@@ -6319,6 +6435,7 @@ async function openLivePhotoEditor(imageId) {
   livePhotoState.sourceHeight = Number(image.videoHeight) || 0;
   livePhotoState.objectUrl = URL.createObjectURL(media.blob);
   els.livePhotoFileLabel.textContent = image.videoName || media.name || "视频素材";
+  if (els.livePhotoFileSwap) els.livePhotoFileSwap.hidden = false;
   els.livePhotoVideoMeta.textContent = `${formatLivePhotoFileSize(media.blob.size)} · ${formatLivePhotoDuration(livePhotoState.sourceDuration)}`;
   els.livePhotoVideo.src = livePhotoState.objectUrl;
   els.livePhotoPreview.classList.add("has-video");
@@ -6438,11 +6555,13 @@ async function applyLivePhotoAsset(event) {
     await render();
     els.status.textContent = editing
       ? "已更新实况素材"
-      : needsLivePhotoStaticFallback()
-        ? "已插入实况图片；当前站点尚未连接云端实况服务"
-        : cloudLivePhotoAvailable() && !["localhost", "127.0.0.1"].includes(window.location.hostname)
-          ? "已插入实况图片；右侧下载会自动交给云端 Mac 生成"
-          : "已插入实况图片；右侧下载会自动生成发布包";
+      : livePhotoBrowserRenderSupported()
+        ? "已插入实况图片；右侧下载会在本机浏览器里直接合成"
+        : needsLivePhotoStaticFallback()
+          ? "已插入实况图片；当前站点尚未连接云端实况服务"
+          : cloudLivePhotoAvailable() && !isLocalHostSite()
+            ? "已插入实况图片；右侧下载会自动交给云端 Mac 生成"
+            : "已插入实况图片；右侧下载会自动生成发布包";
   } catch (error) {
     setLivePhotoServiceMessage(error?.message || "实况素材保存失败。", "error");
   } finally {
@@ -8596,6 +8715,8 @@ async function downloadArticleImage() {
     els.status.textContent = "正在生成长图...";
     updateExportProgress("main", { title: "正在渲染完整长文", detail: "正在合成长文主题、文字和图片…", value: 42 });
     const canvas = await window.html2canvas(article, {
+      // 编辑/导出按钮只是预览里的操作入口，不该被印进长图。
+      ignoreElements: (node) => node.classList?.contains("article-live-actions"),
       backgroundColor: null,
       scale: Math.min(2, window.devicePixelRatio || 1),
       useCORS: true,
@@ -8992,6 +9113,7 @@ function bindEvents() {
   els.livePhotoVideo.addEventListener("seeked", drawLivePhotoCropper);
   els.livePhotoCropCanvas.addEventListener("pointerdown", startLivePhotoCropDrag);
   els.livePhotoCropCanvas.addEventListener("pointermove", moveLivePhotoCropDrag);
+  els.livePhotoCropCanvas.addEventListener("pointermove", updateLivePhotoCropCursor);
   els.livePhotoCropCanvas.addEventListener("pointerup", stopLivePhotoCropDrag);
   els.livePhotoCropCanvas.addEventListener("pointercancel", stopLivePhotoCropDrag);
   els.livePhotoPlatformButtons.forEach((button) => {
@@ -9007,7 +9129,8 @@ function bindEvents() {
     livePhotoState.customAspect = clamp(finiteNumber(els.livePhotoCustomRatio.value, 0.75), 0.4, 2.5);
     els.livePhotoCustomRatioOutput.value = livePhotoState.customAspect.toFixed(2);
     if (livePhotoState.aspect === "free") {
-      setLivePhotoAspect("free");
+      // 拖滑杆是明确要求按这个比例重排选区，所以这里才允许覆盖当前框。
+      setLivePhotoAspect("free", { applyCustomRatio: true });
       updateLivePhotoPreview();
     }
   });
