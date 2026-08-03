@@ -114,6 +114,8 @@ const els = {
   accountClose: $("#accountCloseBtn"),
   accountConfigNotice: $("#accountConfigNotice"),
   accountResendConfirmation: $("#accountResendConfirmationBtn"),
+  accountOauth: $("#accountOauth"),
+  accountGoogle: $("#accountGoogleBtn"),
   accountForgotPassword: $("#accountForgotPasswordBtn"),
   accountNewPasswordField: $("#accountNewPasswordField"),
   accountNewPassword: $("#accountNewPasswordInput"),
@@ -1228,6 +1230,7 @@ function setAccountAuthMode(mode, { keepNotice = false } = {}) {
   }
   setAccountPasswordVisible(false);
   if (!keepNotice && cloudApi()?.configured) setAccountNotice("");
+  void refreshGoogleSignInVisibility();
 }
 
 function accountAuthErrorMessage(error, mode) {
@@ -1886,6 +1889,29 @@ async function resendAccountConfirmation() {
       "error",
     );
   } finally {
+    setAccountBusy(false);
+  }
+}
+
+/** Google 登录只在真的连得上 Google 时才露出来，探测结果由 cloud 层缓存。 */
+async function refreshGoogleSignInVisibility() {
+  if (!els.accountOauth) return;
+  const api = cloudApi();
+  if (!api?.configured || cloudState.user || accountAuthMode === "reset") {
+    els.accountOauth.hidden = true;
+    return;
+  }
+  els.accountOauth.hidden = !(await api.googleSignInAvailable());
+}
+
+async function signInWithGoogleAccount() {
+  setAccountBusy(true);
+  setAccountNotice("正在跳转到 Google…");
+  try {
+    // 成功的话浏览器会直接跳走，下面这行不会执行到。
+    await cloudApi().signInWithGoogle();
+  } catch (error) {
+    setAccountNotice(error?.message || "跳转 Google 登录失败，请改用邮箱注册。", "error");
     setAccountBusy(false);
   }
 }
@@ -9177,6 +9203,7 @@ function bindEvents() {
   });
   els.accountResendConfirmation.addEventListener("click", resendAccountConfirmation);
   els.accountForgotPassword?.addEventListener("click", () => void requestPasswordReset());
+  els.accountGoogle?.addEventListener("click", () => void signInWithGoogleAccount());
   els.accountSignOut.addEventListener("click", signOutAccount);
   els.accountImportLocal.addEventListener("click", importLocalProjectsToAccount);
   document.addEventListener("pointerdown", (event) => {

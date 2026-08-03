@@ -47,6 +47,37 @@
     return data;
   }
 
+  async function signInWithGoogle() {
+    const { error } = await requireClient().auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: redirectUrl() },
+    });
+    throwIfError(error);
+  }
+
+  /** 国内直连不到 Google 时，那个登录按钮点下去只会转圈到超时，比没有更糟。
+      先探一次可达性，不通就不显示。结果缓存在内存里，一次会话只探一次。 */
+  let googleReachable = null;
+  async function googleSignInAvailable() {
+    if (!configured) return false;
+    if (googleReachable !== null) return googleReachable;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2500);
+      // no-cors 拿到的是不透明响应，读不了内容，但请求成功本身就说明连得上。
+      await fetch("https://accounts.google.com/generate_204", {
+        mode: "no-cors",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      googleReachable = true;
+    } catch {
+      googleReachable = false;
+    }
+    return googleReachable;
+  }
+
   async function resendSignUp(email) {
     const { data, error } = await requireClient().auth.resend({
       type: "signup",
@@ -364,6 +395,8 @@
         : "请在 src/supabase-config.js 填写 Supabase 项目 URL 和 publishable key。",
     signUp,
     signIn,
+    signInWithGoogle,
+    googleSignInAvailable,
     resendSignUp,
     sendPasswordReset,
     updatePassword,

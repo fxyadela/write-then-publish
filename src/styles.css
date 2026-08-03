@@ -2832,6 +2832,69 @@ body.export-busy {
   background: #f0fdf4;
 }
 
+/* .account-modal-body 是 justify-items: center 的网格，
+   不显式给宽度这一块会缩到按钮自身宽度，比下面的表单窄一截。 */
+.account-oauth {
+  display: grid;
+  gap: 9px;
+  width: 100%;
+  max-width: 370px;
+  margin-bottom: 18px;
+}
+
+.account-oauth-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.account-oauth-button:hover {
+  border-color: color-mix(in srgb, var(--ink) 34%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, var(--paper));
+}
+
+.account-oauth-button svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.account-oauth-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.account-oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.account-oauth-divider::before,
+.account-oauth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
 /* 从重置邮件回来时只该看到「设置新密码」一个输入框，
    登录/注册切换、邮箱、原密码这些都跟这一步无关。 */
 .account-auth-form.is-resetting .account-auth-mode,
