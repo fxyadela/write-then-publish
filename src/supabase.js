@@ -52,14 +52,46 @@
       provider: "google",
       options: { redirectTo: redirectUrl() },
     });
+    if (error && /provider is not enabled/i.test(String(error.message || ""))) {
+      throw new Error("Google 登录暂未启用，请使用邮箱登录。");
+    }
     throwIfError(error);
   }
 
-  /** 国内直连不到 Google 时，那个登录按钮点下去只会转圈到超时，比没有更糟。
-      先探一次可达性，不通就不显示。结果缓存在内存里，一次会话只探一次。 */
+  /**
+   * Google 按钮必须同时满足两件事：
+   * 1) Supabase 后台已启用 Google Provider；2) 当前网络能直连 Google。
+   * 只检查第 2 点会让用户看到一个必定返回 400 的按钮。
+   */
+  let googleProviderEnabled = null;
   let googleReachable = null;
-  async function googleSignInAvailable() {
+
+  async function googleProviderIsEnabled() {
     if (!configured) return false;
+    if (googleProviderEnabled !== null) return googleProviderEnabled;
+    let timer;
+    try {
+      const controller = new AbortController();
+      timer = setTimeout(() => controller.abort(), 3000);
+      const response = await fetch(`${url}/auth/v1/settings`, {
+        headers: { apikey: publishableKey },
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`settings request failed: ${response.status}`);
+      const settings = await response.json();
+      googleProviderEnabled = settings?.external?.google === true;
+    } catch {
+      // 无法确认配置时不展示入口，避免让用户点进一个不可用的登录方式。
+      googleProviderEnabled = false;
+    } finally {
+      clearTimeout(timer);
+    }
+    return googleProviderEnabled;
+  }
+
+  async function googleSignInAvailable() {
+    if (!(await googleProviderIsEnabled())) return false;
     if (googleReachable !== null) return googleReachable;
     try {
       const controller = new AbortController();
