@@ -32,6 +32,7 @@ const PANEL_LAYOUT_STORAGE_KEY = "writeThenPublishPanelLayout.v1";
 const ONBOARDING_STORAGE_KEY = "writeThenPublishOnboarding.v1";
 const ENTRY_MODE_SESSION_KEY = "writeThenPublishEntryMode.v1";
 const LAST_ACCOUNT_EMAIL_KEY = "writeThenPublishLastAccountEmail.v1";
+const GOOGLE_OAUTH_PENDING_SESSION_KEY = "writeThenPublishGoogleOauthPending.v1";
 const EXPERIENCE_VERSION = "2026.07";
 const WELCOME_BACK_STORAGE_KEY = "writeThenPublishWelcomeBackVersion.v1";
 const WHATS_NEW_STORAGE_KEY = "writeThenPublishWhatsNewVersion.v1";
@@ -1170,6 +1171,34 @@ function setPendingConfirmation(email = "") {
   pendingConfirmationEmail = String(email || "").trim();
 }
 
+function markGoogleOAuthPending() {
+  try {
+    sessionStorage.setItem(GOOGLE_OAUTH_PENDING_SESSION_KEY, "1");
+  } catch {
+    // 关闭存储时仍可照常跳转；仅少了返回后恢复提示这一层保护。
+  }
+}
+
+function takeGoogleOAuthPending() {
+  try {
+    const pending = sessionStorage.getItem(GOOGLE_OAUTH_PENDING_SESSION_KEY) === "1";
+    sessionStorage.removeItem(GOOGLE_OAUTH_PENDING_SESSION_KEY);
+    return pending;
+  } catch {
+    return false;
+  }
+}
+
+function restoreCancelledGoogleOAuth() {
+  if (LOCAL_DEPLOYMENT_MODE || cloudState.user || !takeGoogleOAuthPending()) return false;
+  setAccountBusy(false);
+  if (!els.accountModal?.classList.contains("hidden")) {
+    setAccountAuthMode("signin", { keepNotice: true });
+    setAccountNotice(GOOGLE_OAUTH_CANCELLED_MESSAGE);
+  }
+  return true;
+}
+
 function setAccountPasswordVisible(visible) {
   if (!els.accountPassword || !els.accountPasswordToggle) return;
   els.accountPassword.type = visible ? "text" : "password";
@@ -1180,18 +1209,25 @@ function setAccountPasswordVisible(visible) {
   if (window.lucide) window.lucide.createIcons();
 }
 
-function authRedirectErrorMessage() {
+const GOOGLE_OAUTH_CANCELLED_MESSAGE = "已取消 Google 登录。你可以重新选择账号，或改用邮箱登录。";
+
+function authRedirectStatus() {
   const rawParams = [window.location.search.slice(1), window.location.hash.slice(1)].filter(Boolean);
   for (const raw of rawParams) {
     const params = new URLSearchParams(raw);
-    const code = params.get("error_code") || "";
-    if (!code) continue;
-    if (code === "otp_expired") {
-      return "这封确认邮件已经失效。请重新发送确认邮件，并只点击最新收到的那一封。";
+    const errorCode = (params.get("error_code") || "").toLowerCase();
+    const providerError = (params.get("error") || "").toLowerCase();
+    const code = errorCode || providerError;
+    if (!code && !params.get("error_description")) continue;
+    if (errorCode === "access_denied" || providerError === "access_denied") {
+      return { message: GOOGLE_OAUTH_CANCELLED_MESSAGE, tone: "", cancelled: true };
     }
-    return params.get("error_description") || "邮箱确认失败，请重新发送确认邮件。";
+    if (code === "otp_expired") {
+      return { message: "这封确认邮件已经失效。请重新发送确认邮件，并只点击最新收到的那一封。", tone: "error", cancelled: false };
+    }
+    return { message: params.get("error_description") || "登录确认失败，请重新尝试。", tone: "error", cancelled: false };
   }
-  return "";
+  return null;
 }
 
 function setAccountAuthMode(mode, { keepNotice = false } = {}) {
@@ -1269,6 +1305,7 @@ function setAccountBusy(busy) {
     els.accountSignInMode,
     els.accountSignIn,
     els.accountSignUp,
+    els.accountGoogle,
     els.accountResendConfirmation,
     els.accountSignOut,
     els.accountImportLocal,
@@ -1727,7 +1764,8 @@ async function initializeCloudAccount() {
     return;
   }
   const api = cloudApi();
-  const redirectError = authRedirectErrorMessage();
+  const redirectStatus = authRedirectStatus();
+  const googleOAuthWasPending = takeGoogleOAuthPending();
   document.body.classList.toggle("cloud-session-checking", Boolean(api?.configured));
   updateAccountUi();
   cloudState.initialized = true;
@@ -1785,13 +1823,21 @@ async function initializeCloudAccount() {
     if (session?.user) {
       await handleCloudSession(session);
       finishEntryChoice("account");
-    } else if (redirectError) {
+    } else if (redirectStatus) {
       const lastEmail = localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
       setPendingConfirmation(lastEmail);
       showEntryChoice();
       window.setTimeout(() => {
         openAccountModal();
-        setAccountNotice(redirectError, "error");
+        setAccountAuthMode("signin", { keepNotice: true });
+        setAccountNotice(redirectStatus.message, redirectStatus.tone);
+      }, 0);
+    } else if (googleOAuthWasPending) {
+      showEntryChoice();
+      window.setTimeout(() => {
+        openAccountModal();
+        setAccountAuthMode("signin", { keepNotice: true });
+        setAccountNotice(GOOGLE_OAUTH_CANCELLED_MESSAGE);
       }, 0);
     } else if (sessionStorage.getItem(ENTRY_MODE_SESSION_KEY) === "guest") {
       await activateGuestWorkspace();
@@ -1919,12 +1965,18 @@ async function refreshGoogleSignInVisibility() {
 }
 
 async function signInWithGoogleAccount() {
+  markGoogleOAuthPending();
   setAccountBusy(true);
   setAccountNotice("正在跳转到 Google…");
   try {
     // 成功的话浏览器会直接跳走，下面这行不会执行到。
     await cloudApi().signInWithGoogle();
+    // 若 SDK 没有发起浏览器跳转，不能让界面永久停在“正在跳转”。
+    takeGoogleOAuthPending();
+    setAccountBusy(false);
+    setAccountNotice("没有打开 Google 登录页，请重新尝试。", "error");
   } catch (error) {
+    takeGoogleOAuthPending();
     setAccountNotice(error?.message || "跳转 Google 登录失败，请改用邮箱注册。", "error");
     setAccountBusy(false);
   }
@@ -9222,6 +9274,10 @@ function bindEvents() {
   els.accountImportLocal.addEventListener("click", importLocalProjectsToAccount);
   document.addEventListener("pointerdown", (event) => {
     if (accountMenuIsOpen() && !els.accountDock?.contains(event.target)) closeAccountMenu();
+  });
+  window.addEventListener("pageshow", (event) => {
+    // 从 Google 页面点返回时，Safari/Chrome 可能恢复原页而不重新执行初始化。
+    if (event.persisted) restoreCancelledGoogleOAuth();
   });
   window.addEventListener("resize", positionOnboardingStep);
   window.addEventListener("scroll", positionOnboardingStep, true);
