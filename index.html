@@ -921,9 +921,19 @@
     <script src="src/live-photo-browser.js?v=20260802-bigvideo" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="src/supabase-config.js?v=20260729-auth"></script>
-    <script src="src/supabase.js?v=20260802-browser-live"></script>
-    <script src="src/app.js?v=20260802-bigfile"></script>
+    <script>
+      // 本地版通过启动脚本打开 ?mode=local：完全跳过账号 SDK 与云端配置。
+      window.WRITE_THEN_PUBLISH_LOCAL_MODE = new URLSearchParams(window.location.search).get("mode") === "local";
+      document.documentElement.dataset.writeThenPublishLocalMode = String(window.WRITE_THEN_PUBLISH_LOCAL_MODE);
+      if (window.WRITE_THEN_PUBLISH_LOCAL_MODE) {
+        document.body.classList.add("local-deployment");
+        document.title = "写了就发（本地版）";
+      } else {
+        document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
+        document.write('<script src="src/supabase-config.js?v=20260729-auth"><\/script>');
+        document.write('<script src="src/supabase.js?v=20260802-browser-live"><\/script>');
+      }
+    </script>
+    <script src="src/app.js?v=20260804-local-mode"></script>
   </body>
 </html>

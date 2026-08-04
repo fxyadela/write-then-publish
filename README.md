@@ -203,6 +203,10 @@ npm start
 
 只需要基础编辑与图片导出时，也可以直接打开 `index.html`。浏览器支持 WebCodecs 时，Live Photo 可在页面内本地生成；不支持时，本地服务的兜底路径需要 macOS、Python 3、`ffmpeg`、`ffprobe` 和 `uvx`。
 
+### 本地无账号版
+
+双击 `启动写了就发本地版.command`，它会打开 `http://127.0.0.1:5173/?mode=local`。本地版不加载 Supabase、不显示登录或邮箱入口，草稿只保存在当前 Mac 的浏览器本地存储中；重要内容请主动导出。
+
 ## 技术与边界
 
 **技术栈**：原生 HTML / CSS / JavaScript、Canvas 2D、WebCodecs、mp4box.js、mp4-muxer、html2canvas、JSZip、Supabase、GitHub Actions macOS、Python、FFmpeg、makelive 与 Vercel。

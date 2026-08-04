@@ -530,6 +530,15 @@ body.entry-choice-pending .site-footer {
   visibility: hidden;
 }
 
+/* 本地版只有本机工作区：不展示任何账号、邮箱或云端入口。 */
+body.local-deployment #accountDock,
+body.local-deployment #entryChoiceModal,
+body.local-deployment #accountModal,
+body.local-deployment #welcomeBackModal,
+body.local-deployment [data-feature-badge="account"] {
+  display: none !important;
+}
+
 body.cloud-session-checking::before {
   position: fixed;
   inset: 0;

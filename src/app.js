@@ -35,6 +35,7 @@ const LAST_ACCOUNT_EMAIL_KEY = "writeThenPublishLastAccountEmail.v1";
 const EXPERIENCE_VERSION = "2026.07";
 const WELCOME_BACK_STORAGE_KEY = "writeThenPublishWelcomeBackVersion.v1";
 const WHATS_NEW_STORAGE_KEY = "writeThenPublishWhatsNewVersion.v1";
+const LOCAL_DEPLOYMENT_MODE = document.documentElement.dataset.writeThenPublishLocalMode === "true";
 let activeStorageScope = "guest";
 
 function scopedStorageKey(baseKey, scope = activeStorageScope) {
@@ -1341,6 +1342,7 @@ function updateAccountUi() {
 }
 
 function openAccountModal() {
+  if (LOCAL_DEPLOYMENT_MODE) return;
   closeAccountMenu();
   els.entryChoiceModal?.classList.add("hidden");
   els.accountModal.classList.remove("hidden");
@@ -1361,6 +1363,7 @@ function accountMenuIsOpen() {
 }
 
 function openAccountMenu() {
+  if (LOCAL_DEPLOYMENT_MODE) return;
   updateAccountUi();
   els.accountMenu?.classList.remove("hidden");
   els.account?.setAttribute("aria-expanded", "true");
@@ -1712,6 +1715,17 @@ async function handleCloudSession(session) {
 }
 
 async function initializeCloudAccount() {
+  if (LOCAL_DEPLOYMENT_MODE) {
+    document.body.classList.add("local-deployment");
+    document.body.classList.remove("cloud-session-checking");
+    cloudState.initialized = true;
+    activeStorageScope = "local";
+    const returning = workspaceHasReturningData();
+    await activateWorkspaceScope("local");
+    finishEntryChoice("local", { returning });
+    els.status.textContent = "本地版：草稿只保存在这台电脑当前浏览器中";
+    return;
+  }
   const api = cloudApi();
   const redirectError = authRedirectErrorMessage();
   document.body.classList.toggle("cloud-session-checking", Boolean(api?.configured));
