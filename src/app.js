@@ -8782,6 +8782,51 @@ async function saveBlob(blob, filename, writable = null) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const HTML2CANVAS_COLOR_PROPERTIES = [
+  ["color", "color"],
+  ["background-color", "backgroundColor"],
+  ["border-top-color", "borderTopColor"],
+  ["border-right-color", "borderRightColor"],
+  ["border-bottom-color", "borderBottomColor"],
+  ["border-left-color", "borderLeftColor"],
+  ["outline-color", "outlineColor"],
+  ["text-decoration-color", "textDecorationColor"],
+];
+
+function resolveExportColor(value, context) {
+  const source = String(value || "").trim();
+  if (!/\bcolor\(/i.test(source) || !context) return source;
+
+  // html2canvas 1.x 不能解析浏览器已计算出的 color(srgb …)；
+  // Canvas 2D 能识别同一颜色，把它读取为普通 rgba 后再交给 html2canvas。
+  context.clearRect(0, 0, 1, 1);
+  context.fillStyle = "#010203";
+  context.fillStyle = source;
+  if (context.fillStyle === "#010203" && source !== "#010203") return source;
+  context.fillRect(0, 0, 1, 1);
+  const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data;
+  return `rgba(${red}, ${green}, ${blue}, ${Math.round((alpha / 255) * 10000) / 10000})`;
+}
+
+function normalizeArticleExportColors(clonedDocument) {
+  const article = clonedDocument.querySelector(".article-preview");
+  const clonedWindow = clonedDocument.defaultView;
+  const colorCanvas = clonedDocument.createElement("canvas");
+  colorCanvas.width = 1;
+  colorCanvas.height = 1;
+  const colorContext = colorCanvas.getContext("2d", { willReadFrequently: true });
+  if (!article || !clonedWindow || !colorContext) return;
+
+  [article, ...article.querySelectorAll("*")].forEach((element) => {
+    const computed = clonedWindow.getComputedStyle(element);
+    HTML2CANVAS_COLOR_PROPERTIES.forEach(([property, computedProperty]) => {
+      const source = computed[computedProperty];
+      const normalized = resolveExportColor(source, colorContext);
+      if (normalized && normalized !== source) element.style.setProperty(property, normalized);
+    });
+  });
+}
+
 async function downloadArticleImage() {
   if (blockBuiltInGuideDownload()) return;
   const settings = readForm();
@@ -8823,6 +8868,9 @@ async function downloadArticleImage() {
     const canvas = await window.html2canvas(article, {
       // 编辑/导出按钮只是预览里的操作入口，不该被印进长图。
       ignoreElements: (node) => node.classList?.contains("article-live-actions"),
+      // 导出副本里将 color-mix() 计算出的 color(srgb …) 转成 rgba，
+      // 避免 html2canvas 1.x 在新版浏览器中报“不支持 color()”。
+      onclone: normalizeArticleExportColors,
       backgroundColor: null,
       scale: Math.min(2, window.devicePixelRatio || 1),
       useCORS: true,
