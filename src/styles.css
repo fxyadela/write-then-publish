@@ -2017,12 +2017,6 @@ body.export-busy {
   height: auto;
 }
 
-.preview-hit-layer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
 .preview-image-edit-layer {
   position: absolute;
   inset: 0;
@@ -2236,22 +2230,6 @@ body.export-busy {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.22);
   cursor: nwse-resize;
   pointer-events: auto;
-}
-
-.preview-text-hit {
-  position: absolute;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  cursor: text;
-  pointer-events: auto;
-}
-
-.preview-text-hit:hover,
-.preview-text-hit:focus-visible {
-  outline: 1px solid var(--active-border);
-  background: rgba(37, 99, 235, 0.13);
 }
 
 .page-actions {

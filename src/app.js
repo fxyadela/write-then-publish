@@ -5058,7 +5058,6 @@ function renderPage(page, index, total) {
   ctx.imageSmoothingQuality = "high";
   ctx.setTransform(CANVAS_RENDER_SCALE, 0, 0, CANVAS_RENDER_SCALE, 0, 0);
   drawPageToContext(ctx, page);
-  canvas._textHits = collectTextHits(ctx, page);
   canvas._imageHits = collectImageHits(page);
   canvas._imageDropTargets = collectImageDropTargets(page);
   return canvas;
@@ -5075,32 +5074,6 @@ function drawPageToContext(ctx, page) {
     if (item.type === "table") drawTableBlock(ctx, item, page.settings);
     if (item.type === "text") drawTextLine(ctx, item, page.settings);
   }
-}
-
-function collectTextHits(ctx, page) {
-  const hits = [];
-
-  for (const item of page.items) {
-    if (item.type !== "text") continue;
-    let cursor = item.x;
-
-    for (const token of item.line) {
-      const width = measureToken(ctx, token, item.style);
-      if (!/^\s+$/.test(token.text) && Number.isFinite(token.sourceStart) && Number.isFinite(token.sourceEnd)) {
-        hits.push({
-          x: cursor,
-          y: item.y,
-          width,
-          height: item.lineHeight,
-          sourceStart: token.sourceStart,
-          sourceEnd: token.sourceEnd,
-        });
-      }
-      cursor += width;
-    }
-  }
-
-  return hits;
 }
 
 function collectImageHits(page) {
@@ -6864,10 +6837,9 @@ function drawPreview(canvases) {
     frame.className = "page-frame";
     frame.append(canvas);
     frame.append(createImageEditLayer(canvas));
-    frame.append(createTextHitLayer(canvas));
     attachPreviewImageDropHandlers(frame);
     frame.addEventListener("pointerdown", (event) => {
-      if (!event.target.closest(".preview-image-box, .preview-text-hit")) clearPreviewImageSelection();
+      if (!event.target.closest(".preview-image-box")) clearPreviewImageSelection();
     });
 
     const actions = document.createElement("div");
@@ -7389,42 +7361,6 @@ function applyImageBoxStyle(box, hit) {
   box.style.top = `${(hit.y / CANVAS_HEIGHT) * 100}%`;
   box.style.width = `${(hit.width / CANVAS_WIDTH) * 100}%`;
   box.style.height = `${(hit.height / CANVAS_HEIGHT) * 100}%`;
-}
-
-function createTextHitLayer(canvas) {
-  const layer = document.createElement("div");
-  layer.className = "preview-hit-layer";
-
-  for (const hit of canvas._textHits || []) {
-    if (hit.width <= 0 || hit.height <= 0) continue;
-    const target = document.createElement("button");
-    target.type = "button";
-    target.className = "preview-text-hit";
-    target.style.left = `${(hit.x / CANVAS_WIDTH) * 100}%`;
-    target.style.top = `${(hit.y / CANVAS_HEIGHT) * 100}%`;
-    target.style.width = `${(hit.width / CANVAS_WIDTH) * 100}%`;
-    target.style.height = `${(hit.height / CANVAS_HEIGHT) * 100}%`;
-    target.dataset.start = String(hit.sourceStart);
-    target.dataset.end = String(hit.sourceEnd);
-    target.addEventListener("pointerenter", handlePreviewTextTarget);
-    target.addEventListener("click", handlePreviewTextTarget);
-    layer.append(target);
-  }
-
-  return layer;
-}
-
-function handlePreviewTextTarget(event) {
-  const start = Number(event.currentTarget.dataset.start);
-  const end = Number(event.currentTarget.dataset.end);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return;
-  focusEditorRange(start, end);
-}
-
-function focusEditorRange(start, end) {
-  els.content.focus({ preventScroll: true });
-  els.content.setSelectionRange(start, end);
-  scrollTextareaToRange(start);
 }
 
 function scrollTextareaToRange(index) {
