@@ -402,12 +402,25 @@
               <span id="accountMenuDescription">草稿仅临时保存在当前标签页</span>
             </div>
           </div>
+          <section id="accountMenuSwitchSection" class="account-menu-switch" hidden aria-label="已登录账号">
+            <div class="account-menu-switch-heading">
+              <strong>已登录账号</strong>
+              <span>点击即可切换</span>
+            </div>
+            <div id="accountMenuAccountList" class="account-account-list"></div>
+            <button id="accountMenuAddBtn" class="account-menu-text-button account-menu-add" type="button">
+              <i data-lucide="user-plus"></i>添加其他账号
+            </button>
+          </section>
           <div class="account-menu-actions">
             <button id="accountMenuLoginBtn" class="primary-button" type="button">
               <i data-lucide="log-in"></i>登录并同步
             </button>
             <button id="accountMenuManageBtn" class="secondary-button" type="button" hidden>
-              <i data-lucide="settings"></i>账号与云同步
+              <i data-lucide="settings"></i>账号设置
+            </button>
+            <button id="accountMenuSwitchBtn" class="secondary-button" type="button" hidden>
+              <i data-lucide="arrow-left-right"></i>切换账号
             </button>
             <button id="accountMenuWhatsNewBtn" class="account-menu-text-button" type="button">
               <i data-lucide="sparkles"></i>本次更新
@@ -631,6 +644,20 @@
             <div class="account-sync-card">
               <strong>云端图文</strong>
               <span id="accountSyncStatus">正在读取账号数据…</span>
+            </div>
+            <div class="account-switch-panel">
+              <div class="account-switch-heading">
+                <div>
+                  <strong>已登录账号</strong>
+                  <span>点击即可切换，不需要退出</span>
+                </div>
+                <i data-lucide="arrow-left-right" aria-hidden="true"></i>
+              </div>
+              <div id="accountModalAccountList" class="account-account-list"></div>
+              <button id="accountAddAnotherBtn" class="secondary-button account-wide-button" type="button">
+                <i data-lucide="user-plus"></i>
+                添加其他账号
+              </button>
             </div>
             <button id="accountImportLocalBtn" class="secondary-button account-wide-button" type="button">
               <i data-lucide="cloud-upload"></i>
@@ -931,9 +958,9 @@
       } else {
         document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
         document.write('<script src="src/supabase-config.js?v=20260729-auth"><\/script>');
-        document.write('<script src="src/supabase.js?v=20260802-browser-live"><\/script>');
+        document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260804-long-image-color"></script>
+    <script src="src/app.js?v=20260806-account-switch"></script>
   </body>
 </html>

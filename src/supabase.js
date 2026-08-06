@@ -145,6 +145,18 @@
     return data.session || null;
   }
 
+  async function setSession(session) {
+    const accessToken = String(session?.access_token || "").trim();
+    const refreshToken = String(session?.refresh_token || "").trim();
+    if (!accessToken || !refreshToken) throw new Error("这个账号的登录状态已失效，请重新登录。");
+    const { data, error } = await requireClient().auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    throwIfError(error);
+    return data;
+  }
+
   function onAuthStateChange(callback) {
     if (!client) return () => {};
     const { data } = client.auth.onAuthStateChange((event, session) => callback(event, session));
@@ -434,6 +446,7 @@
     updatePassword,
     signOut,
     getSession,
+    setSession,
     onAuthStateChange,
     getProfile,
     upsertProfile,

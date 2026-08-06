@@ -360,6 +360,132 @@ button:disabled {
   font-size: 11px;
 }
 
+.account-menu-switch {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.account-menu-switch[hidden] {
+  display: none;
+}
+
+.account-menu-switch-heading,
+.account-switch-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-menu-switch-heading strong,
+.account-switch-heading strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.account-menu-switch-heading span,
+.account-switch-heading span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-menu .account-account-list {
+  max-height: 210px;
+  overflow: auto;
+}
+
+.account-account-list {
+  display: grid;
+  gap: 6px;
+}
+
+.account-session-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-session-option:hover:not(:disabled) {
+  background: var(--soft);
+}
+
+.account-session-option.is-active {
+  border-color: color-mix(in srgb, #16a34a 30%, var(--line));
+  background: color-mix(in srgb, #16a34a 7%, var(--soft));
+}
+
+.account-session-option:disabled {
+  cursor: default;
+}
+
+.account-session-avatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 999px;
+  color: #fff;
+  background: #17202f;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.account-session-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-session-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.account-session-copy strong,
+.account-session-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-session-copy strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.account-session-copy span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.account-session-state {
+  color: #15803d;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.account-menu-add {
+  width: 100%;
+  margin: 2px 0 10px;
+  color: var(--control-text);
+}
+
 .account-menu-actions {
   display: grid;
   gap: 8px;
@@ -3132,6 +3258,35 @@ body.export-busy {
 .account-online svg {
   width: 15px;
   height: 15px;
+}
+
+.account-switch-panel {
+  display: grid;
+  gap: 11px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--soft);
+}
+
+.account-switch-heading > svg {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+}
+
+.account-switch-panel .account-account-list {
+  max-height: 190px;
+  overflow: auto;
+}
+
+.account-switch-panel .account-session-option {
+  background: var(--popover-bg);
+}
+
+.account-switch-panel .account-session-option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 7%, var(--popover-bg));
 }
 
 .account-sync-card {

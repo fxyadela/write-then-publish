@@ -32,7 +32,10 @@ const PANEL_LAYOUT_STORAGE_KEY = "writeThenPublishPanelLayout.v1";
 const ONBOARDING_STORAGE_KEY = "writeThenPublishOnboarding.v1";
 const ENTRY_MODE_SESSION_KEY = "writeThenPublishEntryMode.v1";
 const LAST_ACCOUNT_EMAIL_KEY = "writeThenPublishLastAccountEmail.v1";
+const ACCOUNT_SESSIONS_STORAGE_KEY = "writeThenPublishAccountSessions.v1";
+const MAX_STORED_ACCOUNT_SESSIONS = 6;
 const GOOGLE_OAUTH_PENDING_SESSION_KEY = "writeThenPublishGoogleOauthPending.v1";
+const ACCOUNT_ADD_PENDING_SESSION_KEY = "writeThenPublishAccountAddPending.v1";
 const EXPERIENCE_VERSION = "2026.07";
 const WELCOME_BACK_STORAGE_KEY = "writeThenPublishWelcomeBackVersion.v1";
 const WHATS_NEW_STORAGE_KEY = "writeThenPublishWhatsNewVersion.v1";
@@ -109,8 +112,12 @@ const els = {
   accountMenuDescription: $("#accountMenuDescription"),
   accountMenuLogin: $("#accountMenuLoginBtn"),
   accountMenuManage: $("#accountMenuManageBtn"),
+  accountMenuSwitch: $("#accountMenuSwitchBtn"),
   accountMenuSignOut: $("#accountMenuSignOutBtn"),
   accountMenuWhatsNew: $("#accountMenuWhatsNewBtn"),
+  accountMenuSwitchSection: $("#accountMenuSwitchSection"),
+  accountMenuAccountList: $("#accountMenuAccountList"),
+  accountMenuAdd: $("#accountMenuAddBtn"),
   accountMenuHint: $("#accountMenuHint"),
   accountModal: $("#accountModal"),
   accountClose: $("#accountCloseBtn"),
@@ -135,6 +142,8 @@ const els = {
   accountDisplayName: $("#accountDisplayName"),
   accountEmailLabel: $("#accountEmail"),
   accountSyncStatus: $("#accountSyncStatus"),
+  accountModalAccountList: $("#accountModalAccountList"),
+  accountAddAnother: $("#accountAddAnotherBtn"),
   accountImportLocal: $("#accountImportLocalBtn"),
   accountSignOut: $("#accountSignOutBtn"),
   entryChoiceModal: $("#entryChoiceModal"),
@@ -487,6 +496,7 @@ const cloudState = {
   profileAvatarUrl: "",
   loadingWorkspace: false,
   syncingProjects: false,
+  syncingProfile: false,
   syncTimer: 0,
   profileTimer: 0,
   pendingProjects: new Map(),
@@ -495,6 +505,7 @@ const cloudState = {
   initialized: false,
   loadingUserId: "",
   signingOut: false,
+  switchingAccount: false,
 };
 const entryState = {
   mode: "pending",
@@ -1165,7 +1176,134 @@ function setAccountNotice(message = "", tone = "") {
 }
 
 let accountAuthMode = "signin";
+let accountAuthAddMode = false;
 let pendingConfirmationEmail = "";
+
+function accountSessionSnapshot(session) {
+  const user = session?.user;
+  const accessToken = String(session?.access_token || "").trim();
+  const refreshToken = String(session?.refresh_token || "").trim();
+  if (!user?.id || !accessToken || !refreshToken) return null;
+  const metadata = user.user_metadata || {};
+  return {
+    userId: String(user.id),
+    email: String(user.email || ""),
+    displayName: String(metadata.full_name || metadata.name || metadata.user_name || ""),
+    avatarUrl: String(metadata.avatar_url || metadata.picture || ""),
+    accessToken,
+    refreshToken,
+    expiresAt: Number(session.expires_at || 0),
+    expiresIn: Number(session.expires_in || 0),
+    tokenType: String(session.token_type || "bearer"),
+    lastUsedAt: Date.now(),
+  };
+}
+
+function readStoredAccountSessions() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ACCOUNT_SESSIONS_STORAGE_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item) => item && item.userId && item.accessToken && item.refreshToken)
+      .map((item) => ({
+        userId: String(item.userId),
+        email: String(item.email || ""),
+        displayName: String(item.displayName || ""),
+        avatarUrl: String(item.avatarUrl || ""),
+        accessToken: String(item.accessToken),
+        refreshToken: String(item.refreshToken),
+        expiresAt: Number(item.expiresAt || 0),
+        expiresIn: Number(item.expiresIn || 0),
+        tokenType: String(item.tokenType || "bearer"),
+        lastUsedAt: Number(item.lastUsedAt || 0),
+      }))
+      .sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredAccountSessions(sessions) {
+  try {
+    localStorage.setItem(ACCOUNT_SESSIONS_STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_STORED_ACCOUNT_SESSIONS)));
+  } catch {
+    // 浏览器禁用本地存储时不影响当前账号继续使用，只关闭多账号记忆。
+  }
+}
+
+function rememberAccountSession(session) {
+  const snapshot = accountSessionSnapshot(session);
+  if (!snapshot) return null;
+  const sessions = readStoredAccountSessions().filter((item) => item.userId !== snapshot.userId);
+  writeStoredAccountSessions([snapshot, ...sessions]);
+  return snapshot;
+}
+
+function removeStoredAccountSession(userId) {
+  if (!userId) return;
+  writeStoredAccountSessions(readStoredAccountSessions().filter((item) => item.userId !== String(userId)));
+}
+
+function availableAccountSessions() {
+  const sessions = readStoredAccountSessions();
+  const current = accountSessionSnapshot(cloudState.session);
+  if (current && !sessions.some((item) => item.userId === current.userId)) sessions.unshift(current);
+  return sessions;
+}
+
+function accountSessionName(snapshot) {
+  return snapshot.displayName || snapshot.email?.split("@")[0] || "已登录账号";
+}
+
+function accountSessionInitial(snapshot) {
+  const value = accountSessionName(snapshot).trim();
+  return Array.from(value).slice(0, 2).join("").toUpperCase() || "云";
+}
+
+function renderAccountSessionList(container) {
+  if (!container) return;
+  container.replaceChildren();
+  const currentUserId = cloudState.user?.id || "";
+  availableAccountSessions().forEach((snapshot) => {
+    const isCurrent = snapshot.userId === currentUserId;
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = `account-session-option${isCurrent ? " is-active" : ""}`;
+    option.disabled = isCurrent;
+    option.setAttribute("aria-label", isCurrent ? `${accountSessionName(snapshot)}，当前账号` : `切换到 ${accountSessionName(snapshot)}`);
+    if (isCurrent) option.setAttribute("aria-current", "true");
+
+    const avatar = document.createElement("span");
+    avatar.className = "account-session-avatar";
+    if (snapshot.avatarUrl) {
+      const image = document.createElement("img");
+      image.src = snapshot.avatarUrl;
+      image.alt = "";
+      image.addEventListener("error", () => {
+        image.remove();
+        avatar.textContent = accountSessionInitial(snapshot);
+      }, { once: true });
+      avatar.append(image);
+    } else {
+      avatar.textContent = accountSessionInitial(snapshot);
+    }
+
+    const copy = document.createElement("span");
+    copy.className = "account-session-copy";
+    const name = document.createElement("strong");
+    name.textContent = accountSessionName(snapshot);
+    const email = document.createElement("span");
+    email.textContent = snapshot.email || "本机已保存的账号";
+    copy.append(name, email);
+
+    const state = document.createElement("span");
+    state.className = "account-session-state";
+    state.textContent = isCurrent ? "当前使用" : "切换";
+    option.append(avatar, copy, state);
+    if (!isCurrent) option.addEventListener("click", () => void switchToStoredAccount(snapshot.userId));
+    container.append(option);
+  });
+}
 
 function setPendingConfirmation(email = "") {
   pendingConfirmationEmail = String(email || "").trim();
@@ -1189,8 +1327,37 @@ function takeGoogleOAuthPending() {
   }
 }
 
+function markAccountAddPending() {
+  if (!accountAuthAddMode) return;
+  try {
+    sessionStorage.setItem(ACCOUNT_ADD_PENDING_SESSION_KEY, "1");
+  } catch {
+    // OAuth 回跳仍可完成，只是回跳后不显示“已添加账号”的专门提示。
+  }
+}
+
+function takeAccountAddPending() {
+  try {
+    const pending = sessionStorage.getItem(ACCOUNT_ADD_PENDING_SESSION_KEY) === "1";
+    sessionStorage.removeItem(ACCOUNT_ADD_PENDING_SESSION_KEY);
+    return pending;
+  } catch {
+    return false;
+  }
+}
+
+function clearAccountAddPending() {
+  try {
+    sessionStorage.removeItem(ACCOUNT_ADD_PENDING_SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 function restoreCancelledGoogleOAuth() {
-  if (LOCAL_DEPLOYMENT_MODE || cloudState.user || !takeGoogleOAuthPending()) return false;
+  const pending = takeGoogleOAuthPending();
+  if (LOCAL_DEPLOYMENT_MODE || cloudState.user || !pending) return false;
+  clearAccountAddPending();
   setAccountBusy(false);
   if (!els.accountModal?.classList.contains("hidden")) {
     setAccountAuthMode("signin", { keepNotice: true });
@@ -1320,6 +1487,7 @@ function updateAccountUi() {
   const api = cloudApi();
   const configured = Boolean(api?.configured);
   const signedIn = Boolean(cloudState.user);
+  const showingAddAccountForm = signedIn && accountAuthAddMode;
   els.account?.classList.toggle("is-online", signedIn);
   els.account?.classList.toggle("is-guest", entryState.mode === "guest" && !signedIn);
   if (els.accountLabel) {
@@ -1343,17 +1511,22 @@ function updateAccountUi() {
   }
   if (els.accountMenuLogin) els.accountMenuLogin.hidden = signedIn;
   if (els.accountMenuManage) els.accountMenuManage.hidden = !signedIn;
+  if (els.accountMenuSwitch) els.accountMenuSwitch.hidden = !signedIn;
   if (els.accountMenuSignOut) els.accountMenuSignOut.hidden = !signedIn;
+  if (els.accountMenuSwitchSection) els.accountMenuSwitchSection.hidden = !signedIn;
   if (els.accountMenuHint) {
     els.accountMenuHint.textContent = signedIn
-      ? "图文、头像和素材会按当前账号同步保存。"
+      ? "点击已登录账号即可切换；账号凭证只保存在这台浏览器。"
       : "继续使用游客模式无需操作，点击菜单外即可关闭。";
   }
-  if (els.accountAuthForm) els.accountAuthForm.hidden = signedIn;
-  if (els.accountSignedIn) els.accountSignedIn.hidden = !signedIn;
+  if (els.accountAuthForm) els.accountAuthForm.hidden = signedIn && !showingAddAccountForm;
+  if (els.accountSignedIn) els.accountSignedIn.hidden = !signedIn || showingAddAccountForm;
   if (els.accountResendConfirmation) {
     els.accountResendConfirmation.hidden = signedIn || !configured || accountAuthMode === "signup";
   }
+
+  renderAccountSessionList(els.accountMenuAccountList);
+  renderAccountSessionList(els.accountModalAccountList);
 
   if (!configured) {
     setAccountNotice(api?.configurationError || "Supabase 尚未配置。", "");
@@ -1384,15 +1557,101 @@ function openAccountModal() {
   els.entryChoiceModal?.classList.add("hidden");
   els.accountModal.classList.remove("hidden");
   updateAccountUi();
-  if (!cloudState.user) setAccountAuthMode(accountAuthMode, { keepNotice: true });
+  if (!cloudState.user || accountAuthAddMode) setAccountAuthMode(accountAuthMode, { keepNotice: true });
   const lastEmail = localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
   if (!els.accountEmail.value && lastEmail) els.accountEmail.value = lastEmail;
-  if (!cloudState.user && cloudApi()?.configured) requestAnimationFrame(() => els.accountEmail.focus());
+  if ((!cloudState.user || accountAuthAddMode) && cloudApi()?.configured) requestAnimationFrame(() => els.accountEmail.focus());
 }
 
 function closeAccountModal() {
   els.accountModal.classList.add("hidden");
+  accountAuthAddMode = false;
+  updateAccountUi();
   if (!entryState.resolved) showEntryChoice();
+}
+
+function startAddingAccount() {
+  if (LOCAL_DEPLOYMENT_MODE || !cloudApi()?.configured) return;
+  closeAccountMenu();
+  els.entryChoiceModal?.classList.add("hidden");
+  els.accountModal.classList.remove("hidden");
+  accountAuthAddMode = true;
+  els.accountEmail.value = "";
+  els.accountPassword.value = "";
+  els.accountPasswordConfirm.value = "";
+  setAccountAuthMode("signin", { keepNotice: true });
+  setAccountNotice("登录另一个账号后会立即切换；当前账号会保留在切换列表中。", "success");
+  updateAccountUi();
+  requestAnimationFrame(() => els.accountEmail.focus());
+}
+
+async function waitForCloudSyncBeforeAccountSwitch() {
+  const deadline = Date.now() + 120000;
+  const hasPendingProfile = Boolean(cloudState.profileTimer || cloudState.pendingAvatarUpload);
+  window.clearTimeout(cloudState.syncTimer);
+  window.clearTimeout(cloudState.profileTimer);
+  cloudState.syncTimer = 0;
+  cloudState.profileTimer = 0;
+  while ((cloudState.syncingProjects || cloudState.syncingProfile) && Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
+  if (cloudState.syncingProjects || cloudState.syncingProfile) {
+    throw new Error("当前账号仍在同步，请稍后再切换。");
+  }
+  await flushCloudProjectSync();
+  if (hasPendingProfile || cloudState.pendingAvatarUpload) await flushCloudProfileSync();
+  if (cloudState.pendingProjects.size || cloudState.pendingAvatarUpload || cloudState.syncingProjects || cloudState.syncingProfile) {
+    throw new Error("当前账号还有未同步的内容，请稍后再切换。");
+  }
+}
+
+async function switchToStoredAccount(userId) {
+  const targetId = String(userId || "");
+  if (!targetId || targetId === cloudState.user?.id) {
+    closeAccountMenu();
+    return;
+  }
+  const snapshot = readStoredAccountSessions().find((item) => item.userId === targetId);
+  if (!snapshot) {
+    setAccountNotice("这个账号的本机登录记录不存在，请重新登录一次。", "error");
+    openAccountModal();
+    return;
+  }
+  if (!cloudApi()?.setSession) {
+    setAccountNotice("当前版本还不支持账号切换，请刷新页面后重试。", "error");
+    openAccountModal();
+    return;
+  }
+
+  closeAccountMenu();
+  setAccountBusy(true);
+  cloudState.switchingAccount = true;
+  els.status.textContent = `正在切换到 ${accountSessionName(snapshot)}…`;
+  try {
+    await waitForCloudSyncBeforeAccountSwitch();
+    const result = await cloudApi().setSession({
+      access_token: snapshot.accessToken,
+      refresh_token: snapshot.refreshToken,
+    });
+    if (!result?.session?.user) throw new Error("账号切换失败，请重新登录这个账号。");
+    rememberAccountSession(result.session);
+    await handleCloudSession(result.session);
+    localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, snapshot.email || "");
+    sessionStorage.removeItem(ENTRY_MODE_SESSION_KEY);
+    entryState.mode = "account";
+    entryState.resolved = true;
+    updateAccountUi();
+    closeAccountModal();
+    els.status.textContent = `已切换到 ${accountSessionName(snapshot)} 的云端工作区`;
+  } catch (error) {
+    console.error("账号切换失败", error);
+    openAccountModal();
+    setAccountNotice(error?.message || "账号切换失败，请重新登录这个账号。", "error");
+  } finally {
+    cloudState.switchingAccount = false;
+    setAccountBusy(false);
+    updateAccountUi();
+  }
 }
 
 function accountMenuIsOpen() {
@@ -1735,6 +1994,7 @@ async function loadCloudWorkspace(session) {
 
 async function handleCloudSession(session) {
   const nextUserId = session?.user?.id || "";
+  if (session?.user) rememberAccountSession(session);
   if (nextUserId && cloudState.user?.id === nextUserId && activeStorageScope === accountScope(nextUserId)) {
     cloudState.session = session;
     updateAccountUi();
@@ -1766,6 +2026,7 @@ async function initializeCloudAccount() {
   const api = cloudApi();
   const redirectStatus = authRedirectStatus();
   const googleOAuthWasPending = takeGoogleOAuthPending();
+  const accountAddWasPending = takeAccountAddPending();
   document.body.classList.toggle("cloud-session-checking", Boolean(api?.configured));
   updateAccountUi();
   cloudState.initialized = true;
@@ -1803,7 +2064,7 @@ async function initializeCloudAccount() {
     }
     if (!["SIGNED_IN", "SIGNED_OUT", "USER_UPDATED"].includes(event)) return;
     if (event === "SIGNED_OUT") {
-      if (!cloudState.signingOut && entryState.mode === "account") {
+      if (!cloudState.signingOut && !cloudState.switchingAccount && entryState.mode === "account") {
         window.setTimeout(async () => {
           await handleCloudSession(null);
           await activateWorkspaceScope("guest");
@@ -1815,14 +2076,35 @@ async function initializeCloudAccount() {
     }
     window.setTimeout(async () => {
       await handleCloudSession(session);
-      if (session?.user) finishEntryChoice("account");
+      if (!session?.user) return;
+      if (accountAuthAddMode) {
+        accountAuthAddMode = false;
+        entryState.mode = "account";
+        entryState.resolved = true;
+        closeAccountModal();
+        els.status.textContent = "已添加账号并切换到新的云端工作区";
+        return;
+      }
+      if (entryState.mode === "account" && entryState.resolved) return;
+      finishEntryChoice("account");
     }, 0);
   });
   try {
     const session = await api.getSession();
     if (session?.user) {
       await handleCloudSession(session);
-      finishEntryChoice("account");
+      if (accountAddWasPending) {
+        entryState.mode = "account";
+        entryState.resolved = true;
+        entryState.returning = true;
+        els.entryChoiceModal?.classList.add("hidden");
+        els.accountModal?.classList.add("hidden");
+        document.body.classList.remove("entry-choice-pending", "cloud-session-checking");
+        updateAccountUi();
+        els.status.textContent = "已添加账号并切换到新的云端工作区";
+      } else {
+        finishEntryChoice("account");
+      }
     } else if (redirectStatus) {
       const lastEmail = localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
       setPendingConfirmation(lastEmail);
@@ -1872,15 +2154,24 @@ async function signInAccount() {
   }
   setAccountBusy(true);
   setAccountNotice("正在登录…");
+  const addingAccount = accountAuthAddMode;
   try {
     const result = await cloudApi().signIn(email, password);
     await handleCloudSession(result.session);
     localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, email);
     setPendingConfirmation("");
     sessionStorage.removeItem(ENTRY_MODE_SESSION_KEY);
-    finishEntryChoice("account");
+    if (addingAccount) {
+      accountAuthAddMode = false;
+      entryState.mode = "account";
+      entryState.resolved = true;
+      closeAccountModal();
+      els.status.textContent = "已添加账号并切换到新的云端工作区";
+    } else {
+      finishEntryChoice("account");
+    }
     els.accountPassword.value = "";
-    setAccountNotice("登录成功，已切换到你的云端工作区。", "success");
+    if (!addingAccount) setAccountNotice("登录成功，已切换到你的云端工作区。", "success");
   } catch (error) {
     setAccountNotice(accountAuthErrorMessage(error, "signin"), "error");
   } finally {
@@ -1902,6 +2193,7 @@ async function signUpAccount() {
   }
   setAccountBusy(true);
   setAccountNotice("正在创建账号…");
+  const addingAccount = accountAuthAddMode;
   try {
     const result = await cloudApi().signUp(email, password);
     localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, email);
@@ -1909,8 +2201,16 @@ async function signUpAccount() {
       await handleCloudSession(result.session);
       localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, email);
       sessionStorage.removeItem(ENTRY_MODE_SESSION_KEY);
-      finishEntryChoice("account");
-      setAccountNotice("注册成功，已登录。", "success");
+      if (addingAccount) {
+        accountAuthAddMode = false;
+        entryState.mode = "account";
+        entryState.resolved = true;
+        closeAccountModal();
+        els.status.textContent = "已创建账号并切换到新的云端工作区";
+      } else {
+        finishEntryChoice("account");
+        setAccountNotice("注册成功，已登录。", "success");
+      }
     } else {
       setPendingConfirmation(email);
       setAccountNotice("注册成功，请到邮箱点击确认链接后再登录。", "success");
@@ -1957,7 +2257,7 @@ async function resendAccountConfirmation() {
 async function refreshGoogleSignInVisibility() {
   if (!els.accountOauth) return;
   const api = cloudApi();
-  if (!api?.configured || cloudState.user || accountAuthMode === "reset") {
+  if (!api?.configured || (cloudState.user && !accountAuthAddMode) || accountAuthMode === "reset") {
     els.accountOauth.hidden = true;
     return;
   }
@@ -1965,6 +2265,7 @@ async function refreshGoogleSignInVisibility() {
 }
 
 async function signInWithGoogleAccount() {
+  markAccountAddPending();
   markGoogleOAuthPending();
   setAccountBusy(true);
   setAccountNotice("正在跳转到 Google…");
@@ -1973,10 +2274,12 @@ async function signInWithGoogleAccount() {
     await cloudApi().signInWithGoogle();
     // 若 SDK 没有发起浏览器跳转，不能让界面永久停在“正在跳转”。
     takeGoogleOAuthPending();
+    clearAccountAddPending();
     setAccountBusy(false);
     setAccountNotice("没有打开 Google 登录页，请重新尝试。", "error");
   } catch (error) {
     takeGoogleOAuthPending();
+    clearAccountAddPending();
     setAccountNotice(error?.message || "跳转 Google 登录失败，请改用邮箱注册。", "error");
     setAccountBusy(false);
   }
@@ -2037,6 +2340,7 @@ async function signOutAccount() {
   try {
     document.body.classList.add("entry-choice-pending");
     await cloudApi().signOut();
+    removeStoredAccountSession(cloudState.user?.id);
     await handleCloudSession(null);
     await activateWorkspaceScope("guest");
     sessionStorage.removeItem(ENTRY_MODE_SESSION_KEY);
@@ -2052,7 +2356,7 @@ async function signOutAccount() {
 }
 
 function scheduleCloudProjectSync(project) {
-  if (!cloudIsReady() || cloudState.loadingWorkspace || !project || isBuiltInProject(project)) return;
+  if (!cloudIsReady() || cloudState.loadingWorkspace || cloudState.switchingAccount || !project || isBuiltInProject(project)) return;
   cloudState.pendingProjects.set(project.id, project);
   window.clearTimeout(cloudState.syncTimer);
   cloudState.syncTimer = window.setTimeout(() => void flushCloudProjectSync(), 850);
@@ -2147,11 +2451,15 @@ function scheduleCloudProfileSync(options = {}) {
   if (!cloudIsReady() || cloudState.loadingWorkspace) return;
   cloudState.pendingAvatarUpload ||= Boolean(options.uploadAvatar);
   window.clearTimeout(cloudState.profileTimer);
-  cloudState.profileTimer = window.setTimeout(() => void flushCloudProfileSync(), 700);
+  cloudState.profileTimer = window.setTimeout(() => {
+    cloudState.profileTimer = 0;
+    void flushCloudProfileSync();
+  }, 700);
 }
 
 async function flushCloudProfileSync() {
-  if (!cloudIsReady() || cloudState.loadingWorkspace) return;
+  if (!cloudIsReady() || cloudState.loadingWorkspace || cloudState.syncingProfile) return;
+  cloudState.syncingProfile = true;
   const shouldUploadAvatar = cloudState.pendingAvatarUpload;
   cloudState.pendingAvatarUpload = false;
   try {
@@ -2174,6 +2482,8 @@ async function flushCloudProfileSync() {
     console.error(error);
     cloudState.pendingAvatarUpload ||= shouldUploadAvatar;
     els.status.textContent = error?.message || "账号资料同步失败，本机资料仍已保存";
+  } finally {
+    cloudState.syncingProfile = false;
   }
 }
 
@@ -9234,6 +9544,16 @@ function bindEvents() {
     event.stopPropagation();
     openAccountModal();
   });
+  els.accountMenuSwitch?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openAccountModal();
+  });
+  els.accountMenuAdd?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    startAddingAccount();
+  });
   els.accountMenuSignOut?.addEventListener("click", signOutAccount);
   els.accountMenuWhatsNew?.addEventListener("click", (event) => {
     event.preventDefault();
@@ -9255,6 +9575,7 @@ function bindEvents() {
   els.accountForgotPassword?.addEventListener("click", () => void requestPasswordReset());
   els.accountGoogle?.addEventListener("click", () => void signInWithGoogleAccount());
   els.accountSignOut.addEventListener("click", signOutAccount);
+  els.accountAddAnother?.addEventListener("click", () => startAddingAccount());
   els.accountImportLocal.addEventListener("click", importLocalProjectsToAccount);
   document.addEventListener("pointerdown", (event) => {
     if (accountMenuIsOpen() && !els.accountDock?.contains(event.target)) closeAccountMenu();
