@@ -1024,15 +1024,18 @@ body[data-guide-readonly="true"] .editor-textarea:focus {
 }
 
 .search-tool-button {
-  width: auto;
-  padding: 0 10px;
-  gap: 6px;
+  position: relative;
+  width: 36px;
+  padding: 0;
 }
 
-.search-tool-button span {
-  font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
+.search-tool-button .search-replace-badge {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 9px;
+  height: 9px;
+  color: var(--accent);
 }
 
 .tool-button svg,
@@ -5156,8 +5159,7 @@ body.onboarding-account-step .site-footer {
   }
 
   .search-tool-button {
-    width: auto;
-    padding: 0 8px;
+    width: 34px;
   }
 
   .tool-popover {
