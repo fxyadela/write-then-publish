@@ -1,21 +1,55 @@
-MIT License
+写了就发·个人非商业许可证
+Write Then Publish Personal Non-Commercial License
+Version 1.0 — 2026-08-08
 
-Copyright (c) 2026 捏捏番茄
+版权所有 © 2026 捏捏番茄。保留所有权利。
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+重要说明
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+本项目不是按照 MIT、Apache、GPL 或其他开放源代码许可证发布的。除本许可证明确授予的有限权利外，项目代码及其原创内容的著作权和其他权利仍归版权方所有。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+一、允许的使用
+
+在遵守本许可证的前提下，版权方授予你一项全球范围内、非独占、不可转让、免版税的有限许可，仅允许你以个人、非商业目的：
+
+1. 阅读、运行和研究本项目；
+2. 为个人学习、个人创作或非商业作品进行修改；
+3. 在保留本许可证和版权声明的情况下，向他人分享本项目或你的修改版本，但不得收取费用或将其用于商业活动。
+
+个人作品集、学习记录和非商业演示不属于商业使用；但不得借此为公司、客户或其他组织提供服务，或直接、间接获得商业收益。
+
+二、禁止的使用
+
+未经版权方事先明确的书面许可，你不得直接或间接：
+
+1. 销售、出租、许可、转售、收费分发或以其他方式变现本项目或其衍生版本；
+2. 将本项目用于 SaaS、API、在线服务、订阅服务、付费生成、付费导出或其他面向他人提供的商业服务；
+3. 将本项目用于公司、企业、机构、团队或客户项目，包括内部业务工具、商业网站、商业内容生产和营销活动；
+4. 以代开发、外包、咨询、培训、技术支持或其他有偿服务的形式使用本项目；
+5. 移除或修改版权声明、许可证文本或本项目中的署名信息；
+6. 以版权方名义，或暗示获得版权方授权、背书、合作或官方支持的方式使用本项目；
+7. 再许可、转授权或宣称你拥有本项目超出本许可证范围的权利。
+
+“商业使用”包括任何以获得收入、降低商业成本、推广商业活动、服务客户、支持组织业务或获得其他商业利益为目的的使用，不因项目本身免费、公开或未直接收费而变为非商业使用。
+
+三、商业许可
+
+如需将本项目用于商业产品、商业服务、公司或客户项目，必须在使用前取得版权方的明确书面许可。书面许可的范围、期限、费用和其他条件，以双方另行确认的内容为准。
+
+四、第三方内容
+
+本许可证仅适用于版权方拥有或控制的项目代码、文档和原创内容。项目中的第三方代码、依赖、字体、图标、服务、媒体或其他素材不受本许可证重新授权，仍适用其各自的许可证、服务条款或权利人的授权范围。使用者应自行核查并遵守相关条款。
+
+五、免责声明与责任限制
+
+本项目按“现状”提供，不提供任何明示或默示保证，包括但不限于适销性、特定用途适用性、不侵权、可用性、安全性或持续运行的保证。法律允许的最大范围内，版权方不对因使用、无法使用或分发本项目而产生的任何直接、间接、附带、特殊、惩罚性或后果性损失承担责任。
+
+六、终止
+
+如果你违反本许可证，授予你的所有许可将自动终止。许可终止后，你必须停止使用、复制、分发和提供本项目及其衍生版本。
+
+七、适用范围
+
+本许可证不限制任何依法不能被限制的权利。若本许可证的任何条款被认定为不可执行，其余条款仍然有效。
+
+如本许可证的中英文表述存在差异，以中文版本为准。

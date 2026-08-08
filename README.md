@@ -8,7 +8,7 @@
 
 **[在线使用](https://fawen.fun)** · [核心功能](#核心功能) · [本地运行](#本地运行) · [能力矩阵](#能力矩阵)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-111827.svg)](LICENSE) [![Frontend](https://img.shields.io/badge/Frontend-Vanilla_HTML%2FCSS%2FJS-2563eb.svg)](#技术与边界) [![Live Photo](https://img.shields.io/badge/Live_Photo-WebCodecs-287d4d.svg)](#live-photo) [![Cloud](https://img.shields.io/badge/Cloud-Supabase-3ecf8e.svg)](#账号与数据)
+[![License: Personal Non-Commercial](https://img.shields.io/badge/License-Personal%20Non--Commercial-111827.svg)](LICENSE) [![Frontend](https://img.shields.io/badge/Frontend-Vanilla_HTML%2FCSS%2FJS-2563eb.svg)](#技术与边界) [![Live Photo](https://img.shields.io/badge/Live_Photo-WebCodecs-287d4d.svg)](#live-photo) [![Cloud](https://img.shields.io/badge/Cloud-Supabase-3ecf8e.svg)](#账号与数据)
 
 </div>
 
@@ -266,4 +266,6 @@ Apple 需要依靠配对标记识别完整 Live Photo。分开发送可能丢失
 
 欢迎通过 Issues 或 Pull Requests 提交最小复现、预期结果、实际结果和相关截图。
 
-[MIT License](LICENSE) © 2026 捏捏番茄
+本项目使用[《写了就发·个人非商业许可证》](LICENSE)。允许个人学习、研究、个人创作和非商业展示；禁止销售、收费生成、订阅服务、SaaS/API、公司或客户项目、代开发、咨询培训等商业用途。商业使用必须事先取得版权方的明确书面许可。
+
+GitHub 上的公开仓库可以被查看或 Fork，但这不等于获得商业使用、分发或改作的授权；具体权利以 [LICENSE](LICENSE) 为准。项目中的第三方依赖和素材仍受其各自许可证或授权条款约束。
