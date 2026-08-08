@@ -180,13 +180,21 @@ const els = {
   bgColorMenu: $("#bgColorMenu"),
   colorTool: $(".color-tool"),
   bgColorTool: $(".bg-color-tool"),
-  colorGuide: $("#colorGuide"),
-  colorConfirm: $("#colorConfirmBtn"),
-  colorCancel: $("#colorCancelBtn"),
-  bgColorConfirm: $("#bgColorConfirmBtn"),
-  bgColorCancel: $("#bgColorCancelBtn"),
+  selectionToolbar: $("#selectionToolbar"),
+  selectionColorBtn: $("#selectionColorBtn"),
+  selectionBgColorBtn: $("#selectionBgColorBtn"),
+  selectionColorPalette: $("#selectionColorPalette"),
+  selectionBgPalette: $("#selectionBgPalette"),
+  selectionColorSwatches: $("#selectionColorSwatches"),
+  selectionBgSwatches: $("#selectionBgSwatches"),
+  selectionCustomColor: $("#selectionCustomColorInput"),
+  selectionCustomBg: $("#selectionCustomBgInput"),
+  selectionColorDot: $("#selectionColorDot"),
+  selectionBgColorDot: $("#selectionBgColorDot"),
   find: $("#findInput"),
   replace: $("#replaceInput"),
+  searchMenu: $("#searchMenu"),
+  findMatchCount: $("#findMatchCount"),
   findNext: $("#findNextBtn"),
   replaceOne: $("#replaceOneBtn"),
   replaceAll: $("#replaceAllBtn"),
@@ -405,8 +413,6 @@ const state = {
   },
   canvases: [],
   lastFindIndex: -1,
-  colorBrush: false,
-  bgColorBrush: false,
   uiTheme: "light",
   headerMode: "every",
   appMode: "cards",
@@ -785,6 +791,7 @@ function syncGuideReadOnlyMode() {
 
   if (readOnly) {
     document.querySelectorAll(".editor-controls details[open]").forEach((details) => details.removeAttribute("open"));
+    hideSelectionToolbar();
   }
   syncExportBusyState();
 }
@@ -3111,10 +3118,10 @@ function wrapSelection(kind) {
 
   if (kind === "bold") {
     next = `**${selected}**`;
-    cursorOffset = selected === "文字" ? 2 : null;
+    cursorOffset = 2;
   } else if (kind === "italic") {
     next = `*${selected}*`;
-    cursorOffset = selected === "文字" ? 1 : null;
+    cursorOffset = 1;
   } else if (kind === "h1" || kind === "h2" || kind === "quote") {
     const prefix = kind === "h1" ? "# " : kind === "h2" ? "## " : "> ";
     const lineStart = textarea.value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
@@ -3137,90 +3144,276 @@ function wrapSelection(kind) {
   requestRender();
 }
 
-function wrapSelectionWithColor() {
-  commitTextHistory();
+const TEXT_COLOR_PRESETS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#111827"];
+const BG_COLOR_PRESETS = ["#fee2e2", "#ffedd5", "#fef9c3", "#dcfce7", "#dbeafe", "#ede9fe", "#fce7f3", "#f3f4f6"];
+
+function setCurrentTextColor(color) {
+  els.inlineColor.value = color;
+  document.documentElement.style.setProperty("--brush-color", color);
+  if (els.selectionColorDot) els.selectionColorDot.style.background = color;
+}
+
+function setCurrentBgColor(color) {
+  els.inlineBgColor.value = color;
+  document.documentElement.style.setProperty("--text-bg-brush-color", color);
+  if (els.selectionBgColorDot) els.selectionBgColorDot.style.background = color;
+}
+
+function findMatchingMarkerClose(value, open) {
+  const pipe = value.indexOf("|", open);
+  if (pipe === -1) return -1;
+  let depth = 0;
+  for (let i = pipe + 1; i < value.length; i += 1) {
+    if (value.startsWith("{{", i)) {
+      depth += 1;
+      i += 1;
+    } else if (value.startsWith("}}", i)) {
+      if (depth === 0) return i + 2;
+      depth -= 1;
+      i += 1;
+    }
+  }
+  return -1;
+}
+
+function flattenMarkerKind(text, marker) {
+  const openToken = `{{${marker}:`;
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    if (text.startsWith(openToken, i)) {
+      const close = findMatchingMarkerClose(text, i);
+      if (close !== -1) {
+        const pipe = text.indexOf("|", i) + 1;
+        out += flattenMarkerKind(text.slice(pipe, close - 2), marker);
+        i = close;
+        continue;
+      }
+    }
+    out += text[i];
+    i += 1;
+  }
+  return out;
+}
+
+function findRecolorableMarker(value, start, end, marker) {
+  const openToken = `{{${marker}:`;
+  // 选区从某个同类型标记的开头开始，且没有越过该标记的结尾
+  if (value.startsWith(openToken, start)) {
+    const close = findMatchingMarkerClose(value, start);
+    if (close !== -1 && end <= close) return { open: start, close };
+  }
+  // 选区结束位置对齐某层同类型标记的结尾（含刚好在其后），向前找匹配的标记开头
+  let open = start;
+  while (open > 0) {
+    open = value.lastIndexOf(openToken, open - 1);
+    if (open === -1) break;
+    const close = findMatchingMarkerClose(value, open);
+    if ((close === end || close === end + 2) && open <= start) return { open, close };
+    if (close < end) break;
+  }
+  return null;
+}
+
+function applyColorToSelection(kind, color) {
   const textarea = els.content;
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
-  const selected = textarea.value.slice(start, end) || "彩色文字";
-  const color = els.inlineColor.value;
-  const next = `{{color:${color}|${selected}}}`;
-  textarea.value = `${textarea.value.slice(0, start)}${next}${textarea.value.slice(end)}`;
+  if (start === end) return false;
+  const marker = kind === "color" ? "color" : "bg";
+  const markerOpen = `{{${marker}:${color}|`;
+  const value = textarea.value;
+  const selected = value.slice(start, end);
+  commitTextHistory();
+  let nextValue;
+  let selectFrom;
+  let keepSelected = selected;
+  const recolor = findRecolorableMarker(value, start, end, marker);
+  if (recolor) {
+    const innerStart = value.indexOf("|", recolor.open) + 1;
+    const inner = flattenMarkerKind(value.slice(innerStart, recolor.close - 2), marker);
+    nextValue = `${value.slice(0, recolor.open)}${markerOpen}${inner}}}`.concat(value.slice(recolor.close));
+    selectFrom = recolor.open + markerOpen.length;
+    keepSelected = inner;
+  } else {
+    nextValue = `${value.slice(0, start)}${markerOpen}${selected}}}`.concat(value.slice(end));
+    selectFrom = start + markerOpen.length;
+  }
+  textarea.value = nextValue;
   textarea.focus();
-  textarea.setSelectionRange(start + next.length, start + next.length);
+  textarea.setSelectionRange(selectFrom, selectFrom + keepSelected.length);
   commitTextHistory();
   requestRender();
+  els.status.textContent = kind === "color" ? `已应用字体颜色 ${color}` : `已应用背景色 ${color}`;
+  return true;
 }
 
-function wrapSelectionWithBackground() {
-  commitTextHistory();
-  const textarea = els.content;
+function applyColorFromEditorPicker(kind) {
+  const color = kind === "color" ? els.inlineColor.value : els.inlineBgColor.value;
+  if (applyColorToSelection(kind, color)) {
+    if (kind === "color") {
+      els.colorMenu.open = false;
+    } else {
+      els.bgColorMenu.open = false;
+    }
+  } else {
+    els.status.textContent = "请先在文本框选中要上色的文字";
+  }
+}
+
+let selectionToolbarTimer = null;
+let selectionMirror = null;
+
+function setSelectionPalette(kind, open) {
+  const palette = kind === "color" ? els.selectionColorPalette : els.selectionBgPalette;
+  const other = kind === "color" ? els.selectionBgPalette : els.selectionColorPalette;
+  palette.hidden = !open;
+  other.hidden = true;
+}
+
+function refreshSelectionToolbarColors() {
+  if (els.selectionColorDot) els.selectionColorDot.style.background = els.inlineColor.value;
+  if (els.selectionBgColorDot) els.selectionBgColorDot.style.background = els.inlineBgColor.value;
+}
+
+function keepTextareaSelection(event) {
+  event.preventDefault();
+}
+
+function buildSelectionSwatches(kind) {
+  const container = kind === "color" ? els.selectionColorSwatches : els.selectionBgSwatches;
+  const presets = kind === "color" ? TEXT_COLOR_PRESETS : BG_COLOR_PRESETS;
+  container.replaceChildren();
+  for (const color of presets) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "selection-swatch";
+    button.title = color;
+    button.setAttribute("aria-label", `应用颜色 ${color}`);
+    button.style.background = color;
+    button.addEventListener("mousedown", keepTextareaSelection);
+    button.addEventListener("click", () => {
+      applyColorToSelection(kind, color);
+      if (kind === "color") setCurrentTextColor(color);
+      else setCurrentBgColor(color);
+      setSelectionPalette(kind, false);
+      refreshSelectionToolbarColors();
+    });
+    container.appendChild(button);
+  }
+}
+
+function ensureSelectionMirror() {
+  if (selectionMirror) return selectionMirror;
+  const mirror = document.createElement("div");
+  mirror.setAttribute("aria-hidden", "true");
+  mirror.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;overflow:hidden;pointer-events:none;z-index:-1;white-space:pre-wrap;";
+  document.body.appendChild(mirror);
+  selectionMirror = mirror;
+  return mirror;
+}
+
+function measureSelectionInTextarea(textarea) {
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
-  const selected = textarea.value.slice(start, end) || "底色文字";
-  const color = els.inlineBgColor.value;
-  const next = `{{bg:${color}|${selected}}}`;
-  textarea.value = `${textarea.value.slice(0, start)}${next}${textarea.value.slice(end)}`;
-  textarea.focus();
-  textarea.setSelectionRange(start + next.length, start + next.length);
-  commitTextHistory();
-  requestRender();
+  if (start === end) return null;
+  const mirror = ensureSelectionMirror();
+  const cs = window.getComputedStyle(textarea);
+  const props = [
+    "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "wordSpacing",
+    "textIndent", "textTransform", "tabSize", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "boxSizing",
+    "wordBreak", "overflowWrap", "textAlign", "borderRadius",
+  ];
+  for (const prop of props) mirror.style[prop] = cs[prop];
+  mirror.style.width = `${textarea.clientWidth}px`;
+  mirror.replaceChildren();
+  mirror.append(
+    document.createTextNode(textarea.value.slice(0, start)),
+    (() => { const span = document.createElement("span"); span.textContent = "\u200b"; return span; })(),
+    document.createTextNode(textarea.value.slice(start, end)),
+    (() => { const span = document.createElement("span"); span.textContent = "\u200b"; return span; })(),
+    document.createTextNode(textarea.value.slice(end)),
+  );
+  mirror.scrollTop = textarea.scrollTop;
+  mirror.scrollLeft = textarea.scrollLeft;
+  const markers = mirror.querySelectorAll("span");
+  const startRect = markers[0].getBoundingClientRect();
+  const endRect = markers[1].getBoundingClientRect();
+  if (!startRect.width && !startRect.height) return null;
+  const taRect = textarea.getBoundingClientRect();
+  return {
+    left: taRect.left + startRect.left,
+    top: taRect.top + startRect.top,
+    bottom: taRect.top + startRect.bottom,
+    height: startRect.height,
+    width: Math.max(0, endRect.left - startRect.left),
+  };
 }
 
-function enableColorBrush() {
-  state.colorBrush = true;
-  state.bgColorBrush = false;
-  document.documentElement.style.setProperty("--brush-color", els.inlineColor.value);
-  els.colorTool?.classList.add("active");
-  els.bgColorTool?.classList.remove("active");
-  els.colorMenu.open = false;
-  els.status.textContent = "刷色已开启，选中一段文字即可上色";
+function hideSelectionToolbar() {
+  if (selectionToolbarTimer !== null) {
+    clearTimeout(selectionToolbarTimer);
+    selectionToolbarTimer = null;
+  }
+  if (els.selectionToolbar) els.selectionToolbar.hidden = true;
+  setSelectionPalette("color", false);
+  setSelectionPalette("bg", false);
 }
 
-function disableColorBrush() {
-  state.colorBrush = false;
-  els.colorTool?.classList.remove("active");
-  els.colorMenu.open = false;
+function showSelectionToolbar() {
+  const textarea = els.content;
+  if (document.activeElement !== textarea) return;
+  if (document.body.getAttribute("data-guide-readonly") === "true") return;
+  const rect = measureSelectionInTextarea(textarea);
+  if (!rect) return;
+  const toolbar = els.selectionToolbar;
+  refreshSelectionToolbarColors();
+  toolbar.hidden = false;
+  const toolbarWidth = toolbar.offsetWidth || 160;
+  const toolbarHeight = toolbar.offsetHeight || 44;
+  let left = rect.left + rect.width / 2 - toolbarWidth / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - toolbarWidth - 8));
+  let top = rect.top - toolbarHeight - 8;
+  if (top < 8) top = rect.bottom + 8;
+  toolbar.style.left = `${Math.round(left)}px`;
+  toolbar.style.top = `${Math.round(top)}px`;
 }
 
-function enableBackgroundBrush() {
-  state.bgColorBrush = true;
-  state.colorBrush = false;
-  document.documentElement.style.setProperty("--text-bg-brush-color", els.inlineBgColor.value);
-  els.bgColorTool?.classList.add("active");
-  els.colorTool?.classList.remove("active");
-  els.bgColorMenu.open = false;
-  els.status.textContent = "背景上色已开启，选中一段文字即可加底色";
+function scheduleSelectionToolbar() {
+  hideSelectionToolbar();
+  const textarea = els.content;
+  if (!textarea || document.activeElement !== textarea) return;
+  if (textarea.selectionStart === textarea.selectionEnd) return;
+  if (document.body.getAttribute("data-guide-readonly") === "true") return;
+  selectionToolbarTimer = window.setTimeout(showSelectionToolbar, 140);
 }
 
-function disableBackgroundBrush() {
-  state.bgColorBrush = false;
-  els.bgColorTool?.classList.remove("active");
-  els.bgColorMenu.open = false;
+function countFindMatches() {
+  const needle = els.find.value;
+  if (!needle) return 0;
+  const haystack = els.content.value;
+  let count = 0;
+  let from = 0;
+  for (;;) {
+    const index = haystack.indexOf(needle, from);
+    if (index === -1) break;
+    count += 1;
+    from = index + needle.length;
+  }
+  return count;
 }
 
-function applyColorBrushToSelection() {
-  if (!state.colorBrush) return;
-  if (document.activeElement !== els.content) return;
-  if (els.content.selectionStart === els.content.selectionEnd) return;
-  wrapSelectionWithColor();
-  disableColorBrush();
-  els.status.textContent = "已应用选中文字颜色";
-}
-
-function applyBackgroundBrushToSelection() {
-  if (!state.bgColorBrush) return;
-  if (document.activeElement !== els.content) return;
-  if (els.content.selectionStart === els.content.selectionEnd) return;
-  wrapSelectionWithBackground();
-  els.status.textContent = "已应用背景色，可继续选中文字刷色，点取消结束";
-}
-
-function applyActiveBrushToSelection() {
-  window.setTimeout(() => {
-    applyColorBrushToSelection();
-    applyBackgroundBrushToSelection();
-  }, 0);
+function updateFindMatchCount() {
+  const countEl = els.findMatchCount;
+  if (!countEl) return;
+  const needle = els.find.value;
+  if (!needle) {
+    countEl.textContent = "";
+    return;
+  }
+  const count = countFindMatches();
+  countEl.textContent = count > 0 ? `找到 ${count} 处` : "没有匹配文本";
 }
 
 function findNext() {
@@ -3229,7 +3422,12 @@ function findNext() {
   const haystack = els.content.value;
   const from = Math.max(els.content.selectionEnd, state.lastFindIndex + needle.length, 0);
   let index = haystack.indexOf(needle, from);
-  if (index === -1) index = haystack.indexOf(needle, 0);
+  let wrapped = false;
+  if (index === -1) {
+    index = haystack.indexOf(needle, 0);
+    wrapped = index !== -1;
+  }
+  updateFindMatchCount();
   if (index === -1) {
     els.status.textContent = "没有找到匹配文本";
     return;
@@ -3237,7 +3435,10 @@ function findNext() {
   state.lastFindIndex = index;
   els.content.focus();
   els.content.setSelectionRange(index, index + needle.length);
-  els.status.textContent = `已选中第 ${index + 1} 个字符处`;
+  const count = countFindMatches();
+  els.status.textContent = wrapped
+    ? `已循环到开头：第 ${index + 1} 个字符处（共 ${count} 处）`
+    : `已选中第 ${index + 1} 个字符处（共 ${count} 处）`;
 }
 
 function replaceCurrent() {
@@ -3255,6 +3456,8 @@ function replaceCurrent() {
   }
   insertAtSelection(els.content, els.replace.value);
   state.lastFindIndex = start;
+  els.status.textContent = "已替换当前匹配";
+  findNext();
 }
 
 function replaceAll() {
@@ -3264,6 +3467,7 @@ function replaceAll() {
   const pieces = els.content.value.split(needle);
   const count = pieces.length - 1;
   if (count < 1) {
+    updateFindMatchCount();
     els.status.textContent = "没有找到匹配文本";
     return;
   }
@@ -3272,6 +3476,8 @@ function replaceAll() {
   els.content.focus();
   els.content.setSelectionRange(0, 0);
   commitTextHistory();
+  state.lastFindIndex = -1;
+  updateFindMatchCount();
   els.status.textContent = `已替换 ${count} 处`;
   requestRender();
 }
@@ -3936,6 +4142,7 @@ async function syncCurrentNoteToObsidian() {
 
     await downloadObsidianExportPackage(exportData);
     els.status.textContent = "当前浏览器只有仓库读取权限，已下载 Obsidian 导入包，未直接写入仓库";
+    closeObsidianImportMenu();
   } catch (error) {
     console.error(error);
     els.status.textContent = "同步失败：没有写入仓库，请检查权限后重试";
@@ -4847,6 +5054,18 @@ function applyInlineStyle(tokens, style) {
   });
 }
 
+function matchInlineMarker(text, i, kind) {
+  const head = `{{${kind}:`;
+  if (!text.startsWith(head, i)) return null;
+  const colorEnd = text.indexOf("|", i + head.length);
+  if (colorEnd === -1) return null;
+  const color = text.slice(i + head.length, colorEnd);
+  if (!/^#[0-9a-fA-F]{3,8}$/.test(color)) return null;
+  const close = findMatchingMarkerClose(text, i);
+  if (close === -1) return null;
+  return { color, innerStart: colorEnd + 1, innerEnd: close - 2, end: close };
+}
+
 function parseInline(text, baseStart = 0) {
   const tokens = [];
   let i = 0;
@@ -4864,19 +5083,27 @@ function parseInline(text, baseStart = 0) {
       continue;
     }
 
-    const colorMatch = text.slice(i).match(/^\{\{color:(#[0-9a-fA-F]{3,8})\|([\s\S]*?)\}\}/);
+    const colorMatch = matchInlineMarker(text, i, "color");
     if (colorMatch) {
-      const textStart = baseStart + i + colorMatch[0].indexOf("|") + 1;
-      tokens.push(...applyInlineStyle(parseInline(colorMatch[2], textStart), { color: colorMatch[1] }));
-      i += colorMatch[0].length;
+      tokens.push(
+        ...applyInlineStyle(
+          parseInline(text.slice(colorMatch.innerStart, colorMatch.innerEnd), baseStart + colorMatch.innerStart),
+          { color: colorMatch.color },
+        ),
+      );
+      i = colorMatch.end;
       continue;
     }
 
-    const bgMatch = text.slice(i).match(/^\{\{bg:(#[0-9a-fA-F]{3,8})\|([\s\S]*?)\}\}/);
+    const bgMatch = matchInlineMarker(text, i, "bg");
     if (bgMatch) {
-      const textStart = baseStart + i + bgMatch[0].indexOf("|") + 1;
-      tokens.push(...applyInlineStyle(parseInline(bgMatch[2], textStart), { bgColor: bgMatch[1] }));
-      i += bgMatch[0].length;
+      tokens.push(
+        ...applyInlineStyle(
+          parseInline(text.slice(bgMatch.innerStart, bgMatch.innerEnd), baseStart + bgMatch.innerStart),
+          { bgColor: bgMatch.color },
+        ),
+      );
+      i = bgMatch.end;
       continue;
     }
 
@@ -9413,6 +9640,14 @@ function bindEvents() {
     }
   });
 
+  document.addEventListener("pointerdown", (event) => {
+    if (event.target.closest?.(".tool-menu, .selection-toolbar")) return;
+    document.querySelectorAll(".tool-menu[open]").forEach((menu) => {
+      menu.open = false;
+    });
+    hideSelectionToolbar();
+  });
+
   window.addEventListener("resize", positionOpenToolPopovers);
   window.addEventListener("resize", applyPanelLayout);
 
@@ -9420,7 +9655,7 @@ function bindEvents() {
     resizer.addEventListener("pointerdown", startPanelResize);
   });
 
-  document.querySelectorAll("[data-format]").forEach((button) => {
+  document.querySelectorAll(".toolbar [data-format]").forEach((button) => {
     button.addEventListener("click", () => wrapSelection(button.dataset.format));
   });
 
@@ -9444,6 +9679,7 @@ function bindEvents() {
   els.content.addEventListener("input", () => {
     scheduleTextHistoryCommit();
     requestRender();
+    hideSelectionToolbar();
   });
   els.content.addEventListener("keydown", handleTextShortcut);
   document.addEventListener("keydown", handlePreviewImageDeleteKey);
@@ -9470,22 +9706,52 @@ function bindEvents() {
   });
 
   els.inlineColor.addEventListener("input", () => {
-    document.documentElement.style.setProperty("--brush-color", els.inlineColor.value);
+    setCurrentTextColor(els.inlineColor.value);
   });
   els.inlineBgColor.addEventListener("input", () => {
-    document.documentElement.style.setProperty("--text-bg-brush-color", els.inlineBgColor.value);
+    setCurrentBgColor(els.inlineBgColor.value);
   });
-  els.colorConfirm.addEventListener("click", enableColorBrush);
-  els.colorCancel.addEventListener("click", disableColorBrush);
-  els.bgColorConfirm.addEventListener("click", enableBackgroundBrush);
-  els.bgColorCancel.addEventListener("click", disableBackgroundBrush);
-  els.content.addEventListener("mouseup", applyActiveBrushToSelection);
-  document.addEventListener("pointerup", applyActiveBrushToSelection);
-  els.content.addEventListener("keyup", (event) => {
-    if (event.key.startsWith("Arrow") || event.key === "Shift") {
-      applyActiveBrushToSelection();
+  els.inlineColor.addEventListener("change", () => applyColorFromEditorPicker("color"));
+  els.inlineBgColor.addEventListener("change", () => applyColorFromEditorPicker("bg"));
+  document.addEventListener("selectionchange", () => {
+    const textarea = els.content;
+    if (document.activeElement !== textarea || textarea.selectionStart === textarea.selectionEnd) {
+      hideSelectionToolbar();
+      return;
     }
+    scheduleSelectionToolbar();
   });
+  els.content.addEventListener("focusout", (event) => {
+    if (event.relatedTarget && els.selectionToolbar.contains(event.relatedTarget)) return;
+    hideSelectionToolbar();
+  });
+  els.content.addEventListener("scroll", hideSelectionToolbar);
+  els.selectionColorBtn?.addEventListener("mousedown", keepTextareaSelection);
+  els.selectionBgColorBtn?.addEventListener("mousedown", keepTextareaSelection);
+  document.querySelectorAll(".selection-toolbar [data-format]").forEach((button) => {
+    button.addEventListener("mousedown", keepTextareaSelection);
+    button.addEventListener("click", () => wrapSelection(button.dataset.format));
+  });
+  els.selectionColorBtn?.addEventListener("click", () => {
+    setSelectionPalette("color", els.selectionColorPalette.hidden);
+  });
+  els.selectionBgColorBtn?.addEventListener("click", () => {
+    setSelectionPalette("bg", els.selectionBgPalette.hidden);
+  });
+  els.selectionCustomColor?.addEventListener("change", () => {
+    applyColorToSelection("color", els.selectionCustomColor.value);
+    setCurrentTextColor(els.selectionCustomColor.value);
+    setSelectionPalette("color", false);
+    refreshSelectionToolbarColors();
+  });
+  els.selectionCustomBg?.addEventListener("change", () => {
+    applyColorToSelection("bg", els.selectionCustomBg.value);
+    setCurrentBgColor(els.selectionCustomBg.value);
+    setSelectionPalette("bg", false);
+    refreshSelectionToolbarColors();
+  });
+  buildSelectionSwatches("color");
+  buildSelectionSwatches("bg");
   els.contentImage.addEventListener("change", handleContentImage);
   els.contentVideo.addEventListener("change", handleLivePhotoVideo);
   els.connectObsidianVault?.addEventListener("click", connectObsidianVault);
@@ -9632,10 +9898,55 @@ function bindEvents() {
     if (event.key === "Escape" && !els.accountModal.classList.contains("hidden")) closeAccountModal();
     if (event.key === "Escape" && welcomeBackIsOpen()) closeWelcomeBack();
     if (event.key === "Escape" && accountMenuIsOpen()) closeAccountMenu();
+    if (event.key === "Escape") {
+      document.querySelectorAll(".tool-menu[open]").forEach((menu) => {
+        menu.open = false;
+      });
+      hideSelectionToolbar();
+    }
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f") {
+      const target = event.target;
+      const insideEditor = target === document.body || target.closest?.(".editor-panel, .tool-menu");
+      if (insideEditor) {
+        event.preventDefault();
+        els.searchMenu.open = true;
+        document.querySelectorAll(".tool-menu").forEach((other) => {
+          if (other !== els.searchMenu) other.open = false;
+        });
+        requestAnimationFrame(() => {
+          positionToolPopover(els.searchMenu);
+          els.find.focus();
+          els.find.select();
+        });
+      }
+    }
   });
   els.findNext.addEventListener("click", findNext);
   els.replaceOne.addEventListener("click", replaceCurrent);
   els.replaceAll.addEventListener("click", replaceAll);
+  els.find.addEventListener("input", updateFindMatchCount);
+  els.find.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    findNext();
+  });
+  els.replace.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (event.metaKey || event.ctrlKey) {
+      replaceAll();
+    } else {
+      replaceCurrent();
+    }
+  });
+  els.searchMenu?.addEventListener("toggle", () => {
+    if (!els.searchMenu.open) return;
+    requestAnimationFrame(() => {
+      els.find.focus();
+      if (els.find.value) els.find.select();
+      updateFindMatchCount();
+    });
+  });
   els.historyToggle.addEventListener("click", toggleHistory);
   els.historyClose.addEventListener("click", () => setHistoryOpen(false));
   els.historyFilterButtons.forEach((button) => {

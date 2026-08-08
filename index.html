@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260802-baseline" />
+    <link rel="stylesheet" href="src/styles.css?v=20260808-format-toolbar" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -150,18 +150,14 @@
                 <i data-lucide="paintbrush"></i>
               </summary>
               <div class="tool-popover color-popover">
-                <div id="colorGuide" class="color-guide">
+                <div class="color-guide">
                   <strong>文字上色</strong>
-                  <span>1. 选择颜色  2. 点确定  3. 在文本框里选中要上色的文字</span>
+                  <span>先在文本框选中文字，再选颜色，立即上色并自动收起。</span>
                 </div>
                 <label>
                   字体颜色
                   <input id="inlineColorInput" type="color" value="#2563eb" />
                 </label>
-                <div class="color-actions">
-                  <button id="colorCancelBtn" class="secondary-button" type="button">取消</button>
-                  <button id="colorConfirmBtn" class="primary-button" type="button">确定</button>
-                </div>
               </div>
             </details>
 
@@ -172,22 +168,19 @@
               <div class="tool-popover color-popover">
                 <div class="color-guide">
                   <strong>背景上色</strong>
-                  <span>1. 选择背景色  2. 点确定  3. 连续选中文字刷底色，点取消结束</span>
+                  <span>先在文本框选中文字，再选背景色，立即上色并自动收起。</span>
                 </div>
                 <label>
                   背景颜色
                   <input id="inlineBgColorInput" type="color" value="#fff3a3" />
                 </label>
-                <div class="color-actions">
-                  <button id="bgColorCancelBtn" class="secondary-button" type="button">取消</button>
-                  <button id="bgColorConfirmBtn" class="primary-button" type="button">确定</button>
-                </div>
               </div>
             </details>
 
-            <details class="tool-menu">
-              <summary class="tool-button" title="查找替换" aria-label="查找替换">
+            <details id="searchMenu" class="tool-menu">
+              <summary class="tool-button search-tool-button" title="查找替换" aria-label="查找替换">
                 <i data-lucide="search"></i>
+                <span>查找替换</span>
               </summary>
               <div class="tool-popover search-popover">
                 <label>
@@ -198,6 +191,7 @@
                   替换为
                   <input id="replaceInput" type="text" autocomplete="off" />
                 </label>
+                <span id="findMatchCount" class="search-match-count" aria-live="polite"></span>
                 <button id="findNextBtn" class="secondary-button" type="button">
                   <i data-lucide="search"></i>
                   查找
@@ -302,6 +296,38 @@
                 </div>
               </div>
             </details>
+          </div>
+
+          <div id="selectionToolbar" class="selection-toolbar" hidden>
+            <div class="selection-toolbar-row">
+              <button type="button" class="selection-tool-button selection-format-button" data-format="h1" title="大标题">H1</button>
+              <button type="button" class="selection-tool-button selection-format-button" data-format="h2" title="小标题">H2</button>
+              <button type="button" class="selection-tool-button selection-format-button" data-format="bold" title="加粗"><strong>B</strong></button>
+              <button type="button" class="selection-tool-button selection-format-button" data-format="italic" title="斜体"><em>I</em></button>
+              <button type="button" class="selection-tool-button selection-format-button" data-format="quote" title="重点引用" aria-label="重点引用"><i data-lucide="quote"></i></button>
+              <button id="selectionColorBtn" class="selection-tool-button" type="button" title="字体颜色" aria-label="字体颜色">
+                <i data-lucide="type"></i>
+                <span id="selectionColorDot" class="selection-color-dot" aria-hidden="true"></span>
+              </button>
+              <button id="selectionBgColorBtn" class="selection-tool-button" type="button" title="背景色" aria-label="背景色">
+                <i data-lucide="highlighter"></i>
+                <span id="selectionBgColorDot" class="selection-color-dot" aria-hidden="true"></span>
+              </button>
+            </div>
+            <div id="selectionColorPalette" class="selection-palette" hidden>
+              <div id="selectionColorSwatches" class="selection-swatches"></div>
+              <label class="selection-custom-color">
+                自定义
+                <input id="selectionCustomColorInput" type="color" value="#2563eb" />
+              </label>
+            </div>
+            <div id="selectionBgPalette" class="selection-palette" hidden>
+              <div id="selectionBgSwatches" class="selection-swatches"></div>
+              <label class="selection-custom-color">
+                自定义
+                <input id="selectionCustomBgInput" type="color" value="#fff3a3" />
+              </label>
+            </div>
           </div>
         </section>
 
@@ -961,6 +987,6 @@
         document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260806-account-switch"></script>
+    <script src="src/app.js?v=20260808-format-toolbar"></script>
   </body>
 </html>
