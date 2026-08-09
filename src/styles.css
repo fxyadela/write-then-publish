@@ -1385,7 +1385,7 @@ body[data-app-mode="article"] .profile-inline {
 
 .selection-toolbar {
   position: fixed;
-  z-index: 60;
+  z-index: 320;
   display: grid;
   gap: 6px;
   max-width: min(440px, calc(100vw - 24px));
@@ -5185,6 +5185,39 @@ body.onboarding-account-step .site-footer {
   .panel-resizer[data-panel-resize="editor"]:hover::after,
   .panel-resizer[data-panel-resize="editor"].active::after {
     left: 4px;
+  }
+
+  .selection-toolbar {
+    gap: 7px;
+    max-width: min(500px, calc(100vw - 24px));
+    padding: 7px;
+  }
+
+  .selection-toolbar-row {
+    gap: 7px;
+  }
+
+  .selection-tool-button {
+    min-width: 64px;
+    height: 44px;
+    border-radius: 9px;
+    font-size: 14px;
+  }
+
+  .selection-format-button {
+    min-width: 44px;
+    width: 44px;
+  }
+
+  .selection-tool-button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .selection-swatch {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
   }
 
   .history-sidebar {

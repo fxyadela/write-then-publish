@@ -3611,6 +3611,63 @@ function updatePendingCustomColor(kind, color) {
 
 let selectionToolbarTimer = null;
 let selectionMirror = null;
+let selectionTouchTimer = null;
+let textareaOwnsSelection = false;
+let touchSelectionGraceUntil = 0;
+let selectionToolbarInteractionUntil = 0;
+
+function textareaHasActionableSelection() {
+  const textarea = els.content;
+  return Boolean(
+    textarea
+    && textarea.selectionStart !== textarea.selectionEnd
+    && document.body.getAttribute("data-guide-readonly") !== "true"
+  );
+}
+
+function textareaSelectionCanShowToolbar() {
+  return textareaHasActionableSelection()
+    && (document.activeElement === els.content || textareaOwnsSelection);
+}
+
+function claimTextareaSelection({ touch = false } = {}) {
+  textareaOwnsSelection = true;
+  if (touch) touchSelectionGraceUntil = Date.now() + 3000;
+}
+
+function releaseTextareaSelection() {
+  textareaOwnsSelection = false;
+  touchSelectionGraceUntil = 0;
+  selectionToolbarInteractionUntil = 0;
+  if (selectionTouchTimer !== null) {
+    clearTimeout(selectionTouchTimer);
+    selectionTouchTimer = null;
+  }
+  hideSelectionToolbar();
+}
+
+function handleSelectionInteractionStart(event) {
+  const target = event.target;
+  if (target === els.content) {
+    claimTextareaSelection({ touch: event.type === "touchstart" || event.pointerType === "touch" });
+    return;
+  }
+  if (els.selectionToolbar?.contains(target)) {
+    selectionToolbarInteractionUntil = Date.now() + 2000;
+    return;
+  }
+  releaseTextareaSelection();
+}
+
+function finishTouchSelection() {
+  claimTextareaSelection({ touch: true });
+  if (selectionTouchTimer !== null) clearTimeout(selectionTouchTimer);
+  // Safari 会在 touchend 之后才最终写入 selectionStart / selectionEnd。
+  selectionTouchTimer = window.setTimeout(() => {
+    selectionTouchTimer = null;
+    scheduleSelectionToolbar();
+  }, 180);
+}
 
 function setSelectionPalette(kind, open) {
   const palettes = {
@@ -3628,6 +3685,11 @@ function setSelectionPalette(kind, open) {
       });
     }
   });
+  if (open && palettes[kind]) {
+    window.requestAnimationFrame(() => {
+      if (!els.selectionToolbar?.hidden && textareaSelectionCanShowToolbar()) showSelectionToolbar();
+    });
+  }
 }
 
 function selectionPaletteIsOpen() {
@@ -3730,17 +3792,42 @@ function measureSelectionInTextarea(textarea) {
   mirror.style.width = `${textarea.offsetWidth}px`;
   mirror.style.height = `${textarea.offsetHeight}px`;
   mirror.replaceChildren();
+  const startMarker = document.createElement("span");
+  startMarker.textContent = "\u200b";
+  const selectedText = document.createElement("span");
+  selectedText.textContent = textarea.value.slice(start, end) || "\u200b";
+  const endMarker = document.createElement("span");
+  endMarker.textContent = "\u200b";
   mirror.append(
     document.createTextNode(textarea.value.slice(0, start)),
-    (() => { const span = document.createElement("span"); span.textContent = "\u200b"; return span; })(),
-    document.createTextNode(textarea.value.slice(start, end)),
-    (() => { const span = document.createElement("span"); span.textContent = "\u200b"; return span; })(),
+    startMarker,
+    selectedText,
+    endMarker,
     document.createTextNode(textarea.value.slice(end)),
   );
-  const markers = mirror.querySelectorAll("span");
-  const startRect = markers[0].getBoundingClientRect();
-  const endRect = markers[1].getBoundingClientRect();
+  const startRect = startMarker.getBoundingClientRect();
+  const endRect = endMarker.getBoundingClientRect();
   if (!startRect.width && !startRect.height) return null;
+  const visibleTop = Math.max(taRect.top, 0);
+  const visibleBottom = Math.min(taRect.bottom, window.innerHeight);
+  const visibleSelectionRects = Array.from(selectedText.getClientRects()).filter((rect) => (
+    rect.bottom >= visibleTop
+    && rect.top <= visibleBottom
+    && rect.right >= taRect.left
+    && rect.left <= taRect.right
+  ));
+  const anchorRect = textarea.selectionDirection === "backward"
+    ? visibleSelectionRects[0]
+    : visibleSelectionRects[visibleSelectionRects.length - 1];
+  if (anchorRect) {
+    return {
+      left: anchorRect.left,
+      top: anchorRect.top,
+      bottom: anchorRect.bottom,
+      height: anchorRect.height,
+      width: anchorRect.width,
+    };
+  }
   return {
     left: startRect.left,
     top: startRect.top,
@@ -3756,16 +3843,13 @@ function hideSelectionToolbar() {
     selectionToolbarTimer = null;
   }
   if (els.selectionToolbar) els.selectionToolbar.hidden = true;
-  setSelectionPalette("color", false);
-  setSelectionPalette("bg", false);
+  setSelectionPalette(null, false);
 }
 
 function showSelectionToolbar() {
   selectionToolbarTimer = null;
   const textarea = els.content;
-  if (document.activeElement !== textarea) return;
-  if (textarea.selectionStart === textarea.selectionEnd) return;
-  if (document.body.getAttribute("data-guide-readonly") === "true") return;
+  if (!textareaSelectionCanShowToolbar()) return;
   const measuredRect = measureSelectionInTextarea(textarea);
   const rect = measuredRect || (() => {
     const taRect = textarea.getBoundingClientRect();
@@ -3781,13 +3865,27 @@ function showSelectionToolbar() {
   if (!rect) return;
   const toolbar = els.selectionToolbar;
   refreshSelectionToolbarColors();
+  const useTouchToolbarLayout = window.matchMedia("(max-width: 1240px), (any-pointer: coarse) and (max-width: 1366px)").matches;
+  if (useTouchToolbarLayout) {
+    toolbar.style.maxWidth = `${Math.min(500, textarea.getBoundingClientRect().width)}px`;
+  } else {
+    toolbar.style.removeProperty("max-width");
+  }
   toolbar.hidden = false;
   const toolbarWidth = toolbar.offsetWidth || 160;
   const toolbarHeight = toolbar.offsetHeight || 44;
+  const visualViewport = window.visualViewport;
+  const viewportLeft = visualViewport?.offsetLeft || 0;
+  const viewportTop = visualViewport?.offsetTop || 0;
+  const viewportWidth = visualViewport?.width || window.innerWidth;
+  const viewportHeight = visualViewport?.height || window.innerHeight;
+  const viewportRight = viewportLeft + viewportWidth;
+  const viewportBottom = viewportTop + viewportHeight;
   let left = rect.left + rect.width / 2 - toolbarWidth / 2;
-  left = Math.max(8, Math.min(left, window.innerWidth - toolbarWidth - 8));
+  left = Math.max(viewportLeft + 8, Math.min(left, viewportRight - toolbarWidth - 8));
   let top = rect.top - toolbarHeight - 8;
-  if (top < 8) top = rect.bottom + 8;
+  if (top < viewportTop + 8) top = rect.bottom + 8;
+  top = Math.max(viewportTop + 8, Math.min(top, viewportBottom - toolbarHeight - 8));
   toolbar.style.left = `${Math.round(left)}px`;
   toolbar.style.top = `${Math.round(top)}px`;
 }
@@ -3797,10 +3895,7 @@ function scheduleSelectionToolbar() {
   // 这不是新的选区；若在这里先隐藏工具栏，面板只会闪一下就被关掉。
   if (selectionPaletteIsOpen() && !els.selectionToolbar?.hidden) return;
   hideSelectionToolbar();
-  const textarea = els.content;
-  if (!textarea || document.activeElement !== textarea) return;
-  if (textarea.selectionStart === textarea.selectionEnd) return;
-  if (document.body.getAttribute("data-guide-readonly") === "true") return;
+  if (!textareaSelectionCanShowToolbar()) return;
   selectionToolbarTimer = window.setTimeout(showSelectionToolbar, 140);
 }
 
@@ -10210,24 +10305,45 @@ function bindEvents() {
   });
   els.inlineColor.addEventListener("change", () => updatePendingCustomColor("color", els.inlineColor.value));
   els.inlineBgColor.addEventListener("change", () => updatePendingCustomColor("bg", els.inlineBgColor.value));
+  document.addEventListener("pointerdown", handleSelectionInteractionStart, true);
+  document.addEventListener("touchstart", handleSelectionInteractionStart, { capture: true, passive: true });
   document.addEventListener("selectionchange", () => {
-    const textarea = els.content;
-    if (document.activeElement !== textarea || textarea.selectionStart === textarea.selectionEnd) {
+    if (document.activeElement === els.content) claimTextareaSelection();
+    if (!textareaSelectionCanShowToolbar()) {
       hideSelectionToolbar();
       return;
     }
     scheduleSelectionToolbar();
   });
-  els.content.addEventListener("select", rescheduleSelectionToolbar);
-  els.content.addEventListener("mouseup", rescheduleSelectionToolbar);
+  els.content.addEventListener("focus", () => claimTextareaSelection());
+  els.content.addEventListener("select", () => {
+    claimTextareaSelection();
+    rescheduleSelectionToolbar();
+  });
+  els.content.addEventListener("mouseup", () => {
+    claimTextareaSelection();
+    rescheduleSelectionToolbar();
+  });
+  els.content.addEventListener("touchend", finishTouchSelection, { passive: true });
+  els.content.addEventListener("touchcancel", finishTouchSelection, { passive: true });
+  els.content.addEventListener("contextmenu", () => {
+    claimTextareaSelection({ touch: true });
+    finishTouchSelection();
+  });
   els.content.addEventListener("keyup", (event) => {
     const key = event.key || "";
     if (event.shiftKey || key.startsWith("Arrow") || key === "Home" || key === "End" || (event.metaKey || event.ctrlKey) && key.toLowerCase() === "a") {
+      claimTextareaSelection();
       rescheduleSelectionToolbar();
     }
   });
   els.content.addEventListener("focusout", (event) => {
     if (event.relatedTarget && els.selectionToolbar.contains(event.relatedTarget)) return;
+    if (Date.now() < touchSelectionGraceUntil || Date.now() < selectionToolbarInteractionUntil) {
+      window.setTimeout(scheduleSelectionToolbar, 180);
+      return;
+    }
+    textareaOwnsSelection = false;
     hideSelectionToolbar();
   });
   els.content.addEventListener("scroll", hideSelectionToolbar);
@@ -10236,6 +10352,12 @@ function bindEvents() {
   els.selectionUnderlineBtn?.addEventListener("mousedown", keepTextareaSelection);
   document.querySelectorAll("[data-custom-color-toggle]").forEach((summary) => {
     summary.addEventListener("mousedown", keepTextareaSelection);
+  });
+  document.querySelectorAll(".selection-custom-color-disclosure").forEach((details) => {
+    details.addEventListener("toggle", () => {
+      if (!details.open || els.selectionToolbar?.hidden) return;
+      window.requestAnimationFrame(showSelectionToolbar);
+    });
   });
   document.querySelectorAll(".selection-toolbar [data-format]").forEach((button) => {
     button.addEventListener("mousedown", keepTextareaSelection);
