@@ -3196,23 +3196,79 @@ function flattenMarkerKind(text, marker) {
   return out;
 }
 
+function unwrapInlineStyleBounds(value, start, end) {
+  let innerStart = start;
+  let innerEnd = end;
+
+  // 颜色与其他行内格式可以彼此嵌套。重新上色时，选区通常只覆盖最里层
+  // 的文字，而不是外层标记本身；逐层剥开完整包住选区的格式，才能识别
+  // 这其实是在“换色”，而不是再包一层同类标记。
+  while (innerStart < innerEnd) {
+    const colorMatch = matchInlineMarker(value, innerStart, "color");
+    const bgMatch = colorMatch ? null : matchInlineMarker(value, innerStart, "bg");
+    const inlineMatch = colorMatch || bgMatch;
+
+    if (inlineMatch && inlineMatch.end === innerEnd) {
+      innerStart = inlineMatch.innerStart;
+      innerEnd = inlineMatch.innerEnd;
+      continue;
+    }
+
+    const boldClose = value.indexOf("**", innerStart + 2);
+    if (
+      value.startsWith("**", innerStart)
+      && boldClose === innerEnd - 2
+      && value.startsWith("**", innerEnd - 2)
+    ) {
+      innerStart += 2;
+      innerEnd -= 2;
+      continue;
+    }
+
+    const italicClose = value.indexOf("*", innerStart + 1);
+    if (
+      value[innerStart] === "*"
+      && value[innerEnd - 1] === "*"
+      && !value.startsWith("**", innerStart)
+      && !value.startsWith("**", innerEnd - 2)
+      && italicClose === innerEnd - 1
+    ) {
+      innerStart += 1;
+      innerEnd -= 1;
+      continue;
+    }
+
+    break;
+  }
+
+  return { start: innerStart, end: innerEnd };
+}
+
 function findRecolorableMarker(value, start, end, marker) {
   const openToken = `{{${marker}:`;
-  // 选区从某个同类型标记的开头开始，且没有越过该标记的结尾
-  if (value.startsWith(openToken, start)) {
-    const close = findMatchingMarkerClose(value, start);
-    if (close !== -1 && end <= close) return { open: start, close };
-  }
-  // 选区结束位置对齐某层同类型标记的结尾（含刚好在其后），向前找匹配的标记开头
-  let open = start;
-  while (open > 0) {
-    open = value.lastIndexOf(openToken, open - 1);
+  let searchFrom = start;
+  let fallback = null;
+  let recolor = null;
+  while (searchFrom >= 0) {
+    const open = value.lastIndexOf(openToken, searchFrom);
     if (open === -1) break;
+    searchFrom = open - 1;
     const close = findMatchingMarkerClose(value, open);
-    if ((close === end || close === end + 2) && open <= start) return { open, close };
-    if (close < end) break;
+    if (close === -1) continue;
+
+    // 保留原有的“直接选中标记”行为；常规划词则必须覆盖该标记的全部
+    // 可见文本，避免把只选中的一小段误判为整段换色。
+    if (open === start && end <= close) fallback = { open, close };
+    if (open > start || close < end) continue;
+
+    const innerStart = value.indexOf("|", open) + 1;
+    const visible = unwrapInlineStyleBounds(value, innerStart, close - 2);
+    // 继续向外查找，而不是命中最内层就退出：旧版本已经产生的同类嵌套
+    // 需要一次换色就被扁平化清理掉。
+    if (visible.start === start && visible.end === end) recolor = { open, close };
+    else if (close === end || close === end + 2) fallback = { open, close };
   }
-  return null;
+  return recolor || fallback;
 }
 
 function applyColorToSelection(kind, color) {
@@ -3233,8 +3289,10 @@ function applyColorToSelection(kind, color) {
     const innerStart = value.indexOf("|", recolor.open) + 1;
     const inner = flattenMarkerKind(value.slice(innerStart, recolor.close - 2), marker);
     nextValue = `${value.slice(0, recolor.open)}${markerOpen}${inner}}}`.concat(value.slice(recolor.close));
-    selectFrom = recolor.open + markerOpen.length;
-    keepSelected = inner;
+    const nextInnerStart = recolor.open + markerOpen.length;
+    const visible = unwrapInlineStyleBounds(nextValue, nextInnerStart, nextInnerStart + inner.length);
+    selectFrom = visible.start;
+    keepSelected = nextValue.slice(visible.start, visible.end);
   } else {
     nextValue = `${value.slice(0, start)}${markerOpen}${selected}}}`.concat(value.slice(end));
     selectFrom = start + markerOpen.length;
@@ -3269,6 +3327,10 @@ function setSelectionPalette(kind, open) {
   const other = kind === "color" ? els.selectionBgPalette : els.selectionColorPalette;
   palette.hidden = !open;
   other.hidden = true;
+}
+
+function selectionPaletteIsOpen() {
+  return !els.selectionColorPalette?.hidden || !els.selectionBgPalette?.hidden;
 }
 
 function refreshSelectionToolbarColors() {
@@ -3363,6 +3425,7 @@ function hideSelectionToolbar() {
 }
 
 function showSelectionToolbar() {
+  selectionToolbarTimer = null;
   const textarea = els.content;
   if (document.activeElement !== textarea) return;
   if (textarea.selectionStart === textarea.selectionEnd) return;
@@ -3394,6 +3457,9 @@ function showSelectionToolbar() {
 }
 
 function scheduleSelectionToolbar() {
+  // 打开颜色面板后，部分浏览器仍会补发一次 selectionchange。
+  // 这不是新的选区；若在这里先隐藏工具栏，面板只会闪一下就被关掉。
+  if (selectionPaletteIsOpen() && !els.selectionToolbar?.hidden) return;
   hideSelectionToolbar();
   const textarea = els.content;
   if (!textarea || document.activeElement !== textarea) return;
