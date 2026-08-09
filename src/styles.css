@@ -1910,36 +1910,6 @@ body[data-app-mode="article"] .profile-inline {
   font-size: 22px;
 }
 
-.preview-view-switch {
-  display: none;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--control-bg);
-}
-
-.preview-view-switch button {
-  min-height: 34px;
-  padding: 0 11px;
-  border-radius: 6px;
-  color: var(--muted);
-  background: transparent;
-  font-size: 12px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.preview-view-switch button.active {
-  color: var(--active-text);
-  background: var(--active-bg);
-}
-
-body[data-app-mode="article"] .preview-view-switch {
-  display: none;
-}
-
 .topbar-actions {
   gap: 10px;
 }
@@ -5279,15 +5249,6 @@ body.onboarding-account-step .site-footer {
     top: 0;
   }
 
-  .preview-view-switch {
-    display: inline-grid;
-  }
-
-  .preview-view-switch button {
-    min-height: 44px;
-    padding-inline: 14px;
-  }
-
   .custom-color-action,
   .selection-palette .custom-color-action {
     min-height: 44px;
@@ -5308,26 +5269,6 @@ body.onboarding-account-step .site-footer {
     padding-top: 20px;
   }
 
-  body[data-preview-view="single"] .pages:not(.article-mode) {
-    display: flex;
-    gap: 16px;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 20px max(16px, env(safe-area-inset-left, 0px)) 18px;
-    scroll-padding-inline: max(16px, env(safe-area-inset-left, 0px));
-    scroll-snap-type: x mandatory;
-    scrollbar-width: thin;
-    overscroll-behavior-inline: contain;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  body[data-preview-view="single"] .page-shell {
-    flex: 0 0 min(88%, 620px);
-    scroll-snap-align: center;
-    scroll-snap-stop: always;
-  }
-
   .article-settings {
     position: static;
     width: 100%;
@@ -5343,13 +5284,8 @@ body.onboarding-account-step .site-footer {
 @media (prefers-reduced-motion: reduce) {
   .history-drawer,
   .custom-color-action,
-  .selection-custom-color-disclosure > summary::after,
-  .preview-view-switch button {
+  .selection-custom-color-disclosure > summary::after {
     transition: none;
-  }
-
-  body[data-preview-view="single"] .pages:not(.article-mode) {
-    scroll-behavior: auto;
   }
 }
 

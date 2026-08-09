@@ -104,7 +104,6 @@ const els = {
   historyFilterButtons: document.querySelectorAll("[data-history-filter]"),
   panelResizers: document.querySelectorAll("[data-panel-resize]"),
   modeButtons: document.querySelectorAll(".mode-switch [data-app-mode]"),
-  previewViewButtons: document.querySelectorAll("[data-preview-view]"),
   convertMode: $("#convertModeBtn"),
   headerModeToggle: $("#headerModeToggleBtn"),
   themeToggle: $("#themeToggleBtn"),
@@ -423,7 +422,6 @@ const state = {
   uiTheme: "light",
   headerMode: "every",
   appMode: "cards",
-  previewViewMode: "all",
   articleTheme: "wechat",
   articleFont: "sans",
   articleSize: "normal",
@@ -977,28 +975,6 @@ function updateAppMode() {
   // 草稿箱同步整体还不完善，先全站下线；功能做好后把这里改回按 appMode 判断即可。
   els.syncWechat.hidden = true;
   els.headerModeToggle.hidden = state.appMode === "article";
-  updatePreviewViewMode();
-}
-
-function updatePreviewViewMode() {
-  const mode = state.previewViewMode === "single" ? "single" : "all";
-  document.body.dataset.previewView = mode;
-  els.previewViewButtons.forEach((button) => {
-    const active = button.dataset.previewView === mode;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
-}
-
-function setPreviewViewMode(mode) {
-  state.previewViewMode = mode === "single" ? "single" : "all";
-  updatePreviewViewMode();
-  if (state.appMode !== "cards") return;
-  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  els.pages.scrollTo({ left: 0, behavior: reducedMotion ? "auto" : "smooth" });
-  els.status.textContent = state.previewViewMode === "single"
-    ? "单图滑动模式：左右滑动查看每张卡片"
-    : "全部展开模式：所有卡片按网格排列";
 }
 
 async function setAppMode(mode) {
@@ -10182,9 +10158,6 @@ function bindEvents() {
 
   els.modeButtons.forEach((button) => {
     button.addEventListener("click", (event) => setAppMode(event.currentTarget.dataset.appMode));
-  });
-  els.previewViewButtons.forEach((button) => {
-    button.addEventListener("click", (event) => setPreviewViewMode(event.currentTarget.dataset.previewView));
   });
 
   els.articleThemeButtons.forEach((button) => {
