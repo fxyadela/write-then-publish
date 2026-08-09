@@ -1280,6 +1280,51 @@ body[data-app-mode="article"] .profile-inline {
   width: 280px;
 }
 
+.underline-popover {
+  display: grid;
+  gap: 12px;
+  width: 280px;
+}
+
+.underline-options,
+.selection-underline-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.underline-option,
+.selection-underline-option {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--soft);
+  color: var(--control-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 720;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.underline-option:hover,
+.selection-underline-option:hover {
+  transform: translateY(-1px);
+  border-color: var(--active-border);
+  background: var(--active-bg);
+}
+
+.underline-option-preview {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.underline-option-preview.is-dashed {
+  text-decoration-style: dashed;
+}
+
 .color-guide {
   display: grid;
   gap: 5px;
@@ -1378,6 +1423,47 @@ body[data-app-mode="article"] .profile-inline {
 
 .selection-swatches {
   display: grid;
+  gap: 8px;
+}
+
+.selection-swatch-section {
+  display: grid;
+  gap: 5px;
+}
+
+.selection-swatch-section + .selection-swatch-section {
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+
+.selection-swatch-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.selection-swatch-clear {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.selection-swatch-clear:hover {
+  color: var(--active-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.selection-swatch-grid {
+  display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 5px;
 }
@@ -1411,6 +1497,10 @@ body[data-app-mode="article"] .profile-inline {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: transparent;
+}
+
+.selection-underline-palette {
+  min-width: 176px;
 }
 
 .image-popover {

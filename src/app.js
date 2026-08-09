@@ -28,6 +28,7 @@ const IMAGE_MEDIA_STORE = "images";
 const STORAGE_KEY = "graphicTextLayoutState.v1";
 const PROJECTS_STORAGE_KEY = "graphicTextLayoutProjects.v1";
 const AUTHOR_PROFILE_STORAGE_KEY = "writeThenPublishAuthorProfile.v1";
+const CUSTOM_COLOR_PALETTE_STORAGE_KEY = "writeThenPublishCustomColorPalette.v1";
 const PANEL_LAYOUT_STORAGE_KEY = "writeThenPublishPanelLayout.v1";
 const ONBOARDING_STORAGE_KEY = "writeThenPublishOnboarding.v1";
 const ENTRY_MODE_SESSION_KEY = "writeThenPublishEntryMode.v1";
@@ -68,6 +69,7 @@ function needsLivePhotoStaticFallback() {
     && !cloudLivePhotoAvailable();
 }
 const MAX_PROJECTS = 24;
+const MAX_SAVED_CUSTOM_COLORS = 12;
 // 超过这个体积的原片不做云端备份：实况生成不需要它，自动上传几百 MB 只会拖慢同步。
 const MAX_CLOUD_BACKUP_VIDEO_BYTES = 80 * 1024 * 1024;
 const BUILT_IN_PROJECT_PREFIX = "guide_";
@@ -178,13 +180,16 @@ const els = {
   inlineBgColor: $("#inlineBgColorInput"),
   colorMenu: $("#colorMenu"),
   bgColorMenu: $("#bgColorMenu"),
+  underlineMenu: $("#underlineMenu"),
   colorTool: $(".color-tool"),
   bgColorTool: $(".bg-color-tool"),
   selectionToolbar: $("#selectionToolbar"),
   selectionColorBtn: $("#selectionColorBtn"),
   selectionBgColorBtn: $("#selectionBgColorBtn"),
+  selectionUnderlineBtn: $("#selectionUnderlineBtn"),
   selectionColorPalette: $("#selectionColorPalette"),
   selectionBgPalette: $("#selectionBgPalette"),
+  selectionUnderlinePalette: $("#selectionUnderlinePalette"),
   selectionColorSwatches: $("#selectionColorSwatches"),
   selectionBgSwatches: $("#selectionBgSwatches"),
   selectionCustomColor: $("#selectionCustomColorInput"),
@@ -1919,6 +1924,8 @@ async function hydrateCloudProject(project) {
 async function activateWorkspaceScope(scope, projects = null, profile = null) {
   cloudState.loadingWorkspace = true;
   activeStorageScope = scope;
+  buildSelectionSwatches("color");
+  buildSelectionSwatches("bg");
   try {
     if (profile) {
       const normalizedProfile = normalizeAuthorProfile({
@@ -3108,6 +3115,10 @@ function insertAtRange(textarea, value, start, end = start, selectOffset = null)
 }
 
 function wrapSelection(kind) {
+  if (kind === "underline-solid" || kind === "underline-dashed") {
+    applyUnderlineToSelection(kind === "underline-dashed" ? "dashed" : "solid");
+    return;
+  }
   commitTextHistory();
   const textarea = els.content;
   const start = textarea.selectionStart;
@@ -3147,16 +3158,101 @@ function wrapSelection(kind) {
 const TEXT_COLOR_PRESETS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#111827"];
 const BG_COLOR_PRESETS = ["#fee2e2", "#ffedd5", "#fef9c3", "#dcfce7", "#dbeafe", "#ede9fe", "#fce7f3", "#f3f4f6"];
 
+function colorPaletteKind(kind) {
+  return kind === "color" ? "color" : "bg";
+}
+
+function builtInColorsForKind(kind) {
+  return colorPaletteKind(kind) === "color" ? TEXT_COLOR_PRESETS : BG_COLOR_PRESETS;
+}
+
+function normalizePaletteColor(color) {
+  const normalized = String(color || "").trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : "";
+}
+
+function normalizeCustomColorPalette(value) {
+  const normalized = { color: [], bg: [] };
+  for (const kind of ["color", "bg"]) {
+    const seen = new Set();
+    const builtIn = new Set(builtInColorsForKind(kind));
+    const colors = Array.isArray(value?.[kind]) ? value[kind] : [];
+    for (const color of colors) {
+      const next = normalizePaletteColor(color);
+      if (!next || builtIn.has(next) || seen.has(next)) continue;
+      seen.add(next);
+      normalized[kind].push(next);
+      if (normalized[kind].length >= MAX_SAVED_CUSTOM_COLORS) break;
+    }
+  }
+  return normalized;
+}
+
+function loadCustomColorPalette() {
+  try {
+    const raw = storageForScope().getItem(scopedStorageKey(CUSTOM_COLOR_PALETTE_STORAGE_KEY));
+    return normalizeCustomColorPalette(raw ? JSON.parse(raw) : null);
+  } catch {
+    return { color: [], bg: [] };
+  }
+}
+
+function saveCustomColorPalette(palette) {
+  try {
+    storageForScope().setItem(
+      scopedStorageKey(CUSTOM_COLOR_PALETTE_STORAGE_KEY),
+      JSON.stringify(normalizeCustomColorPalette(palette)),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function rememberCustomColor(kind, color) {
+  const paletteKind = colorPaletteKind(kind);
+  const normalized = normalizePaletteColor(color);
+  if (!normalized || builtInColorsForKind(paletteKind).includes(normalized)) return false;
+  const palette = loadCustomColorPalette();
+  palette[paletteKind] = [
+    normalized,
+    ...palette[paletteKind].filter((item) => item !== normalized),
+  ].slice(0, MAX_SAVED_CUSTOM_COLORS);
+  if (!saveCustomColorPalette(palette)) {
+    els.status.textContent = "颜色已选择，但暂时无法保存到本机色板";
+    return false;
+  }
+  buildSelectionSwatches(paletteKind);
+  return true;
+}
+
+function clearSavedCustomColors(kind) {
+  const paletteKind = colorPaletteKind(kind);
+  const palette = loadCustomColorPalette();
+  if (!palette[paletteKind].length) return;
+  palette[paletteKind] = [];
+  if (!saveCustomColorPalette(palette)) {
+    els.status.textContent = "保存的颜色暂时无法清空";
+    return;
+  }
+  buildSelectionSwatches(paletteKind);
+  els.status.textContent = paletteKind === "color" ? "已清空保存的字体颜色" : "已清空保存的背景色";
+}
+
 function setCurrentTextColor(color) {
-  els.inlineColor.value = color;
-  document.documentElement.style.setProperty("--brush-color", color);
-  if (els.selectionColorDot) els.selectionColorDot.style.background = color;
+  const normalized = normalizePaletteColor(color) || color;
+  els.inlineColor.value = normalized;
+  if (els.selectionCustomColor) els.selectionCustomColor.value = normalized;
+  document.documentElement.style.setProperty("--brush-color", normalized);
+  if (els.selectionColorDot) els.selectionColorDot.style.background = normalized;
 }
 
 function setCurrentBgColor(color) {
-  els.inlineBgColor.value = color;
-  document.documentElement.style.setProperty("--text-bg-brush-color", color);
-  if (els.selectionBgColorDot) els.selectionBgColorDot.style.background = color;
+  const normalized = normalizePaletteColor(color) || color;
+  els.inlineBgColor.value = normalized;
+  if (els.selectionCustomBg) els.selectionCustomBg.value = normalized;
+  document.documentElement.style.setProperty("--text-bg-brush-color", normalized);
+  if (els.selectionBgColorDot) els.selectionBgColorDot.style.background = normalized;
 }
 
 function findMatchingMarkerClose(value, open) {
@@ -3206,7 +3302,8 @@ function unwrapInlineStyleBounds(value, start, end) {
   while (innerStart < innerEnd) {
     const colorMatch = matchInlineMarker(value, innerStart, "color");
     const bgMatch = colorMatch ? null : matchInlineMarker(value, innerStart, "bg");
-    const inlineMatch = colorMatch || bgMatch;
+    const underlineMatch = colorMatch || bgMatch ? null : matchUnderlineMarker(value, innerStart);
+    const inlineMatch = colorMatch || bgMatch || underlineMatch;
 
     if (inlineMatch && inlineMatch.end === innerEnd) {
       innerStart = inlineMatch.innerStart;
@@ -3306,8 +3403,43 @@ function applyColorToSelection(kind, color) {
   return true;
 }
 
+function applyUnderlineToSelection(style) {
+  const underlineStyle = style === "dashed" ? "dashed" : "solid";
+  const textarea = els.content;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const value = textarea.value;
+  const selected = value.slice(start, end) || "文字";
+  const markerOpen = `{{underline:${underlineStyle}|`;
+  commitTextHistory();
+  let nextValue;
+  let selectFrom;
+  let keepSelected = selected;
+  const rewrite = start === end ? null : findRecolorableMarker(value, start, end, "underline");
+  if (rewrite) {
+    const innerStart = value.indexOf("|", rewrite.open) + 1;
+    const inner = flattenMarkerKind(value.slice(innerStart, rewrite.close - 2), "underline");
+    nextValue = `${value.slice(0, rewrite.open)}${markerOpen}${inner}}}`.concat(value.slice(rewrite.close));
+    const nextInnerStart = rewrite.open + markerOpen.length;
+    const visible = unwrapInlineStyleBounds(nextValue, nextInnerStart, nextInnerStart + inner.length);
+    selectFrom = visible.start;
+    keepSelected = nextValue.slice(visible.start, visible.end);
+  } else {
+    nextValue = `${value.slice(0, start)}${markerOpen}${selected}}}`.concat(value.slice(end));
+    selectFrom = start + markerOpen.length;
+  }
+  textarea.value = nextValue;
+  textarea.focus();
+  textarea.setSelectionRange(selectFrom, selectFrom + keepSelected.length);
+  commitTextHistory();
+  requestRender();
+  els.status.textContent = `已应用${underlineStyle === "dashed" ? "虚线" : "实线"}下划线`;
+  return true;
+}
+
 function applyColorFromEditorPicker(kind) {
   const color = kind === "color" ? els.inlineColor.value : els.inlineBgColor.value;
+  rememberCustomColor(kind, color);
   if (applyColorToSelection(kind, color)) {
     if (kind === "color") {
       els.colorMenu.open = false;
@@ -3323,14 +3455,20 @@ let selectionToolbarTimer = null;
 let selectionMirror = null;
 
 function setSelectionPalette(kind, open) {
-  const palette = kind === "color" ? els.selectionColorPalette : els.selectionBgPalette;
-  const other = kind === "color" ? els.selectionBgPalette : els.selectionColorPalette;
-  palette.hidden = !open;
-  other.hidden = true;
+  const palettes = {
+    color: els.selectionColorPalette,
+    bg: els.selectionBgPalette,
+    underline: els.selectionUnderlinePalette,
+  };
+  Object.entries(palettes).forEach(([name, palette]) => {
+    if (palette) palette.hidden = !open || name !== kind;
+  });
 }
 
 function selectionPaletteIsOpen() {
-  return !els.selectionColorPalette?.hidden || !els.selectionBgPalette?.hidden;
+  return !els.selectionColorPalette?.hidden
+    || !els.selectionBgPalette?.hidden
+    || !els.selectionUnderlinePalette?.hidden;
 }
 
 function refreshSelectionToolbarColors() {
@@ -3342,16 +3480,36 @@ function keepTextareaSelection(event) {
   event.preventDefault();
 }
 
-function buildSelectionSwatches(kind) {
-  const container = kind === "color" ? els.selectionColorSwatches : els.selectionBgSwatches;
-  const presets = kind === "color" ? TEXT_COLOR_PRESETS : BG_COLOR_PRESETS;
-  container.replaceChildren();
-  for (const color of presets) {
+function appendSelectionSwatchSection(container, kind, label, colors, { saved = false } = {}) {
+  if (!colors.length) return;
+  const section = document.createElement("section");
+  section.className = "selection-swatch-section";
+  const heading = document.createElement("div");
+  heading.className = "selection-swatch-heading";
+  const title = document.createElement("span");
+  title.textContent = label;
+  heading.appendChild(title);
+
+  if (saved) {
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "selection-swatch-clear";
+    clear.textContent = "清空";
+    clear.title = "清空保存的颜色";
+    clear.setAttribute("aria-label", `清空保存的${kind === "color" ? "字体" : "背景"}颜色`);
+    clear.addEventListener("mousedown", keepTextareaSelection);
+    clear.addEventListener("click", () => clearSavedCustomColors(kind));
+    heading.appendChild(clear);
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "selection-swatch-grid";
+  for (const color of colors) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "selection-swatch";
-    button.title = color;
-    button.setAttribute("aria-label", `应用颜色 ${color}`);
+    button.title = saved ? `已保存：${color}` : color;
+    button.setAttribute("aria-label", `${saved ? "应用已保存颜色" : "应用颜色"} ${color}`);
     button.style.background = color;
     button.addEventListener("mousedown", keepTextareaSelection);
     button.addEventListener("click", () => {
@@ -3361,8 +3519,21 @@ function buildSelectionSwatches(kind) {
       setSelectionPalette(kind, false);
       refreshSelectionToolbarColors();
     });
-    container.appendChild(button);
+    grid.appendChild(button);
   }
+
+  section.append(heading, grid);
+  container.appendChild(section);
+}
+
+function buildSelectionSwatches(kind) {
+  const paletteKind = colorPaletteKind(kind);
+  const container = paletteKind === "color" ? els.selectionColorSwatches : els.selectionBgSwatches;
+  if (!container) return;
+  const saved = loadCustomColorPalette()[paletteKind];
+  container.replaceChildren();
+  appendSelectionSwatchSection(container, paletteKind, "已保存", saved, { saved: true });
+  appendSelectionSwatchSection(container, paletteKind, "默认", builtInColorsForKind(paletteKind));
 }
 
 function ensureSelectionMirror() {
@@ -5149,6 +5320,19 @@ function matchInlineMarker(text, i, kind) {
   return { color, innerStart: colorEnd + 1, innerEnd: close - 2, end: close };
 }
 
+function matchUnderlineMarker(text, i) {
+  const match = text.slice(i).match(/^\{\{underline:(solid|dashed)\|/);
+  if (!match) return null;
+  const close = findMatchingMarkerClose(text, i);
+  if (close === -1) return null;
+  return {
+    style: match[1],
+    innerStart: i + match[0].length,
+    innerEnd: close - 2,
+    end: close,
+  };
+}
+
 function parseInline(text, baseStart = 0) {
   const tokens = [];
   let i = 0;
@@ -5163,6 +5347,18 @@ function parseInline(text, baseStart = 0) {
         sourceEnd: baseStart + i + imageMatch[0].length,
       });
       i += imageMatch[0].length;
+      continue;
+    }
+
+    const underlineMatch = matchUnderlineMarker(text, i);
+    if (underlineMatch) {
+      tokens.push(
+        ...applyInlineStyle(
+          parseInline(text.slice(underlineMatch.innerStart, underlineMatch.innerEnd), baseStart + underlineMatch.innerStart),
+          { underline: underlineMatch.style },
+        ),
+      );
+      i = underlineMatch.end;
       continue;
     }
 
@@ -5208,7 +5404,7 @@ function parseInline(text, baseStart = 0) {
       }
     }
 
-    const nextMarkers = ["[[image:", "{{color:", "{{bg:", "**", "*"]
+    const nextMarkers = ["[[image:", "{{underline:", "{{color:", "{{bg:", "**", "*"]
       .map((marker) => text.indexOf(marker, i + 1))
       .filter((index) => index !== -1);
     const next = nextMarkers.length ? Math.min(...nextMarkers) : text.length;
@@ -5855,6 +6051,24 @@ function drawTableBlock(ctx, item, settings) {
   ctx.restore();
 }
 
+function drawUnderlineRun(ctx, run, style, baseline) {
+  if (!run || run.end <= run.start) return;
+  const offset = Math.max(2, Math.round(style.size * 0.11));
+  ctx.save();
+  ctx.strokeStyle = run.color;
+  ctx.lineWidth = Math.max(1.4, Math.round(style.size * 0.055 * 10) / 10);
+  ctx.lineCap = run.style === "dashed" ? "round" : "butt";
+  if (run.style === "dashed") {
+    const dash = Math.max(3, Math.round(style.size * 0.18));
+    ctx.setLineDash([dash, Math.max(2, Math.round(dash * 0.72))]);
+  }
+  ctx.beginPath();
+  ctx.moveTo(run.start, baseline + offset);
+  ctx.lineTo(run.end, baseline + offset);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawTextLine(ctx, item, settings) {
   const { style, line, x, y, lineHeight } = item;
   if (style.quote) {
@@ -5865,6 +6079,11 @@ function drawTextLine(ctx, item, settings) {
 
   let cursor = x;
   const baseline = y + Math.round(lineHeight * 0.75);
+  let underlineRun = null;
+  const flushUnderlineRun = () => {
+    drawUnderlineRun(ctx, underlineRun, style, baseline);
+    underlineRun = null;
+  };
   for (const token of line) {
     ctx.font = fontString(style, token);
     const width = glyphWidth(ctx, token, style);
@@ -5884,8 +6103,25 @@ function drawTextLine(ctx, item, settings) {
     }
     ctx.fillStyle = textColor;
     ctx.fillText(token.text, cursor, baseline);
-    cursor += width + tokenLetterSpacing(token, style);
+    const nextCursor = cursor + width + tokenLetterSpacing(token, style);
+    if (token.underline) {
+      if (
+        underlineRun
+        && underlineRun.style === token.underline
+        && underlineRun.color === textColor
+        && underlineRun.end === cursor
+      ) {
+        underlineRun.end = nextCursor;
+      } else {
+        flushUnderlineRun();
+        underlineRun = { style: token.underline, color: textColor, start: cursor, end: nextCursor };
+      }
+    } else {
+      flushUnderlineRun();
+    }
+    cursor = nextCursor;
   }
+  flushUnderlineRun();
 }
 
 function drawCoverImage(ctx, image, x, y, width, height) {
@@ -6087,6 +6323,12 @@ function renderArticleInline(text) {
 
       const styles = [];
       if (token.color) styles.push(`color: ${token.color}`);
+      if (token.underline) {
+        styles.push("text-decoration-line: underline");
+        styles.push(`text-decoration-style: ${token.underline}`);
+        styles.push("text-decoration-thickness: 1.5px");
+        styles.push("text-underline-offset: 0.14em");
+      }
       if (token.bgColor) {
         styles.push(`background-color: ${token.bgColor}`);
         styles.push("border-radius: 4px");
@@ -9739,7 +9981,10 @@ function bindEvents() {
   });
 
   document.querySelectorAll(".toolbar [data-format]").forEach((button) => {
-    button.addEventListener("click", () => wrapSelection(button.dataset.format));
+    button.addEventListener("click", () => {
+      wrapSelection(button.dataset.format);
+      button.closest(".tool-menu")?.removeAttribute("open");
+    });
   });
 
   els.modeButtons.forEach((button) => {
@@ -9819,9 +10064,13 @@ function bindEvents() {
   els.content.addEventListener("scroll", hideSelectionToolbar);
   els.selectionColorBtn?.addEventListener("mousedown", keepTextareaSelection);
   els.selectionBgColorBtn?.addEventListener("mousedown", keepTextareaSelection);
+  els.selectionUnderlineBtn?.addEventListener("mousedown", keepTextareaSelection);
   document.querySelectorAll(".selection-toolbar [data-format]").forEach((button) => {
     button.addEventListener("mousedown", keepTextareaSelection);
-    button.addEventListener("click", () => wrapSelection(button.dataset.format));
+    button.addEventListener("click", () => {
+      wrapSelection(button.dataset.format);
+      if (button.dataset.format?.startsWith("underline-")) setSelectionPalette(null, false);
+    });
   });
   els.selectionColorBtn?.addEventListener("click", () => {
     setSelectionPalette("color", els.selectionColorPalette.hidden);
@@ -9829,15 +10078,22 @@ function bindEvents() {
   els.selectionBgColorBtn?.addEventListener("click", () => {
     setSelectionPalette("bg", els.selectionBgPalette.hidden);
   });
+  els.selectionUnderlineBtn?.addEventListener("click", () => {
+    setSelectionPalette("underline", els.selectionUnderlinePalette.hidden);
+  });
   els.selectionCustomColor?.addEventListener("change", () => {
-    applyColorToSelection("color", els.selectionCustomColor.value);
-    setCurrentTextColor(els.selectionCustomColor.value);
+    const color = els.selectionCustomColor.value;
+    rememberCustomColor("color", color);
+    applyColorToSelection("color", color);
+    setCurrentTextColor(color);
     setSelectionPalette("color", false);
     refreshSelectionToolbarColors();
   });
   els.selectionCustomBg?.addEventListener("change", () => {
-    applyColorToSelection("bg", els.selectionCustomBg.value);
-    setCurrentBgColor(els.selectionCustomBg.value);
+    const color = els.selectionCustomBg.value;
+    rememberCustomColor("bg", color);
+    applyColorToSelection("bg", color);
+    setCurrentBgColor(color);
     setSelectionPalette("bg", false);
     refreshSelectionToolbarColors();
   });
