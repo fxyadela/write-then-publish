@@ -434,20 +434,6 @@
               同步草稿箱
             </button>
           </div>
-          <section id="exportProgress" class="export-progress" aria-live="polite" aria-label="导出处理进度" hidden>
-            <div class="export-progress-card">
-              <span class="export-progress-icon" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
-              <div class="export-progress-copy">
-                <strong id="exportProgressTitle">正在准备导出</strong>
-                <span id="exportProgressDetail">系统正在处理，请不要关闭页面。</span>
-              </div>
-              <strong id="exportProgressPercent" class="export-progress-percent">0%</strong>
-              <span id="exportProgressMeta" class="export-progress-meta">已用时 0 秒</span>
-              <div id="exportProgressBar" class="export-progress-track" role="progressbar" aria-label="导出进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="正在处理">
-                <span id="exportProgressFill" class="export-progress-fill"></span>
-              </div>
-            </div>
-          </section>
         </div>
         <div class="preview-body">
           <div id="pages" class="pages"></div>
@@ -1025,6 +1011,22 @@
         </div>
       </div>
     </div>
+
+    <!-- 必须保持为 body 直属层：iPad Safari 会裁剪 sticky/overflow 面板里的 fixed 下载遮罩。 -->
+    <section id="exportProgress" class="export-progress" aria-live="polite" aria-label="导出处理进度" hidden>
+      <div class="export-progress-card">
+        <span class="export-progress-icon" aria-hidden="true"><i data-lucide="loader-circle"></i></span>
+        <div class="export-progress-copy">
+          <strong id="exportProgressTitle">正在准备导出</strong>
+          <span id="exportProgressDetail">系统正在处理，请不要关闭页面。</span>
+        </div>
+        <strong id="exportProgressPercent" class="export-progress-percent">0%</strong>
+        <span id="exportProgressMeta" class="export-progress-meta">已用时 0 秒</span>
+        <div id="exportProgressBar" class="export-progress-track" role="progressbar" aria-label="导出进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="正在处理">
+          <span id="exportProgressFill" class="export-progress-fill"></span>
+        </div>
+      </div>
+    </section>
 
     <div id="onboardingTour" class="onboarding-tour hidden" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
       <div id="onboardingFocus" class="onboarding-focus" aria-hidden="true"></div>
