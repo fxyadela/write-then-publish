@@ -11,9 +11,7 @@ const CARD_CONTENT_WIDTH = CANVAS_WIDTH - CARD_SIDE_PADDING * 2;
 const CARD_MAX_IMAGE_HEIGHT = CANVAS_HEIGHT - CARD_SIDE_PADDING - 62;
 const DEFAULT_CARD_FONT_SIZE = 34;
 const DEFAULT_CARD_LINE_HEIGHT = 1.85;
-const DEFAULT_UNDERLINE_GAP = 8;
-const MIN_UNDERLINE_GAP = 3;
-const MAX_UNDERLINE_GAP = 14;
+const UNDERLINE_GAP = 15;
 const CARD_BODY_FONT_WEIGHT = 400;
 const CARD_BODY_STROKE_WIDTH = 0;
 const EXPORT_IMAGE_MIME = "image/png";
@@ -222,10 +220,6 @@ const els = {
   bgColor: $("#bgColorInput"),
   fontSize: $("#fontSizeInput"),
   lineHeight: $("#lineHeightInput"),
-  underlineGap: $("#underlineGapInput"),
-  underlineGapOutput: $("#underlineGapOutput"),
-  selectionUnderlineGap: $("#selectionUnderlineGapInput"),
-  selectionUnderlineGapOutput: $("#selectionUnderlineGapOutput"),
   zhFont: $("#zhFontInput"),
   enFont: $("#enFontInput"),
   imageHeight: $("#imageHeightInput"),
@@ -551,7 +545,6 @@ function defaultFormState() {
     bgColor: "#ffffff",
     fontSize: String(DEFAULT_CARD_FONT_SIZE),
     lineHeight: String(DEFAULT_CARD_LINE_HEIGHT),
-    underlineGap: String(DEFAULT_UNDERLINE_GAP),
     zhFont: "zh-system",
     enFont: "en-system",
     imageHeight: String(CARD_MAX_IMAGE_HEIGHT),
@@ -819,7 +812,6 @@ function readForm() {
     bgColor: els.bgColor.value,
     fontSize: clamp(Number(els.fontSize.value) || DEFAULT_CARD_FONT_SIZE, 24, 40),
     lineHeight: clamp(Number(els.lineHeight.value) || DEFAULT_CARD_LINE_HEIGHT, 1, 2.4),
-    underlineGap: clamp(Number(els.underlineGap.value) || DEFAULT_UNDERLINE_GAP, MIN_UNDERLINE_GAP, MAX_UNDERLINE_GAP),
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
     imageHeight: clamp(Number(els.imageHeight.value) || CARD_MAX_IMAGE_HEIGHT, 220, CARD_MAX_IMAGE_HEIGHT),
@@ -890,7 +882,6 @@ function applyForm(data) {
   els.bgColor.value = data.bgColor ?? "#ffffff";
   els.fontSize.value = data.fontSize ?? String(DEFAULT_CARD_FONT_SIZE);
   els.lineHeight.value = data.lineHeight ?? String(DEFAULT_CARD_LINE_HEIGHT);
-  syncUnderlineGapControls(data.underlineGap ?? DEFAULT_UNDERLINE_GAP, false);
   els.zhFont.value = FONT_STACKS[data.zhFont] ? data.zhFont : "zh-system";
   els.enFont.value = FONT_STACKS[data.enFont] ? data.enFont : "en-system";
   const storedImageHeight = String(data.imageHeight ?? CARD_MAX_IMAGE_HEIGHT);
@@ -2547,11 +2538,7 @@ function migrateStoredState(data) {
   if (!Number.isFinite(Number(data.lineHeight)) || Math.abs(Number(data.lineHeight) - 1.65) < 0.001) {
     data.lineHeight = String(DEFAULT_CARD_LINE_HEIGHT);
   }
-  if (!Number.isFinite(Number(data.underlineGap))) {
-    data.underlineGap = String(DEFAULT_UNDERLINE_GAP);
-  } else {
-    data.underlineGap = String(clamp(Number(data.underlineGap), MIN_UNDERLINE_GAP, MAX_UNDERLINE_GAP));
-  }
+  delete data.underlineGap;
   data.headerMode = data.headerMode === "first" ? "first" : "every";
   data.appMode = data.appMode === "article" ? "article" : "cards";
   data.articleTheme = normalizeArticleTheme(data.articleTheme);
@@ -3130,6 +3117,10 @@ function insertAtRange(textarea, value, start, end = start, selectOffset = null)
 }
 
 function wrapSelection(kind) {
+  if (kind === "underline-none") {
+    removeUnderlineFromSelection();
+    return;
+  }
   if (kind === "underline-solid" || kind === "underline-dashed") {
     applyUnderlineToSelection(kind === "underline-dashed" ? "dashed" : "solid");
     return;
@@ -3140,6 +3131,7 @@ function wrapSelection(kind) {
   }
   commitTextHistory();
   const textarea = els.content;
+  const viewport = captureTextareaViewport(textarea);
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
   const selected = textarea.value.slice(start, end) || "文字";
@@ -3160,15 +3152,37 @@ function wrapSelection(kind) {
   } else {
     textarea.setSelectionRange(start + next.length, start + next.length);
   }
-  textarea.focus();
+  restoreTextareaSelection(textarea, textarea.selectionStart, textarea.selectionEnd, viewport);
   commitTextHistory();
   requestRender();
+}
+
+function captureTextareaViewport(textarea) {
+  return {
+    scrollTop: textarea.scrollTop,
+    scrollLeft: textarea.scrollLeft,
+    windowX: window.scrollX,
+    windowY: window.scrollY,
+  };
+}
+
+function restoreTextareaSelection(textarea, start, end, viewport) {
+  const restore = () => {
+    textarea.scrollTop = viewport.scrollTop;
+    textarea.scrollLeft = viewport.scrollLeft;
+    window.scrollTo(viewport.windowX, viewport.windowY);
+  };
+  textarea.focus({ preventScroll: true });
+  textarea.setSelectionRange(start, end);
+  restore();
+  requestAnimationFrame(restore);
 }
 
 function applyBlockStyleToSelection(kind) {
   const prefix = kind === "h1" ? "# " : kind === "h2" ? "## " : "> ";
   const label = kind === "h1" ? "标题 1" : kind === "h2" ? "标题 2" : "引用";
   const textarea = els.content;
+  const viewport = captureTextareaViewport(textarea);
   const value = textarea.value;
   const selectionStart = textarea.selectionStart;
   const selectionEnd = textarea.selectionEnd;
@@ -3211,22 +3225,10 @@ function applyBlockStyleToSelection(kind) {
 
   commitTextHistory();
   textarea.value = `${value.slice(0, lineStart)}${transformed}${value.slice(lineEnd)}`;
-  textarea.focus();
-  textarea.setSelectionRange(mapPosition(selectionStart), mapPosition(selectionEnd));
+  restoreTextareaSelection(textarea, mapPosition(selectionStart), mapPosition(selectionEnd), viewport);
   commitTextHistory();
   requestRender();
   els.status.textContent = `已应用${label}；仍可叠加粗体、斜体、颜色和下划线`;
-}
-
-function syncUnderlineGapControls(value, shouldRender = true) {
-  const gap = clamp(Number(value) || DEFAULT_UNDERLINE_GAP, MIN_UNDERLINE_GAP, MAX_UNDERLINE_GAP);
-  const normalized = String(Math.round(gap));
-  if (els.underlineGap) els.underlineGap.value = normalized;
-  if (els.selectionUnderlineGap) els.selectionUnderlineGap.value = normalized;
-  if (els.underlineGapOutput) els.underlineGapOutput.textContent = `${normalized} px`;
-  if (els.selectionUnderlineGapOutput) els.selectionUnderlineGapOutput.textContent = `${normalized} px`;
-  document.documentElement.style.setProperty("--editor-underline-gap", `${normalized}px`);
-  if (shouldRender) requestRender();
 }
 
 const TEXT_COLOR_PRESETS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#111827"];
@@ -3442,8 +3444,29 @@ function findRecolorableMarker(value, start, end, marker) {
   return recolor || fallback;
 }
 
+function findEnclosingMarker(value, start, end, marker) {
+  const openToken = `{{${marker}:`;
+  let searchFrom = start;
+  while (searchFrom >= 0) {
+    const open = value.lastIndexOf(openToken, searchFrom);
+    if (open === -1) return null;
+    searchFrom = open - 1;
+    const close = findMatchingMarkerClose(value, open);
+    if (close === -1) continue;
+    const innerStart = value.indexOf("|", open) + 1;
+    if (innerStart <= start && end <= close - 2) return { open, close };
+  }
+  return null;
+}
+
+function underlineStyleForMarker(value, marker) {
+  if (!marker) return "";
+  return value.slice(marker.open).match(/^\{\{underline:(solid|dashed)\|/)?.[1] || "";
+}
+
 function applyColorToSelection(kind, color) {
   const textarea = els.content;
+  const viewport = captureTextareaViewport(textarea);
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
   if (start === end) return false;
@@ -3469,8 +3492,7 @@ function applyColorToSelection(kind, color) {
     selectFrom = start + markerOpen.length;
   }
   textarea.value = nextValue;
-  textarea.focus();
-  textarea.setSelectionRange(selectFrom, selectFrom + keepSelected.length);
+  restoreTextareaSelection(textarea, selectFrom, selectFrom + keepSelected.length, viewport);
   commitTextHistory();
   requestRender();
   els.status.textContent = kind === "color" ? `已应用字体颜色 ${color}` : `已应用背景色 ${color}`;
@@ -3480,11 +3502,19 @@ function applyColorToSelection(kind, color) {
 function applyUnderlineToSelection(style) {
   const underlineStyle = style === "dashed" ? "dashed" : "solid";
   const textarea = els.content;
+  const viewport = captureTextareaViewport(textarea);
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
   const value = textarea.value;
   const selected = value.slice(start, end) || "文字";
   const markerOpen = `{{underline:${underlineStyle}|`;
+  const existing = start === end
+    ? null
+    : findRecolorableMarker(value, start, end, "underline")
+      || findEnclosingMarker(value, start, end, "underline");
+  if (existing && underlineStyleForMarker(value, existing) === underlineStyle) {
+    return removeUnderlineFromSelection(existing, viewport);
+  }
   commitTextHistory();
   let nextValue;
   let selectFrom;
@@ -3503,11 +3533,41 @@ function applyUnderlineToSelection(style) {
     selectFrom = start + markerOpen.length;
   }
   textarea.value = nextValue;
-  textarea.focus();
-  textarea.setSelectionRange(selectFrom, selectFrom + keepSelected.length);
+  restoreTextareaSelection(textarea, selectFrom, selectFrom + keepSelected.length, viewport);
   commitTextHistory();
   requestRender();
   els.status.textContent = `已应用${underlineStyle === "dashed" ? "虚线" : "实线"}下划线`;
+  return true;
+}
+
+function removeUnderlineFromSelection(target = null, capturedViewport = null) {
+  const textarea = els.content;
+  const viewport = capturedViewport || captureTextareaViewport(textarea);
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  if (start === end) {
+    els.status.textContent = "请先选中要取消下划线的文字";
+    return false;
+  }
+  const value = textarea.value;
+  const underline = target
+    || findRecolorableMarker(value, start, end, "underline")
+    || findEnclosingMarker(value, start, end, "underline");
+  if (!underline) {
+    els.status.textContent = "选中内容没有下划线";
+    return false;
+  }
+
+  const innerStart = value.indexOf("|", underline.open) + 1;
+  const inner = flattenMarkerKind(value.slice(innerStart, underline.close - 2), "underline");
+  const nextValue = `${value.slice(0, underline.open)}${inner}${value.slice(underline.close)}`;
+  const visible = unwrapInlineStyleBounds(nextValue, underline.open, underline.open + inner.length);
+  commitTextHistory();
+  textarea.value = nextValue;
+  restoreTextareaSelection(textarea, visible.start, visible.end, viewport);
+  commitTextHistory();
+  requestRender();
+  els.status.textContent = "已取消下划线";
   return true;
 }
 
@@ -6125,24 +6185,19 @@ function drawTableBlock(ctx, item, settings) {
   ctx.restore();
 }
 
-function drawUnderlineRun(ctx, run, style, baseline, settings) {
+function drawUnderlineRun(ctx, run, style, baseline) {
   if (!run || run.end <= run.start) return;
-  const offset = clamp(
-    Number(settings?.underlineGap) || DEFAULT_UNDERLINE_GAP,
-    MIN_UNDERLINE_GAP,
-    MAX_UNDERLINE_GAP,
-  );
   ctx.save();
   ctx.strokeStyle = run.color;
-  ctx.lineWidth = Math.max(1.4, Math.round(style.size * 0.055 * 10) / 10);
+  ctx.lineWidth = Math.max(2.4, Math.round(style.size * 0.07 * 10) / 10);
   ctx.lineCap = run.style === "dashed" ? "round" : "butt";
   if (run.style === "dashed") {
     const dash = Math.max(3, Math.round(style.size * 0.18));
     ctx.setLineDash([dash, Math.max(2, Math.round(dash * 0.72))]);
   }
   ctx.beginPath();
-  ctx.moveTo(run.start, baseline + offset);
-  ctx.lineTo(run.end, baseline + offset);
+  ctx.moveTo(run.start, baseline + UNDERLINE_GAP);
+  ctx.lineTo(run.end, baseline + UNDERLINE_GAP);
   ctx.stroke();
   ctx.restore();
 }
@@ -6159,7 +6214,7 @@ function drawTextLine(ctx, item, settings) {
   const baseline = y + Math.round(lineHeight * 0.75);
   let underlineRun = null;
   const flushUnderlineRun = () => {
-    drawUnderlineRun(ctx, underlineRun, style, baseline, settings);
+    drawUnderlineRun(ctx, underlineRun, style, baseline);
     underlineRun = null;
   };
   for (const token of line) {
@@ -6262,7 +6317,7 @@ function renderArticlePreview(settings) {
   const article = document.createElement("article");
   article.className = `article-preview article-theme-${settings.articleTheme} article-font-${settings.articleFont} article-size-${settings.articleSize}`;
   article.style.setProperty("--article-accent", settings.articleColor);
-  article.style.setProperty("--article-underline-gap", `${settings.underlineGap}px`);
+  article.style.setProperty("--article-underline-gap", `${UNDERLINE_GAP}px`);
   article.innerHTML = markdownToArticleHtml(settings.content, settings.images);
   hydrateArticleLiveMedia(article, settings.images);
   els.pages.append(article);
@@ -6405,8 +6460,8 @@ function renderArticleInline(text) {
       if (token.underline) {
         styles.push("text-decoration-line: underline");
         styles.push(`text-decoration-style: ${token.underline}`);
-        styles.push("text-decoration-thickness: 1.5px");
-        styles.push("text-underline-offset: var(--article-underline-gap, 8px)");
+        styles.push("text-decoration-thickness: 2px");
+        styles.push("text-underline-offset: var(--article-underline-gap, 15px)");
       }
       if (token.bgColor) {
         styles.push(`background-color: ${token.bgColor}`);
@@ -10108,22 +10163,12 @@ function bindEvents() {
     els.bgColor,
     els.fontSize,
     els.lineHeight,
-    els.underlineGap,
     els.zhFont,
     els.enFont,
     els.imageHeight,
   ].forEach((input) => {
-    const update = input === els.underlineGap
-      ? () => syncUnderlineGapControls(input.value)
-      : requestRender;
-    input.addEventListener("input", update);
-    input.addEventListener("change", update);
-  });
-  els.selectionUnderlineGap?.addEventListener("input", () => {
-    syncUnderlineGapControls(els.selectionUnderlineGap.value);
-  });
-  els.selectionUnderlineGap?.addEventListener("change", () => {
-    syncUnderlineGapControls(els.selectionUnderlineGap.value);
+    input.addEventListener("input", requestRender);
+    input.addEventListener("change", requestRender);
   });
 
   els.inlineColor.addEventListener("input", () => {

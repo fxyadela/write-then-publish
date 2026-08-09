@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260810-style-composition-gap" />
+    <link rel="stylesheet" href="src/styles.css?v=20260810-underline-toggle-scroll" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -115,20 +115,19 @@
               <div class="tool-popover underline-popover">
                 <div class="color-guide">
                   <strong>下划线</strong>
-                  <span>选中后选择实线或虚线，可与颜色、粗体等格式叠加。</span>
+                  <span>线距固定 15 px。再次选择同款可取消，也可直接点“取消”。</span>
                 </div>
                 <div class="underline-options" role="group" aria-label="下划线样式">
                   <button type="button" class="underline-option" data-format="underline-solid">
-                    <span class="underline-option-preview is-solid">实线下划线</span>
+                    <span class="underline-option-preview is-solid">实线</span>
                   </button>
                   <button type="button" class="underline-option" data-format="underline-dashed">
-                    <span class="underline-option-preview is-dashed">虚线下划线</span>
+                    <span class="underline-option-preview is-dashed">虚线</span>
+                  </button>
+                  <button type="button" class="underline-option" data-format="underline-none">
+                    <span class="underline-option-preview is-none">取消</span>
                   </button>
                 </div>
-                <label class="underline-gap-control" for="underlineGapInput">
-                  <span>文字与线的距离 <output id="underlineGapOutput">8 px</output></span>
-                  <input id="underlineGapInput" type="range" min="3" max="14" step="1" value="8" />
-                </label>
               </div>
             </details>
             <button type="button" class="tool-button" data-format="quote" title="重点引用"><i data-lucide="quote"></i></button>
@@ -367,11 +366,10 @@
                 <button type="button" class="selection-underline-option" data-format="underline-dashed">
                   <span class="underline-option-preview is-dashed">虚线</span>
                 </button>
+                <button type="button" class="selection-underline-option" data-format="underline-none">
+                  <span class="underline-option-preview is-none">取消</span>
+                </button>
               </div>
-              <label class="underline-gap-control selection-underline-gap-control" for="selectionUnderlineGapInput">
-                <span>文字与线的距离 <output id="selectionUnderlineGapOutput">8 px</output></span>
-                <input id="selectionUnderlineGapInput" type="range" min="3" max="14" step="1" value="8" />
-              </label>
             </div>
           </div>
         </section>
@@ -1032,6 +1030,6 @@
         document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260810-style-composition-gap"></script>
+    <script src="src/app.js?v=20260810-underline-toggle-scroll"></script>
   </body>
 </html>
