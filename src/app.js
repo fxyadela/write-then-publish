@@ -11,6 +11,9 @@ const CARD_CONTENT_WIDTH = CANVAS_WIDTH - CARD_SIDE_PADDING * 2;
 const CARD_MAX_IMAGE_HEIGHT = CANVAS_HEIGHT - CARD_SIDE_PADDING - 62;
 const DEFAULT_CARD_FONT_SIZE = 34;
 const DEFAULT_CARD_LINE_HEIGHT = 1.85;
+const DEFAULT_UNDERLINE_GAP = 8;
+const MIN_UNDERLINE_GAP = 3;
+const MAX_UNDERLINE_GAP = 14;
 const CARD_BODY_FONT_WEIGHT = 400;
 const CARD_BODY_STROKE_WIDTH = 0;
 const EXPORT_IMAGE_MIME = "image/png";
@@ -219,6 +222,10 @@ const els = {
   bgColor: $("#bgColorInput"),
   fontSize: $("#fontSizeInput"),
   lineHeight: $("#lineHeightInput"),
+  underlineGap: $("#underlineGapInput"),
+  underlineGapOutput: $("#underlineGapOutput"),
+  selectionUnderlineGap: $("#selectionUnderlineGapInput"),
+  selectionUnderlineGapOutput: $("#selectionUnderlineGapOutput"),
   zhFont: $("#zhFontInput"),
   enFont: $("#enFontInput"),
   imageHeight: $("#imageHeightInput"),
@@ -544,6 +551,7 @@ function defaultFormState() {
     bgColor: "#ffffff",
     fontSize: String(DEFAULT_CARD_FONT_SIZE),
     lineHeight: String(DEFAULT_CARD_LINE_HEIGHT),
+    underlineGap: String(DEFAULT_UNDERLINE_GAP),
     zhFont: "zh-system",
     enFont: "en-system",
     imageHeight: String(CARD_MAX_IMAGE_HEIGHT),
@@ -811,6 +819,7 @@ function readForm() {
     bgColor: els.bgColor.value,
     fontSize: clamp(Number(els.fontSize.value) || DEFAULT_CARD_FONT_SIZE, 24, 40),
     lineHeight: clamp(Number(els.lineHeight.value) || DEFAULT_CARD_LINE_HEIGHT, 1, 2.4),
+    underlineGap: clamp(Number(els.underlineGap.value) || DEFAULT_UNDERLINE_GAP, MIN_UNDERLINE_GAP, MAX_UNDERLINE_GAP),
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
     imageHeight: clamp(Number(els.imageHeight.value) || CARD_MAX_IMAGE_HEIGHT, 220, CARD_MAX_IMAGE_HEIGHT),
@@ -881,6 +890,7 @@ function applyForm(data) {
   els.bgColor.value = data.bgColor ?? "#ffffff";
   els.fontSize.value = data.fontSize ?? String(DEFAULT_CARD_FONT_SIZE);
   els.lineHeight.value = data.lineHeight ?? String(DEFAULT_CARD_LINE_HEIGHT);
+  syncUnderlineGapControls(data.underlineGap ?? DEFAULT_UNDERLINE_GAP, false);
   els.zhFont.value = FONT_STACKS[data.zhFont] ? data.zhFont : "zh-system";
   els.enFont.value = FONT_STACKS[data.enFont] ? data.enFont : "en-system";
   const storedImageHeight = String(data.imageHeight ?? CARD_MAX_IMAGE_HEIGHT);
@@ -2537,6 +2547,11 @@ function migrateStoredState(data) {
   if (!Number.isFinite(Number(data.lineHeight)) || Math.abs(Number(data.lineHeight) - 1.65) < 0.001) {
     data.lineHeight = String(DEFAULT_CARD_LINE_HEIGHT);
   }
+  if (!Number.isFinite(Number(data.underlineGap))) {
+    data.underlineGap = String(DEFAULT_UNDERLINE_GAP);
+  } else {
+    data.underlineGap = String(clamp(Number(data.underlineGap), MIN_UNDERLINE_GAP, MAX_UNDERLINE_GAP));
+  }
   data.headerMode = data.headerMode === "first" ? "first" : "every";
   data.appMode = data.appMode === "article" ? "article" : "cards";
   data.articleTheme = normalizeArticleTheme(data.articleTheme);
@@ -3119,6 +3134,10 @@ function wrapSelection(kind) {
     applyUnderlineToSelection(kind === "underline-dashed" ? "dashed" : "solid");
     return;
   }
+  if (kind === "h1" || kind === "h2" || kind === "quote") {
+    applyBlockStyleToSelection(kind);
+    return;
+  }
   commitTextHistory();
   const textarea = els.content;
   const start = textarea.selectionStart;
@@ -3133,15 +3152,6 @@ function wrapSelection(kind) {
   } else if (kind === "italic") {
     next = `*${selected}*`;
     cursorOffset = 1;
-  } else if (kind === "h1" || kind === "h2" || kind === "quote") {
-    const prefix = kind === "h1" ? "# " : kind === "h2" ? "## " : "> ";
-    const lineStart = textarea.value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
-    textarea.value = `${textarea.value.slice(0, lineStart)}${prefix}${textarea.value.slice(lineStart)}`;
-    textarea.focus();
-    textarea.setSelectionRange(start + prefix.length, end + prefix.length);
-    commitTextHistory();
-    requestRender();
-    return;
   }
 
   textarea.value = `${textarea.value.slice(0, start)}${next}${textarea.value.slice(end)}`;
@@ -3153,6 +3163,70 @@ function wrapSelection(kind) {
   textarea.focus();
   commitTextHistory();
   requestRender();
+}
+
+function applyBlockStyleToSelection(kind) {
+  const prefix = kind === "h1" ? "# " : kind === "h2" ? "## " : "> ";
+  const label = kind === "h1" ? "标题 1" : kind === "h2" ? "标题 2" : "引用";
+  const textarea = els.content;
+  const value = textarea.value;
+  const selectionStart = textarea.selectionStart;
+  const selectionEnd = textarea.selectionEnd;
+  const lineStart = value.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
+  const endsAtNextLine = selectionEnd > selectionStart && value[selectionEnd - 1] === "\n";
+  const effectiveEnd = endsAtNextLine ? selectionEnd - 1 : selectionEnd;
+  const nextLineBreak = value.indexOf("\n", effectiveEnd);
+  const lineEnd = nextLineBreak === -1 ? value.length : nextLineBreak;
+  const block = value.slice(lineStart, lineEnd);
+  const edits = [];
+  let offset = 0;
+
+  const transformed = block.split("\n").map((line) => {
+    const indent = line.match(/^\s*/)?.[0] || "";
+    const afterIndent = line.slice(indent.length);
+    const marker = afterIndent.match(/^(?:#{1,6}|>)\s+/)?.[0] || "";
+    const content = afterIndent.slice(marker.length);
+    const isActiveEmptyLine = selectionStart === selectionEnd
+      && selectionStart >= lineStart + offset
+      && selectionStart <= lineStart + offset + line.length;
+    const replacement = content.length || isActiveEmptyLine ? prefix : "";
+    edits.push({
+      start: lineStart + offset + indent.length,
+      end: lineStart + offset + indent.length + marker.length,
+      replacementLength: replacement.length,
+    });
+    offset += line.length + 1;
+    return `${indent}${replacement}${content}`;
+  }).join("\n");
+
+  const mapPosition = (position) => {
+    let delta = 0;
+    for (const edit of edits) {
+      if (position < edit.start) break;
+      if (position <= edit.end) return edit.start + delta + edit.replacementLength;
+      delta += edit.replacementLength - (edit.end - edit.start);
+    }
+    return position + delta;
+  };
+
+  commitTextHistory();
+  textarea.value = `${value.slice(0, lineStart)}${transformed}${value.slice(lineEnd)}`;
+  textarea.focus();
+  textarea.setSelectionRange(mapPosition(selectionStart), mapPosition(selectionEnd));
+  commitTextHistory();
+  requestRender();
+  els.status.textContent = `已应用${label}；仍可叠加粗体、斜体、颜色和下划线`;
+}
+
+function syncUnderlineGapControls(value, shouldRender = true) {
+  const gap = clamp(Number(value) || DEFAULT_UNDERLINE_GAP, MIN_UNDERLINE_GAP, MAX_UNDERLINE_GAP);
+  const normalized = String(Math.round(gap));
+  if (els.underlineGap) els.underlineGap.value = normalized;
+  if (els.selectionUnderlineGap) els.selectionUnderlineGap.value = normalized;
+  if (els.underlineGapOutput) els.underlineGapOutput.textContent = `${normalized} px`;
+  if (els.selectionUnderlineGapOutput) els.selectionUnderlineGapOutput.textContent = `${normalized} px`;
+  document.documentElement.style.setProperty("--editor-underline-gap", `${normalized}px`);
+  if (shouldRender) requestRender();
 }
 
 const TEXT_COLOR_PRESETS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#111827"];
@@ -5486,7 +5560,7 @@ function styleForBlock(type, settings) {
 
 function fontString(style, token = {}) {
   const italic = token.italic || style.italic ? "italic " : "";
-  const weight = token.bold ? 650 : style.weight;
+  const weight = token.bold ? Math.max(700, Number(style.weight) || CARD_BODY_FONT_WEIGHT) : style.weight;
   return `${italic}${weight} ${style.size}px ${fontFamilyForText(token.text, style)}`;
 }
 
@@ -6051,9 +6125,13 @@ function drawTableBlock(ctx, item, settings) {
   ctx.restore();
 }
 
-function drawUnderlineRun(ctx, run, style, baseline) {
+function drawUnderlineRun(ctx, run, style, baseline, settings) {
   if (!run || run.end <= run.start) return;
-  const offset = Math.max(2, Math.round(style.size * 0.11));
+  const offset = clamp(
+    Number(settings?.underlineGap) || DEFAULT_UNDERLINE_GAP,
+    MIN_UNDERLINE_GAP,
+    MAX_UNDERLINE_GAP,
+  );
   ctx.save();
   ctx.strokeStyle = run.color;
   ctx.lineWidth = Math.max(1.4, Math.round(style.size * 0.055 * 10) / 10);
@@ -6081,7 +6159,7 @@ function drawTextLine(ctx, item, settings) {
   const baseline = y + Math.round(lineHeight * 0.75);
   let underlineRun = null;
   const flushUnderlineRun = () => {
-    drawUnderlineRun(ctx, underlineRun, style, baseline);
+    drawUnderlineRun(ctx, underlineRun, style, baseline, settings);
     underlineRun = null;
   };
   for (const token of line) {
@@ -6184,6 +6262,7 @@ function renderArticlePreview(settings) {
   const article = document.createElement("article");
   article.className = `article-preview article-theme-${settings.articleTheme} article-font-${settings.articleFont} article-size-${settings.articleSize}`;
   article.style.setProperty("--article-accent", settings.articleColor);
+  article.style.setProperty("--article-underline-gap", `${settings.underlineGap}px`);
   article.innerHTML = markdownToArticleHtml(settings.content, settings.images);
   hydrateArticleLiveMedia(article, settings.images);
   els.pages.append(article);
@@ -6327,7 +6406,7 @@ function renderArticleInline(text) {
         styles.push("text-decoration-line: underline");
         styles.push(`text-decoration-style: ${token.underline}`);
         styles.push("text-decoration-thickness: 1.5px");
-        styles.push("text-underline-offset: 0.14em");
+        styles.push("text-underline-offset: var(--article-underline-gap, 8px)");
       }
       if (token.bgColor) {
         styles.push(`background-color: ${token.bgColor}`);
@@ -6452,6 +6531,10 @@ const WECHAT_STYLE_PROPERTIES = [
   "padding-top",
   "text-align",
   "text-decoration",
+  "text-decoration-line",
+  "text-decoration-style",
+  "text-decoration-thickness",
+  "text-underline-offset",
   "vertical-align",
   "white-space",
   "word-break",
@@ -10025,12 +10108,22 @@ function bindEvents() {
     els.bgColor,
     els.fontSize,
     els.lineHeight,
+    els.underlineGap,
     els.zhFont,
     els.enFont,
     els.imageHeight,
   ].forEach((input) => {
-    input.addEventListener("input", requestRender);
-    input.addEventListener("change", requestRender);
+    const update = input === els.underlineGap
+      ? () => syncUnderlineGapControls(input.value)
+      : requestRender;
+    input.addEventListener("input", update);
+    input.addEventListener("change", update);
+  });
+  els.selectionUnderlineGap?.addEventListener("input", () => {
+    syncUnderlineGapControls(els.selectionUnderlineGap.value);
+  });
+  els.selectionUnderlineGap?.addEventListener("change", () => {
+    syncUnderlineGapControls(els.selectionUnderlineGap.value);
   });
 
   els.inlineColor.addEventListener("input", () => {

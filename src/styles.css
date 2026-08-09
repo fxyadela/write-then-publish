@@ -1318,11 +1318,43 @@ body[data-app-mode="article"] .profile-inline {
 .underline-option-preview {
   text-decoration-line: underline;
   text-decoration-thickness: 1.5px;
-  text-underline-offset: 3px;
+  text-underline-offset: var(--editor-underline-gap, 8px);
 }
 
 .underline-option-preview.is-dashed {
   text-decoration-style: dashed;
+}
+
+.underline-gap-control {
+  display: grid;
+  gap: 8px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--control-bg);
+}
+
+.underline-gap-control > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.underline-gap-control output {
+  min-width: 34px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.underline-gap-control input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .color-guide {
@@ -1500,7 +1532,11 @@ body[data-app-mode="article"] .profile-inline {
 }
 
 .selection-underline-palette {
-  min-width: 176px;
+  min-width: 224px;
+}
+
+.selection-underline-gap-control {
+  margin-top: 8px;
 }
 
 .image-popover {

@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260809-custom-colors-underline" />
+    <link rel="stylesheet" href="src/styles.css?v=20260810-style-composition-gap" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -125,6 +125,10 @@
                     <span class="underline-option-preview is-dashed">虚线下划线</span>
                   </button>
                 </div>
+                <label class="underline-gap-control" for="underlineGapInput">
+                  <span>文字与线的距离 <output id="underlineGapOutput">8 px</output></span>
+                  <input id="underlineGapInput" type="range" min="3" max="14" step="1" value="8" />
+                </label>
               </div>
             </details>
             <button type="button" class="tool-button" data-format="quote" title="重点引用"><i data-lucide="quote"></i></button>
@@ -364,6 +368,10 @@
                   <span class="underline-option-preview is-dashed">虚线</span>
                 </button>
               </div>
+              <label class="underline-gap-control selection-underline-gap-control" for="selectionUnderlineGapInput">
+                <span>文字与线的距离 <output id="selectionUnderlineGapOutput">8 px</output></span>
+                <input id="selectionUnderlineGapInput" type="range" min="3" max="14" step="1" value="8" />
+              </label>
             </div>
           </div>
         </section>
@@ -1024,6 +1032,6 @@
         document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260809-custom-colors-underline"></script>
+    <script src="src/app.js?v=20260810-style-composition-gap"></script>
   </body>
 </html>
