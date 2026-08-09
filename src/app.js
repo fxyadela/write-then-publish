@@ -1090,7 +1090,7 @@ function applyPanelLayout() {
 function startPanelResize(event) {
   const target = event.currentTarget.dataset.panelResize;
   if (!["history", "editor"].includes(target)) return;
-  if (window.matchMedia("(max-width: 980px)").matches) return;
+  if (window.matchMedia("(max-width: 680px)").matches) return;
 
   event.preventDefault();
   if (target === "history" && !els.historySidebar?.classList.contains("open")) {
@@ -3630,7 +3630,7 @@ function updatePendingCustomColor(kind, color) {
   if (kind === "color") setCurrentTextColor(color);
   else setCurrentBgColor(color);
   refreshSelectionToolbarColors();
-  els.status.textContent = "颜色已选择，请在下方选择是否保存";
+  els.status.textContent = "颜色已选择，请选择仅本次或保存并使用";
 }
 
 let selectionToolbarTimer = null;
@@ -3643,7 +3643,14 @@ function setSelectionPalette(kind, open) {
     underline: els.selectionUnderlinePalette,
   };
   Object.entries(palettes).forEach(([name, palette]) => {
-    if (palette) palette.hidden = !open || name !== kind;
+    if (!palette) return;
+    const visible = Boolean(open && name === kind);
+    palette.hidden = !visible;
+    if (!visible) {
+      palette.querySelectorAll(".selection-custom-color-disclosure").forEach((details) => {
+        details.open = false;
+      });
+    }
   });
 }
 
@@ -10254,6 +10261,9 @@ function bindEvents() {
   els.selectionColorBtn?.addEventListener("mousedown", keepTextareaSelection);
   els.selectionBgColorBtn?.addEventListener("mousedown", keepTextareaSelection);
   els.selectionUnderlineBtn?.addEventListener("mousedown", keepTextareaSelection);
+  document.querySelectorAll("[data-custom-color-toggle]").forEach((summary) => {
+    summary.addEventListener("mousedown", keepTextareaSelection);
+  });
   document.querySelectorAll(".selection-toolbar [data-format]").forEach((button) => {
     button.addEventListener("mousedown", keepTextareaSelection);
     button.addEventListener("click", () => {
