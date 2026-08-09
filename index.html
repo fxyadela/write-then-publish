@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>写了就发 | Write Then Publish</title>
     <meta name="description" content="一份 Markdown，排成小红书图文卡片或公众号长文。图片、实况照片、Obsidian 同步和导出都在同一个工作区完成；实况在浏览器本地合成，生成过程不上传原视频。" />
     <link rel="canonical" href="https://fawen.fun/" />
@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260810-underline-toggle-scroll" />
+    <link rel="stylesheet" href="src/styles.css?v=20260810-ipad-preview-color-choice" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -174,12 +174,16 @@
               <div class="tool-popover color-popover">
                 <div class="color-guide">
                   <strong>文字上色</strong>
-                  <span>先在文本框选中文字，再选颜色；自定义颜色会自动保存到划词色板。</span>
+                  <span>先选中文字和自定义颜色，再决定仅本次使用或保存到色板。</span>
                 </div>
                 <label>
                   字体颜色
                   <input id="inlineColorInput" type="color" value="#2563eb" />
                 </label>
+                <div class="custom-color-actions" role="group" aria-label="字体颜色保存方式">
+                  <button type="button" class="custom-color-action" data-custom-color-action data-color-kind="color" data-color-save="false">仅本次</button>
+                  <button type="button" class="custom-color-action is-save" data-custom-color-action data-color-kind="color" data-color-save="true">保存并使用</button>
+                </div>
               </div>
             </details>
 
@@ -190,12 +194,16 @@
               <div class="tool-popover color-popover">
                 <div class="color-guide">
                   <strong>背景上色</strong>
-                  <span>先在文本框选中文字，再选背景色；自定义颜色会自动保存到划词色板。</span>
+                  <span>先选中文字和自定义背景色，再决定仅本次使用或保存到色板。</span>
                 </div>
                 <label>
                   背景颜色
                   <input id="inlineBgColorInput" type="color" value="#fff3a3" />
                 </label>
+                <div class="custom-color-actions" role="group" aria-label="背景颜色保存方式">
+                  <button type="button" class="custom-color-action" data-custom-color-action data-color-kind="bg" data-color-save="false">仅本次</button>
+                  <button type="button" class="custom-color-action is-save" data-custom-color-action data-color-kind="bg" data-color-save="true">保存并使用</button>
+                </div>
               </div>
             </details>
 
@@ -347,16 +355,24 @@
             <div id="selectionColorPalette" class="selection-palette" hidden>
               <div id="selectionColorSwatches" class="selection-swatches"></div>
               <label class="selection-custom-color">
-                自定义并保存
+                自定义颜色
                 <input id="selectionCustomColorInput" type="color" value="#2563eb" />
               </label>
+              <div class="custom-color-actions" role="group" aria-label="字体颜色保存方式">
+                <button type="button" class="custom-color-action" data-custom-color-action data-color-kind="color" data-color-save="false">仅本次</button>
+                <button type="button" class="custom-color-action is-save" data-custom-color-action data-color-kind="color" data-color-save="true">保存并使用</button>
+              </div>
             </div>
             <div id="selectionBgPalette" class="selection-palette" hidden>
               <div id="selectionBgSwatches" class="selection-swatches"></div>
               <label class="selection-custom-color">
-                自定义并保存
+                自定义背景色
                 <input id="selectionCustomBgInput" type="color" value="#fff3a3" />
               </label>
+              <div class="custom-color-actions" role="group" aria-label="背景颜色保存方式">
+                <button type="button" class="custom-color-action" data-custom-color-action data-color-kind="bg" data-color-save="false">仅本次</button>
+                <button type="button" class="custom-color-action is-save" data-custom-color-action data-color-kind="bg" data-color-save="true">保存并使用</button>
+              </div>
             </div>
             <div id="selectionUnderlinePalette" class="selection-palette selection-underline-palette" hidden>
               <div class="selection-underline-options" role="group" aria-label="下划线样式">
@@ -383,6 +399,10 @@
           <div>
             <h2>预览与下载</h2>
             <span id="statusText">自动分页已开启</span>
+          </div>
+          <div id="previewViewSwitch" class="preview-view-switch" role="group" aria-label="卡片预览方式">
+            <button type="button" class="active" data-preview-view="all" aria-pressed="true">全部展开</button>
+            <button type="button" data-preview-view="single" aria-pressed="false">单图滑动</button>
           </div>
           <div class="topbar-actions">
             <button id="downloadZipBtn" class="primary-button" type="button">
@@ -1030,6 +1050,6 @@
         document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260810-underline-toggle-scroll"></script>
+    <script src="src/app.js?v=20260810-ipad-preview-color-choice"></script>
   </body>
 </html>

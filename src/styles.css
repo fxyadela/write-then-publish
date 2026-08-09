@@ -81,6 +81,7 @@ body {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--ink);
@@ -121,8 +122,8 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 18px;
-  min-height: 46px;
+  min-height: calc(46px + env(safe-area-inset-bottom, 0px));
+  padding: 0 max(18px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(18px, env(safe-area-inset-left, 0px));
   border-top: 1px solid var(--line);
   background: var(--paper);
 }
@@ -921,7 +922,7 @@ body[data-guide-readonly="true"] .editor-textarea:focus {
   text-align: center;
 }
 
-.history-open {
+.history-item .history-open {
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -1280,6 +1281,38 @@ body[data-app-mode="article"] .profile-inline {
   width: 280px;
 }
 
+.custom-color-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: 8px;
+}
+
+.custom-color-action {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--control-bg);
+  color: var(--control-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 720;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.custom-color-action:hover {
+  transform: translateY(-1px);
+  border-color: var(--active-border);
+  background: var(--active-bg);
+}
+
+.custom-color-action.is-save {
+  border-color: var(--primary-bg);
+  background: var(--primary-bg);
+  color: var(--primary-text);
+}
+
 .underline-popover {
   display: grid;
   gap: 12px;
@@ -1502,6 +1535,12 @@ body[data-app-mode="article"] .profile-inline {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: transparent;
+}
+
+.selection-palette .custom-color-action {
+  min-height: 30px;
+  padding-inline: 7px;
+  font-size: 11px;
 }
 
 .selection-underline-palette {
@@ -1786,6 +1825,36 @@ body[data-app-mode="article"] .profile-inline {
 
 .preview-topbar h2 {
   font-size: 22px;
+}
+
+.preview-view-switch {
+  display: none;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--control-bg);
+}
+
+.preview-view-switch button {
+  min-height: 34px;
+  padding: 0 11px;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.preview-view-switch button.active {
+  color: var(--active-text);
+  background: var(--active-bg);
+}
+
+body[data-app-mode="article"] .preview-view-switch {
+  display: none;
 }
 
 .topbar-actions {
@@ -5016,15 +5085,20 @@ body.onboarding-account-step .site-footer {
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1240px), (any-pointer: coarse) and (max-width: 1366px) {
   body {
-    overflow: auto;
+    overflow: hidden;
   }
 
   .workspace {
     grid-template-columns: 1fr;
-    height: auto;
-    min-height: 100vh;
+    height: 100%;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
   }
 
   .workspace.history-open {
@@ -5032,8 +5106,6 @@ body.onboarding-account-step .site-footer {
   }
 
   .site-footer {
-    right: 12px;
-    bottom: 10px;
     gap: 6px;
   }
 
@@ -5047,29 +5119,43 @@ body.onboarding-account-step .site-footer {
   }
 
   .history-sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 180;
     width: auto;
     height: 50px;
+    flex: none;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow-soft);
   }
 
   .history-sidebar.open {
     width: auto;
     height: 250px;
+    height: min(340px, calc(100dvh - 116px));
   }
 
   .history-tab {
-    top: 7px;
-    left: 14px;
+    top: 3px;
+    left: max(14px, env(safe-area-inset-left, 0px));
+    width: 44px;
+    height: 44px;
   }
 
   .history-drawer {
     width: 100%;
-    padding: 14px;
+    padding: 14px max(14px, env(safe-area-inset-right, 0px)) 14px max(14px, env(safe-area-inset-left, 0px));
+  }
+
+  .history-head .icon-button {
+    width: 44px;
+    height: 44px;
   }
 
   .editor-panel {
     height: 72vh;
+    height: 72dvh;
     min-height: 560px;
     border-right: 0;
     border-bottom: 1px solid var(--line);
@@ -5079,8 +5165,52 @@ body.onboarding-account-step .site-footer {
     overflow: visible;
   }
 
+  .preview-topbar {
+    top: 50px;
+  }
+
+  .preview-view-switch {
+    display: inline-grid;
+  }
+
+  .preview-view-switch button {
+    min-height: 44px;
+    padding-inline: 14px;
+  }
+
+  .custom-color-action,
+  .selection-palette .custom-color-action {
+    min-height: 44px;
+  }
+
   .preview-body {
     grid-template-columns: 1fr;
+  }
+
+  .pages:not(.article-mode) {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+    padding-top: 20px;
+  }
+
+  body[data-preview-view="single"] .pages:not(.article-mode) {
+    display: flex;
+    gap: 16px;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 20px max(16px, env(safe-area-inset-left, 0px)) 18px;
+    scroll-padding-inline: max(16px, env(safe-area-inset-left, 0px));
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body[data-preview-view="single"] .page-shell {
+    flex: 0 0 min(78vw, 620px);
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
   }
 
   .article-settings {
@@ -5092,6 +5222,18 @@ body.onboarding-account-step .site-footer {
 
   .live-photo-layout {
     grid-template-columns: minmax(260px, 0.8fr) minmax(390px, 1.2fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-drawer,
+  .custom-color-action,
+  .preview-view-switch button {
+    transition: none;
+  }
+
+  body[data-preview-view="single"] .pages:not(.article-mode) {
+    scroll-behavior: auto;
   }
 }
 

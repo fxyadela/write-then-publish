@@ -104,6 +104,7 @@ const els = {
   historyFilterButtons: document.querySelectorAll("[data-history-filter]"),
   panelResizers: document.querySelectorAll("[data-panel-resize]"),
   modeButtons: document.querySelectorAll(".mode-switch [data-app-mode]"),
+  previewViewButtons: document.querySelectorAll("[data-preview-view]"),
   convertMode: $("#convertModeBtn"),
   headerModeToggle: $("#headerModeToggleBtn"),
   themeToggle: $("#themeToggleBtn"),
@@ -422,6 +423,7 @@ const state = {
   uiTheme: "light",
   headerMode: "every",
   appMode: "cards",
+  previewViewMode: "all",
   articleTheme: "wechat",
   articleFont: "sans",
   articleSize: "normal",
@@ -975,6 +977,28 @@ function updateAppMode() {
   // 草稿箱同步整体还不完善，先全站下线；功能做好后把这里改回按 appMode 判断即可。
   els.syncWechat.hidden = true;
   els.headerModeToggle.hidden = state.appMode === "article";
+  updatePreviewViewMode();
+}
+
+function updatePreviewViewMode() {
+  const mode = state.previewViewMode === "single" ? "single" : "all";
+  document.body.dataset.previewView = mode;
+  els.previewViewButtons.forEach((button) => {
+    const active = button.dataset.previewView === mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function setPreviewViewMode(mode) {
+  state.previewViewMode = mode === "single" ? "single" : "all";
+  updatePreviewViewMode();
+  if (state.appMode !== "cards") return;
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  els.pages.scrollTo({ left: 0, behavior: reducedMotion ? "auto" : "smooth" });
+  els.status.textContent = state.previewViewMode === "single"
+    ? "单图滑动模式：左右滑动查看每张卡片"
+    : "全部展开模式：所有卡片按网格排列";
 }
 
 async function setAppMode(mode) {
@@ -3571,18 +3595,42 @@ function removeUnderlineFromSelection(target = null, capturedViewport = null) {
   return true;
 }
 
-function applyColorFromEditorPicker(kind) {
+function customColorIsAvailable(kind, color) {
+  const paletteKind = colorPaletteKind(kind);
+  const normalized = normalizePaletteColor(color);
+  if (!normalized) return false;
+  return builtInColorsForKind(paletteKind).includes(normalized)
+    || loadCustomColorPalette()[paletteKind].includes(normalized);
+}
+
+function applyCustomColorChoice(kind, shouldSave) {
   const color = kind === "color" ? els.inlineColor.value : els.inlineBgColor.value;
-  rememberCustomColor(kind, color);
+  if (shouldSave) rememberCustomColor(kind, color);
+  const saved = shouldSave && customColorIsAvailable(kind, color);
   if (applyColorToSelection(kind, color)) {
     if (kind === "color") {
       els.colorMenu.open = false;
     } else {
       els.bgColorMenu.open = false;
     }
+    setSelectionPalette(null, false);
+    els.status.textContent = shouldSave
+      ? saved
+        ? "已应用颜色，并保存到个人色板"
+        : "已应用颜色，但暂时无法保存到色板"
+      : "已应用颜色，仅本次使用";
   } else {
-    els.status.textContent = "请先在文本框选中要上色的文字";
+    els.status.textContent = saved
+      ? "颜色已保存到个人色板；请先选中文字再使用"
+      : "请先在文本框选中要上色的文字";
   }
+}
+
+function updatePendingCustomColor(kind, color) {
+  if (kind === "color") setCurrentTextColor(color);
+  else setCurrentBgColor(color);
+  refreshSelectionToolbarColors();
+  els.status.textContent = "颜色已选择，请在下方选择是否保存";
 }
 
 let selectionToolbarTimer = null;
@@ -10128,6 +10176,9 @@ function bindEvents() {
   els.modeButtons.forEach((button) => {
     button.addEventListener("click", (event) => setAppMode(event.currentTarget.dataset.appMode));
   });
+  els.previewViewButtons.forEach((button) => {
+    button.addEventListener("click", (event) => setPreviewViewMode(event.currentTarget.dataset.previewView));
+  });
 
   els.articleThemeButtons.forEach((button) => {
     button.addEventListener("click", (event) => setArticleOption("theme", event.currentTarget.dataset.articleTheme));
@@ -10172,13 +10223,13 @@ function bindEvents() {
   });
 
   els.inlineColor.addEventListener("input", () => {
-    setCurrentTextColor(els.inlineColor.value);
+    updatePendingCustomColor("color", els.inlineColor.value);
   });
   els.inlineBgColor.addEventListener("input", () => {
-    setCurrentBgColor(els.inlineBgColor.value);
+    updatePendingCustomColor("bg", els.inlineBgColor.value);
   });
-  els.inlineColor.addEventListener("change", () => applyColorFromEditorPicker("color"));
-  els.inlineBgColor.addEventListener("change", () => applyColorFromEditorPicker("bg"));
+  els.inlineColor.addEventListener("change", () => updatePendingCustomColor("color", els.inlineColor.value));
+  els.inlineBgColor.addEventListener("change", () => updatePendingCustomColor("bg", els.inlineBgColor.value));
   document.addEventListener("selectionchange", () => {
     const textarea = els.content;
     if (document.activeElement !== textarea || textarea.selectionStart === textarea.selectionEnd) {
@@ -10219,21 +10270,23 @@ function bindEvents() {
   els.selectionUnderlineBtn?.addEventListener("click", () => {
     setSelectionPalette("underline", els.selectionUnderlinePalette.hidden);
   });
+  els.selectionCustomColor?.addEventListener("input", () => {
+    updatePendingCustomColor("color", els.selectionCustomColor.value);
+  });
   els.selectionCustomColor?.addEventListener("change", () => {
-    const color = els.selectionCustomColor.value;
-    rememberCustomColor("color", color);
-    applyColorToSelection("color", color);
-    setCurrentTextColor(color);
-    setSelectionPalette("color", false);
-    refreshSelectionToolbarColors();
+    updatePendingCustomColor("color", els.selectionCustomColor.value);
+  });
+  els.selectionCustomBg?.addEventListener("input", () => {
+    updatePendingCustomColor("bg", els.selectionCustomBg.value);
   });
   els.selectionCustomBg?.addEventListener("change", () => {
-    const color = els.selectionCustomBg.value;
-    rememberCustomColor("bg", color);
-    applyColorToSelection("bg", color);
-    setCurrentBgColor(color);
-    setSelectionPalette("bg", false);
-    refreshSelectionToolbarColors();
+    updatePendingCustomColor("bg", els.selectionCustomBg.value);
+  });
+  document.querySelectorAll("[data-custom-color-action]").forEach((button) => {
+    button.addEventListener("mousedown", keepTextareaSelection);
+    button.addEventListener("click", () => {
+      applyCustomColorChoice(button.dataset.colorKind, button.dataset.colorSave === "true");
+    });
   });
   buildSelectionSwatches("color");
   buildSelectionSwatches("bg");
