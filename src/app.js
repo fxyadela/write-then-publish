@@ -3319,6 +3319,7 @@ function measureSelectionInTextarea(textarea) {
   if (start === end) return null;
   const mirror = ensureSelectionMirror();
   const cs = window.getComputedStyle(textarea);
+  const taRect = textarea.getBoundingClientRect();
   const props = [
     "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "wordSpacing",
     "textIndent", "textTransform", "tabSize", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
@@ -3326,7 +3327,10 @@ function measureSelectionInTextarea(textarea) {
     "wordBreak", "overflowWrap", "textAlign", "borderRadius",
   ];
   for (const prop of props) mirror.style[prop] = cs[prop];
-  mirror.style.width = `${textarea.clientWidth}px`;
+  mirror.style.left = `${taRect.left - textarea.scrollLeft}px`;
+  mirror.style.top = `${taRect.top - textarea.scrollTop}px`;
+  mirror.style.width = `${textarea.offsetWidth}px`;
+  mirror.style.height = `${textarea.offsetHeight}px`;
   mirror.replaceChildren();
   mirror.append(
     document.createTextNode(textarea.value.slice(0, start)),
@@ -3335,17 +3339,14 @@ function measureSelectionInTextarea(textarea) {
     (() => { const span = document.createElement("span"); span.textContent = "\u200b"; return span; })(),
     document.createTextNode(textarea.value.slice(end)),
   );
-  mirror.scrollTop = textarea.scrollTop;
-  mirror.scrollLeft = textarea.scrollLeft;
   const markers = mirror.querySelectorAll("span");
   const startRect = markers[0].getBoundingClientRect();
   const endRect = markers[1].getBoundingClientRect();
   if (!startRect.width && !startRect.height) return null;
-  const taRect = textarea.getBoundingClientRect();
   return {
-    left: taRect.left + startRect.left,
-    top: taRect.top + startRect.top,
-    bottom: taRect.top + startRect.bottom,
+    left: startRect.left,
+    top: startRect.top,
+    bottom: startRect.bottom,
     height: startRect.height,
     width: Math.max(0, endRect.left - startRect.left),
   };
@@ -3364,8 +3365,20 @@ function hideSelectionToolbar() {
 function showSelectionToolbar() {
   const textarea = els.content;
   if (document.activeElement !== textarea) return;
+  if (textarea.selectionStart === textarea.selectionEnd) return;
   if (document.body.getAttribute("data-guide-readonly") === "true") return;
-  const rect = measureSelectionInTextarea(textarea);
+  const measuredRect = measureSelectionInTextarea(textarea);
+  const rect = measuredRect || (() => {
+    const taRect = textarea.getBoundingClientRect();
+    if (!taRect.width || !taRect.height) return null;
+    return {
+      left: taRect.left + 12,
+      top: taRect.top + 12,
+      bottom: taRect.top + 34,
+      height: 22,
+      width: Math.max(0, Math.min(180, taRect.width - 24)),
+    };
+  })();
   if (!rect) return;
   const toolbar = els.selectionToolbar;
   refreshSelectionToolbarColors();
@@ -3387,6 +3400,10 @@ function scheduleSelectionToolbar() {
   if (textarea.selectionStart === textarea.selectionEnd) return;
   if (document.body.getAttribute("data-guide-readonly") === "true") return;
   selectionToolbarTimer = window.setTimeout(showSelectionToolbar, 140);
+}
+
+function rescheduleSelectionToolbar() {
+  window.setTimeout(scheduleSelectionToolbar, 0);
 }
 
 function countFindMatches() {
@@ -9720,6 +9737,14 @@ function bindEvents() {
       return;
     }
     scheduleSelectionToolbar();
+  });
+  els.content.addEventListener("select", rescheduleSelectionToolbar);
+  els.content.addEventListener("mouseup", rescheduleSelectionToolbar);
+  els.content.addEventListener("keyup", (event) => {
+    const key = event.key || "";
+    if (event.shiftKey || key.startsWith("Arrow") || key === "Home" || key === "End" || (event.metaKey || event.ctrlKey) && key.toLowerCase() === "a") {
+      rescheduleSelectionToolbar();
+    }
   });
   els.content.addEventListener("focusout", (event) => {
     if (event.relatedTarget && els.selectionToolbar.contains(event.relatedTarget)) return;
