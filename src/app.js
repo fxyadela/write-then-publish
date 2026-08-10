@@ -3499,6 +3499,39 @@ function applyColorToSelection(kind, color) {
   return true;
 }
 
+function removeColorFromSelection(kind) {
+  const textarea = els.content;
+  const viewport = captureTextareaViewport(textarea);
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const marker = colorPaletteKind(kind);
+  const label = marker === "color" ? "字体颜色" : "背景色";
+  if (start === end) {
+    els.status.textContent = `请先选中要清除${label}的文字`;
+    return false;
+  }
+
+  const value = textarea.value;
+  const target = findRecolorableMarker(value, start, end, marker)
+    || findEnclosingMarker(value, start, end, marker);
+  if (!target) {
+    els.status.textContent = `选中内容没有${label}`;
+    return false;
+  }
+
+  const innerStart = value.indexOf("|", target.open) + 1;
+  const inner = flattenMarkerKind(value.slice(innerStart, target.close - 2), marker);
+  const nextValue = `${value.slice(0, target.open)}${inner}${value.slice(target.close)}`;
+  const visible = unwrapInlineStyleBounds(nextValue, target.open, target.open + inner.length);
+  commitTextHistory();
+  textarea.value = nextValue;
+  restoreTextareaSelection(textarea, visible.start, visible.end, viewport);
+  commitTextHistory();
+  requestRender();
+  els.status.textContent = `已清除${label}`;
+  return true;
+}
+
 function applyUnderlineToSelection(style) {
   const underlineStyle = style === "dashed" ? "dashed" : "solid";
   const textarea = els.content;
@@ -10391,6 +10424,16 @@ function bindEvents() {
     button.addEventListener("mousedown", keepTextareaSelection);
     button.addEventListener("click", () => {
       applyCustomColorChoice(button.dataset.colorKind, button.dataset.colorSave === "true");
+    });
+  });
+  document.querySelectorAll("[data-clear-inline-style]").forEach((button) => {
+    button.addEventListener("mousedown", keepTextareaSelection);
+    button.addEventListener("click", () => {
+      const kind = button.dataset.clearInlineStyle;
+      if (!removeColorFromSelection(kind)) return;
+      if (kind === "color") els.colorMenu.open = false;
+      else els.bgColorMenu.open = false;
+      setSelectionPalette(null, false);
     });
   });
   buildSelectionSwatches("color");

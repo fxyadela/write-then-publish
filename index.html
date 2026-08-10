@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260810-ipad-selection-toolbar-v4" />
+    <link rel="stylesheet" href="src/styles.css?v=20260810-bg-clear" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -204,6 +204,10 @@
                   <button type="button" class="custom-color-action" data-custom-color-action data-color-kind="bg" data-color-save="false">仅本次</button>
                   <button type="button" class="custom-color-action is-save" data-custom-color-action data-color-kind="bg" data-color-save="true">保存并使用</button>
                 </div>
+                <button type="button" class="clear-inline-style-action" data-clear-inline-style="bg">
+                  <i data-lucide="eraser"></i>
+                  清除背景色
+                </button>
               </div>
             </details>
 
@@ -981,6 +985,10 @@
         </details>
       </div>
       <div id="selectionBgPalette" class="selection-palette" hidden>
+        <button type="button" class="clear-inline-style-action" data-clear-inline-style="bg">
+          <i data-lucide="eraser"></i>
+          清除背景色
+        </button>
         <div id="selectionBgSwatches" class="selection-swatches"></div>
         <details class="selection-custom-color-disclosure">
           <summary data-custom-color-toggle>
@@ -1066,6 +1074,6 @@
         document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260810-ipad-selection-toolbar-v4"></script>
+    <script src="src/app.js?v=20260810-bg-clear"></script>
   </body>
 </html>

@@ -1313,6 +1313,43 @@ body[data-app-mode="article"] .profile-inline {
   color: var(--primary-text);
 }
 
+.clear-inline-style-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--control-bg);
+  color: var(--control-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 720;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.clear-inline-style-action:hover {
+  transform: translateY(-1px);
+  border-color: var(--active-border);
+  background: var(--active-bg);
+  color: var(--active-text);
+}
+
+.clear-inline-style-action:focus-visible {
+  border-color: var(--active-border);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.clear-inline-style-action svg {
+  width: 15px;
+  height: 15px;
+}
+
 .underline-popover {
   display: grid;
   gap: 12px;
@@ -5283,7 +5320,8 @@ body.onboarding-account-step .site-footer {
   }
 
   .custom-color-action,
-  .selection-palette .custom-color-action {
+  .selection-palette .custom-color-action,
+  .clear-inline-style-action {
     min-height: 44px;
   }
 
@@ -5317,6 +5355,7 @@ body.onboarding-account-step .site-footer {
 @media (prefers-reduced-motion: reduce) {
   .history-drawer,
   .custom-color-action,
+  .clear-inline-style-action,
   .selection-custom-color-disclosure > summary::after {
     transition: none;
   }
