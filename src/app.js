@@ -3116,6 +3116,105 @@ function insertAtRange(textarea, value, start, end = start, selectOffset = null)
   return cursor;
 }
 
+function normalizeTextRemovalRanges(ranges) {
+  const sorted = ranges
+    .filter((range) => range.end > range.start)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged = [];
+  for (const range of sorted) {
+    const previous = merged[merged.length - 1];
+    if (previous && range.start <= previous.end) {
+      previous.end = Math.max(previous.end, range.end);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged;
+}
+
+function removeTextRanges(value, ranges) {
+  let nextValue = value;
+  for (const range of [...ranges].sort((a, b) => b.start - a.start)) {
+    nextValue = `${nextValue.slice(0, range.start)}${nextValue.slice(range.end)}`;
+  }
+  return nextValue;
+}
+
+function mapPositionAfterTextRemovals(position, ranges) {
+  let removed = 0;
+  for (const range of ranges) {
+    if (position <= range.start) break;
+    removed += Math.min(position, range.end) - range.start;
+    if (position <= range.end) break;
+  }
+  return position - removed;
+}
+
+function toggleMarkdownInlineStyle(kind) {
+  const textarea = els.content;
+  const viewport = captureTextareaViewport(textarea);
+  const value = textarea.value;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const delimiter = kind === "bold" ? "**" : "*";
+  const label = kind === "bold" ? "加粗" : "斜体";
+
+  if (start === end) {
+    const placeholder = "文字";
+    const nextValue = `${value.slice(0, start)}${delimiter}${placeholder}${delimiter}${value.slice(end)}`;
+    commitTextHistory();
+    textarea.value = nextValue;
+    restoreTextareaSelection(textarea, start + delimiter.length, start + delimiter.length + placeholder.length, viewport);
+    commitTextHistory();
+    requestRender();
+    els.status.textContent = `已应用${label}`;
+    return true;
+  }
+
+  const wrappers = collectInlineFormattingWrappers(value, start, end);
+  const activeStarRuns = wrappers.starRuns.filter((run) => (
+    kind === "bold" ? run.count >= 2 : run.count % 2 === 1
+  ));
+
+  if (activeStarRuns.length) {
+    const removals = normalizeTextRemovalRanges(activeStarRuns.flatMap((run) => {
+      // 旧版本连续按加粗会产生 ****文字****。关闭加粗时一并移除
+      // 所有成对的粗体星号；若还有单个星号，则保留为斜体。
+      const removeCount = kind === "bold"
+        ? run.count >= 4
+          ? run.count - (run.count % 2)
+          : 2
+        : 1;
+      return [
+        { start: run.open, end: run.open + removeCount },
+        { start: run.close, end: run.close + removeCount },
+      ];
+    }));
+    const nextValue = removeTextRanges(value, removals);
+    const selectFrom = mapPositionAfterTextRemovals(wrappers.visible.start, removals);
+    const selectTo = mapPositionAfterTextRemovals(wrappers.visible.end, removals);
+    commitTextHistory();
+    textarea.value = nextValue;
+    restoreTextareaSelection(textarea, selectFrom, selectTo, viewport);
+    commitTextHistory();
+    requestRender();
+    els.status.textContent = `已取消${label}`;
+    return true;
+  }
+
+  const selected = value.slice(start, end);
+  const nextValue = `${value.slice(0, start)}${delimiter}${selected}${delimiter}${value.slice(end)}`;
+  const wrappedStart = start + delimiter.length;
+  const visible = unwrapInlineStyleBounds(nextValue, wrappedStart, wrappedStart + selected.length);
+  commitTextHistory();
+  textarea.value = nextValue;
+  restoreTextareaSelection(textarea, visible.start, visible.end, viewport);
+  commitTextHistory();
+  requestRender();
+  els.status.textContent = `已应用${label}`;
+  return true;
+}
+
 function wrapSelection(kind) {
   if (kind === "underline-none") {
     removeUnderlineFromSelection();
@@ -3129,32 +3228,7 @@ function wrapSelection(kind) {
     applyBlockStyleToSelection(kind);
     return;
   }
-  commitTextHistory();
-  const textarea = els.content;
-  const viewport = captureTextareaViewport(textarea);
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const selected = textarea.value.slice(start, end) || "文字";
-  let next = selected;
-  let cursorOffset = null;
-
-  if (kind === "bold") {
-    next = `**${selected}**`;
-    cursorOffset = 2;
-  } else if (kind === "italic") {
-    next = `*${selected}*`;
-    cursorOffset = 1;
-  }
-
-  textarea.value = `${textarea.value.slice(0, start)}${next}${textarea.value.slice(end)}`;
-  if (cursorOffset !== null) {
-    textarea.setSelectionRange(start + cursorOffset, start + cursorOffset + selected.length);
-  } else {
-    textarea.setSelectionRange(start + next.length, start + next.length);
-  }
-  restoreTextareaSelection(textarea, textarea.selectionStart, textarea.selectionEnd, viewport);
-  commitTextHistory();
-  requestRender();
+  if (kind === "bold" || kind === "italic") toggleMarkdownInlineStyle(kind);
 }
 
 function captureTextareaViewport(textarea) {
@@ -3368,6 +3442,61 @@ function flattenMarkerKind(text, marker) {
   return out;
 }
 
+function countStarsBefore(value, position, limit = 0) {
+  let count = 0;
+  for (let index = position - 1; index >= limit && value[index] === "*"; index -= 1) count += 1;
+  return count;
+}
+
+function countStarsAfter(value, position, limit = value.length) {
+  let count = 0;
+  for (let index = position; index < limit && value[index] === "*"; index += 1) count += 1;
+  return count;
+}
+
+function starRunAroundBounds(value, start, end) {
+  const count = Math.min(countStarsBefore(value, start), countStarsAfter(value, end));
+  if (!count) return null;
+  return { open: start - count, close: end, count };
+}
+
+function findExactInlineMarkerWrapper(value, start, end) {
+  const candidates = ["color", "bg", "underline"].map((marker) => {
+    const target = findEnclosingMarker(value, start, end, marker);
+    if (!target) return null;
+    const innerStart = value.indexOf("|", target.open) + 1;
+    if (innerStart !== start || target.close - 2 !== end) return null;
+    return { ...target, marker };
+  }).filter(Boolean);
+  return candidates.sort((a, b) => b.open - a.open)[0] || null;
+}
+
+function collectInlineFormattingWrappers(value, start, end) {
+  const visible = unwrapInlineStyleBounds(value, start, end);
+  const starRuns = [];
+  let outerStart = visible.start;
+  let outerEnd = visible.end;
+
+  // 选区通常只覆盖最里层可见文字。逐层向外穿过 Markdown 星号与
+  // 自定义颜色标记，才能判断当前样式究竟已开启还是尚未开启。
+  for (let guard = 0; guard < 32; guard += 1) {
+    const stars = starRunAroundBounds(value, outerStart, outerEnd);
+    if (stars) {
+      starRuns.push(stars);
+      outerStart = stars.open;
+      outerEnd = stars.close + stars.count;
+      continue;
+    }
+
+    const marker = findExactInlineMarkerWrapper(value, outerStart, outerEnd);
+    if (!marker) break;
+    outerStart = marker.open;
+    outerEnd = marker.close;
+  }
+
+  return { visible, starRuns };
+}
+
 function unwrapInlineStyleBounds(value, start, end) {
   let innerStart = start;
   let innerEnd = end;
@@ -3387,27 +3516,13 @@ function unwrapInlineStyleBounds(value, start, end) {
       continue;
     }
 
-    const boldClose = value.indexOf("**", innerStart + 2);
-    if (
-      value.startsWith("**", innerStart)
-      && boldClose === innerEnd - 2
-      && value.startsWith("**", innerEnd - 2)
-    ) {
-      innerStart += 2;
-      innerEnd -= 2;
-      continue;
-    }
-
-    const italicClose = value.indexOf("*", innerStart + 1);
-    if (
-      value[innerStart] === "*"
-      && value[innerEnd - 1] === "*"
-      && !value.startsWith("**", innerStart)
-      && !value.startsWith("**", innerEnd - 2)
-      && italicClose === innerEnd - 1
-    ) {
-      innerStart += 1;
-      innerEnd -= 1;
+    const starCount = Math.min(
+      countStarsAfter(value, innerStart, innerEnd),
+      countStarsBefore(value, innerEnd, innerStart),
+    );
+    if (starCount && innerStart + starCount <= innerEnd - starCount) {
+      innerStart += starCount;
+      innerEnd -= starCount;
       continue;
     }
 
@@ -5679,6 +5794,20 @@ function parseInline(text, baseStart = 0) {
       continue;
     }
 
+    if (text.startsWith("***", i)) {
+      const close = text.indexOf("***", i + 3);
+      if (close !== -1) {
+        tokens.push(
+          ...applyInlineStyle(
+            parseInline(text.slice(i + 3, close), baseStart + i + 3),
+            { bold: true, italic: true },
+          ),
+        );
+        i = close + 3;
+        continue;
+      }
+    }
+
     if (text.startsWith("**", i)) {
       const close = text.indexOf("**", i + 2);
       if (close !== -1) {
@@ -5697,7 +5826,7 @@ function parseInline(text, baseStart = 0) {
       }
     }
 
-    const nextMarkers = ["[[image:", "{{underline:", "{{color:", "{{bg:", "**", "*"]
+    const nextMarkers = ["[[image:", "{{underline:", "{{color:", "{{bg:", "***", "**", "*"]
       .map((marker) => text.indexOf(marker, i + 1))
       .filter((index) => index !== -1);
     const next = nextMarkers.length ? Math.min(...nextMarkers) : text.length;
