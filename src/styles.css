@@ -3709,11 +3709,15 @@ body.export-busy {
 
 #cropCanvas {
   display: block;
-  width: 100%;
-  height: min(500px, calc(100vh - 220px));
+  width: min(100%, 720px);
+  height: auto;
+  max-height: max(240px, min(500px, calc(100vh - 220px)));
+  aspect-ratio: 720 / 500;
+  margin-inline: auto;
   border-radius: 8px;
   background: var(--crop-canvas-bg);
   cursor: crosshair;
+  touch-action: none;
 }
 
 .crop-controls {
