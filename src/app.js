@@ -5436,20 +5436,20 @@ function detectCropHit(point) {
 
 function startCropDrag(event) {
   if (!cropper.image || !cropper.rect) return;
+  event.preventDefault();
   cropper.display = getCropDisplay();
   const canvasPoint = canvasPointFromEvent(event);
   const display = cropper.display;
-  if (
+  const action = detectCropHit(canvasPoint);
+  const isCornerHandle = ["nw", "ne", "sw", "se"].includes(action);
+  const isOutsideImage =
     canvasPoint.x < display.x ||
     canvasPoint.x > display.x + display.width ||
     canvasPoint.y < display.y ||
-    canvasPoint.y > display.y + display.height
-  ) {
-    return;
-  }
+    canvasPoint.y > display.y + display.height;
+  if (isOutsideImage && !isCornerHandle) return;
 
   const sourcePoint = sourcePointFromCanvas(canvasPoint);
-  const action = detectCropHit(canvasPoint);
   if (action === "move-new") {
     cropper.rect = clampMovedRect(
       {
@@ -5466,12 +5466,16 @@ function startCropDrag(event) {
     startX: sourcePoint.x,
     startY: sourcePoint.y,
     startRect: { ...cropper.rect },
+    pointerId: event.pointerId,
   };
+  els.cropCanvas.setPointerCapture?.(event.pointerId);
   drawCropper();
 }
 
 function moveCropDrag(event) {
   if (!cropper.drag || !cropper.image) return;
+  if (event.pointerId !== cropper.drag.pointerId) return;
+  event.preventDefault();
   const point = sourcePointFromCanvas(canvasPointFromEvent(event));
   const drag = cropper.drag;
 
@@ -5490,7 +5494,11 @@ function moveCropDrag(event) {
   drawCropper();
 }
 
-function stopCropDrag() {
+function stopCropDrag(event) {
+  if (!cropper.drag || event.pointerId !== cropper.drag.pointerId) return;
+  if (els.cropCanvas.hasPointerCapture?.(event.pointerId)) {
+    els.cropCanvas.releasePointerCapture(event.pointerId);
+  }
   cropper.drag = null;
 }
 
@@ -10702,9 +10710,10 @@ function bindEvents() {
   els.ratioButtons.forEach((button) => {
     button.addEventListener("click", () => setCropAspect(button.dataset.ratio));
   });
-  els.cropCanvas.addEventListener("mousedown", startCropDrag);
-  window.addEventListener("mousemove", moveCropDrag);
-  window.addEventListener("mouseup", stopCropDrag);
+  els.cropCanvas.addEventListener("pointerdown", startCropDrag);
+  els.cropCanvas.addEventListener("pointermove", moveCropDrag);
+  els.cropCanvas.addEventListener("pointerup", stopCropDrag);
+  els.cropCanvas.addEventListener("pointercancel", stopCropDrag);
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.cropModal.classList.contains("hidden")) closeCropper();
     if (event.key === "Escape" && !els.wechatModal.classList.contains("hidden")) closeWechatModal();
