@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260810-bg-clear" />
+    <link rel="stylesheet" href="src/styles.css?v=20260815-feedback-underline" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -413,7 +413,12 @@
     </main>
 
     <footer class="site-footer">
-      <div id="accountDock" class="account-dock">
+      <div class="footer-actions">
+        <button id="feedbackBtn" class="feedback-dock-button" type="button" aria-label="反馈问题" aria-haspopup="dialog" aria-controls="feedbackModal">
+          <i data-lucide="message-square-warning"></i>
+          <span>问题反馈</span>
+        </button>
+        <div id="accountDock" class="account-dock">
         <div id="accountMenu" class="account-menu hidden" role="dialog" aria-label="账号菜单">
           <div class="account-menu-summary">
             <span class="account-menu-avatar"><i data-lucide="circle-user-round"></i></span>
@@ -459,6 +464,7 @@
           <span class="feature-new-badge compact" data-feature-badge="account" aria-label="新功能">新</span>
           <i class="account-dock-chevron" data-lucide="chevron-up"></i>
         </button>
+        </div>
       </div>
       <nav class="site-credit" aria-label="作者主页">
         <span class="site-credit-by">Made by 捏捏番茄</span>
@@ -686,6 +692,68 @@
             <button id="accountSignOutBtn" class="ghost-button account-wide-button" type="button">退出登录</button>
           </section>
         </section>
+      </div>
+    </div>
+
+    <div id="feedbackModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="feedbackModalTitle" tabindex="-1">
+      <div class="modal-card feedback-modal-card">
+        <div class="modal-head feedback-modal-head">
+          <div>
+            <span class="feedback-kicker">写了就发</span>
+            <h3 id="feedbackModalTitle">反馈问题</h3>
+            <p>把遇到的问题写清楚，截图可以帮助我更快定位。</p>
+          </div>
+          <button id="feedbackCloseBtn" class="icon-button ghost" type="button" title="关闭" aria-label="关闭问题反馈">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <form
+          id="feedbackForm"
+          class="feedback-form"
+          method="POST"
+          enctype="multipart/form-data"
+        >
+          <input type="hidden" name="_subject" value="【写了就发】新的问题反馈" />
+          <input type="hidden" name="_template" value="table" />
+          <input class="feedback-honeypot" type="text" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <label class="feedback-field">
+            <span>问题描述 <b aria-hidden="true">*</b></span>
+            <textarea id="feedbackMessageInput" name="问题描述" minlength="5" maxlength="2000" rows="6" placeholder="例如：我选中了两行文字，点击下划线后，预览里出现了 {{underline…" required></textarea>
+            <small><span id="feedbackMessageCount">0</span> / 2000</small>
+          </label>
+          <label class="feedback-field">
+            <span>联系方式 <em>选填</em></span>
+            <input id="feedbackContactInput" name="联系方式" type="text" maxlength="120" placeholder="邮箱、微信或其他方便回复的方式" />
+          </label>
+          <div class="feedback-upload-field">
+            <div class="feedback-upload-heading">
+              <span>问题截图 <em>选填</em></span>
+              <small>最多 3 张，总计不超过 8MB</small>
+            </div>
+            <label id="feedbackUploadDropzone" class="feedback-upload-dropzone" for="feedbackImageInput">
+              <i data-lucide="image-plus"></i>
+              <strong>点击上传图片</strong>
+              <span>支持 PNG、JPG、WebP、GIF，也可以拖到这里</span>
+              <input id="feedbackImageInput" name="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
+            </label>
+            <div id="feedbackImageList" class="feedback-image-list" aria-live="polite"></div>
+          </div>
+          <p class="feedback-privacy">
+            请勿上传密码、密钥等敏感信息。反馈由
+            <a href="https://formsubmit.co/privacy.pdf" target="_blank" rel="noopener noreferrer">FormSubmit</a>
+            转发，可能保留表单记录 30 天。
+          </p>
+          <p id="feedbackNotice" class="feedback-notice" role="status" aria-live="polite">
+            不会读取或上传当前草稿。
+          </p>
+          <div class="feedback-actions">
+            <button id="feedbackCancelBtn" class="secondary-button" type="button">取消</button>
+            <button id="feedbackSubmitBtn" class="primary-button" type="submit">
+              <i data-lucide="send"></i>
+              发送反馈
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -1074,6 +1142,6 @@
         document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260810-format-toggle"></script>
+    <script src="src/app.js?v=20260815-feedback-underline"></script>
   </body>
 </html>

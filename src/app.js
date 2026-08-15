@@ -41,6 +41,12 @@ const ACCOUNT_ADD_PENDING_SESSION_KEY = "writeThenPublishAccountAddPending.v1";
 const EXPERIENCE_VERSION = "2026.07";
 const WELCOME_BACK_STORAGE_KEY = "writeThenPublishWelcomeBackVersion.v1";
 const WHATS_NEW_STORAGE_KEY = "writeThenPublishWhatsNewVersion.v1";
+const FEEDBACK_ENDPOINT = "https://formsubmit.co/ajax/heytomato@gmail.com";
+const FEEDBACK_VERSION = "20260815-feedback-underline";
+const FEEDBACK_MAX_FILES = 3;
+const FEEDBACK_MAX_FILE_BYTES = 5 * 1024 * 1024;
+const FEEDBACK_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+const FEEDBACK_ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const LOCAL_DEPLOYMENT_MODE = document.documentElement.dataset.writeThenPublishLocalMode === "true";
 let activeStorageScope = "guest";
 
@@ -161,6 +167,19 @@ const els = {
   welcomeBackAccountState: $("#welcomeBackAccountState"),
   welcomeBackDirect: $("#welcomeBackDirectBtn"),
   welcomeBackTour: $("#welcomeBackTourBtn"),
+  feedback: $("#feedbackBtn"),
+  feedbackModal: $("#feedbackModal"),
+  feedbackClose: $("#feedbackCloseBtn"),
+  feedbackCancel: $("#feedbackCancelBtn"),
+  feedbackForm: $("#feedbackForm"),
+  feedbackMessage: $("#feedbackMessageInput"),
+  feedbackMessageCount: $("#feedbackMessageCount"),
+  feedbackContact: $("#feedbackContactInput"),
+  feedbackImageInput: $("#feedbackImageInput"),
+  feedbackUploadDropzone: $("#feedbackUploadDropzone"),
+  feedbackImageList: $("#feedbackImageList"),
+  feedbackNotice: $("#feedbackNotice"),
+  feedbackSubmit: $("#feedbackSubmitBtn"),
   downloadZip: $("#downloadZipBtn"),
   downloadArticle: $("#downloadArticleBtn"),
   copyWechat: $("#copyWechatBtn"),
@@ -459,6 +478,13 @@ let previewImageSelection = null;
 let wechatCoverData = "";
 let wechatServiceReady = false;
 let wechatSyncing = false;
+let feedbackFiles = [];
+let feedbackPreviewUrls = [];
+let feedbackReturnFocus = null;
+let feedbackSending = false;
+let feedbackAbortController = null;
+let feedbackSubmissionAccepted = false;
+let feedbackCurrentId = "";
 const livePhotoState = {
   file: null,
   objectUrl: "",
@@ -1581,6 +1607,318 @@ function closeAccountModal() {
   accountAuthAddMode = false;
   updateAccountUi();
   if (!entryState.resolved) showEntryChoice();
+}
+
+function setFeedbackNotice(message, type = "") {
+  if (!els.feedbackNotice) return;
+  els.feedbackNotice.textContent = message;
+  els.feedbackNotice.classList.toggle("is-error", type === "error");
+  els.feedbackNotice.classList.toggle("is-success", type === "success");
+  els.feedbackNotice.classList.toggle("is-activation", type === "activation");
+}
+
+function defaultFeedbackNotice() {
+  return "不会读取或上传当前草稿。";
+}
+
+function markFeedbackChanged() {
+  if (!feedbackSubmissionAccepted) return;
+  feedbackSubmissionAccepted = false;
+  feedbackCurrentId = "";
+  setFeedbackNotice(defaultFeedbackNotice());
+  setFeedbackSending(false);
+}
+
+function formatFeedbackFileSize(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function feedbackFilesTotalBytes() {
+  return feedbackFiles.reduce((total, file) => total + file.size, 0);
+}
+
+function clearFeedbackPreviewUrls() {
+  feedbackPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+  feedbackPreviewUrls = [];
+}
+
+function renderFeedbackFiles() {
+  if (!els.feedbackImageList) return;
+  clearFeedbackPreviewUrls();
+  els.feedbackImageList.replaceChildren();
+
+  feedbackFiles.forEach((file, index) => {
+    const item = document.createElement("div");
+    item.className = "feedback-image-item";
+    const image = document.createElement("img");
+    const previewUrl = URL.createObjectURL(file);
+    feedbackPreviewUrls.push(previewUrl);
+    image.src = previewUrl;
+    image.alt = `反馈截图 ${index + 1}`;
+
+    const label = document.createElement("span");
+    label.textContent = `${file.name} · ${formatFeedbackFileSize(file.size)}`;
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.title = `移除 ${file.name}`;
+    remove.setAttribute("aria-label", `移除截图 ${index + 1}`);
+    remove.disabled = feedbackSending;
+    remove.innerHTML = '<i data-lucide="x"></i>';
+    remove.addEventListener("click", () => {
+      if (feedbackSending) return;
+      markFeedbackChanged();
+      feedbackFiles.splice(index, 1);
+      renderFeedbackFiles();
+      if (feedbackFiles.length) {
+        setFeedbackNotice(`已选择 ${feedbackFiles.length} 张图片，共 ${formatFeedbackFileSize(feedbackFilesTotalBytes())}。`);
+      } else {
+        setFeedbackNotice(defaultFeedbackNotice());
+      }
+    });
+
+    item.append(image, label, remove);
+    els.feedbackImageList.append(item);
+  });
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function addFeedbackFiles(fileList) {
+  if (LOCAL_DEPLOYMENT_MODE || feedbackSending) return;
+  const incoming = Array.from(fileList || []);
+  let error = "";
+  let added = 0;
+  const seen = new Set(feedbackFiles.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
+
+  for (const file of incoming) {
+    const signature = `${file.name}:${file.size}:${file.lastModified}`;
+    if (seen.has(signature)) continue;
+    if (!FEEDBACK_ALLOWED_IMAGE_TYPES.has(file.type)) {
+      error = "只支持 PNG、JPG、WebP 或 GIF 图片。";
+      continue;
+    }
+    if (file.size > FEEDBACK_MAX_FILE_BYTES) {
+      error = `${file.name} 超过 5MB，请压缩后再上传。`;
+      continue;
+    }
+    if (feedbackFiles.length >= FEEDBACK_MAX_FILES) {
+      error = "最多只能上传 3 张图片。";
+      break;
+    }
+    if (feedbackFilesTotalBytes() + file.size > FEEDBACK_MAX_TOTAL_BYTES) {
+      error = "图片总大小不能超过 8MB，请移除或压缩后再试。";
+      break;
+    }
+    feedbackFiles.push(file);
+    seen.add(signature);
+    added += 1;
+    markFeedbackChanged();
+  }
+
+  if (els.feedbackImageInput) els.feedbackImageInput.value = "";
+  renderFeedbackFiles();
+  if (!added && !error && feedbackSubmissionAccepted) return;
+  if (error) {
+    setFeedbackNotice(error, "error");
+  } else if (feedbackFiles.length) {
+    setFeedbackNotice(`已选择 ${feedbackFiles.length} 张图片，共 ${formatFeedbackFileSize(feedbackFilesTotalBytes())}。`);
+  }
+}
+
+function updateFeedbackMessageCount() {
+  if (els.feedbackMessageCount && els.feedbackMessage) {
+    els.feedbackMessageCount.textContent = String(els.feedbackMessage.value.length);
+  }
+}
+
+function handleFeedbackFieldInput() {
+  markFeedbackChanged();
+  updateFeedbackMessageCount();
+}
+
+function setFeedbackSending(sending) {
+  feedbackSending = Boolean(sending);
+  [els.feedbackMessage, els.feedbackContact, els.feedbackImageInput]
+    .filter(Boolean)
+    .forEach((input) => {
+      input.disabled = feedbackSending;
+    });
+  if (els.feedbackSubmit) {
+    els.feedbackSubmit.disabled = feedbackSending || feedbackSubmissionAccepted;
+    els.feedbackSubmit.classList.toggle("is-sending", feedbackSending);
+    els.feedbackSubmit.innerHTML = feedbackSending
+      ? '<i data-lucide="loader-circle"></i>正在发送…'
+      : feedbackSubmissionAccepted
+        ? '<i data-lucide="circle-check"></i>已受理'
+        : '<i data-lucide="send"></i>发送反馈';
+  }
+  els.feedbackImageList?.querySelectorAll("button").forEach((button) => {
+    button.disabled = feedbackSending;
+  });
+  if (els.feedbackCancel) els.feedbackCancel.textContent = feedbackSending ? "停止等待" : "取消";
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function feedbackModalIsOpen() {
+  return Boolean(els.feedbackModal && !els.feedbackModal.classList.contains("hidden"));
+}
+
+function setFeedbackBackgroundInert(inert) {
+  [els.workspace, document.querySelector(".site-footer")].filter(Boolean).forEach((element) => {
+    element.inert = inert;
+  });
+}
+
+function trapFeedbackFocus(event) {
+  if (!feedbackModalIsOpen() || event.key !== "Tab") return false;
+  const focusable = Array.from(els.feedbackModal.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+  )).filter((element) => element.getClientRects().length > 0);
+  if (!focusable.length) {
+    event.preventDefault();
+    els.feedbackModal.focus();
+    return true;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+  return true;
+}
+
+function openFeedbackModal() {
+  if (LOCAL_DEPLOYMENT_MODE || !els.feedbackModal) return;
+  closeAccountMenu();
+  feedbackReturnFocus = document.activeElement;
+  setFeedbackBackgroundInert(true);
+  els.feedbackModal.classList.remove("hidden");
+  updateFeedbackMessageCount();
+  requestAnimationFrame(() => els.feedbackMessage?.focus());
+}
+
+function closeFeedbackModal() {
+  if (!els.feedbackModal) return;
+  if (feedbackSending) feedbackAbortController?.abort();
+  els.feedbackModal.classList.add("hidden");
+  setFeedbackBackgroundInert(false);
+  els.feedbackUploadDropzone?.classList.remove("is-dragging");
+  const returnFocus = feedbackReturnFocus;
+  feedbackReturnFocus = null;
+  if (returnFocus instanceof HTMLElement) requestAnimationFrame(() => returnFocus.focus());
+}
+
+function resetFeedbackForm() {
+  els.feedbackForm?.reset();
+  feedbackFiles = [];
+  feedbackCurrentId = "";
+  feedbackSubmissionAccepted = false;
+  renderFeedbackFiles();
+  updateFeedbackMessageCount();
+}
+
+function createFeedbackId() {
+  const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+  const suffix = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID().replace(/-/g, "").slice(0, 6)
+    : Math.random().toString(36).slice(2, 8);
+  return `WTP-${timestamp}-${suffix.toUpperCase()}`;
+}
+
+async function submitFeedback(event) {
+  event.preventDefault();
+  if (LOCAL_DEPLOYMENT_MODE || feedbackSending) return;
+  const message = els.feedbackMessage?.value.trim() || "";
+  if (message.length < 5) {
+    setFeedbackNotice("请至少写 5 个字，方便判断具体问题。", "error");
+    els.feedbackMessage?.focus();
+    return;
+  }
+  if (feedbackFiles.length > FEEDBACK_MAX_FILES || feedbackFilesTotalBytes() > FEEDBACK_MAX_TOTAL_BYTES) {
+    setFeedbackNotice("图片数量或总大小超过限制，请调整后再发送。", "error");
+    return;
+  }
+
+  const feedbackId = feedbackCurrentId || createFeedbackId();
+  feedbackCurrentId = feedbackId;
+  const contact = els.feedbackContact?.value.trim() || "";
+  const payload = new FormData();
+  payload.append("_subject", `【写了就发】问题反馈 ${feedbackId}`);
+  payload.append("_template", "table");
+  payload.append("_honey", els.feedbackForm?.elements?._honey?.value || "");
+  payload.append("反馈编号", feedbackId);
+  payload.append("问题描述", message);
+  payload.append("联系方式", contact || "未填写");
+  payload.append("页面版本", FEEDBACK_VERSION);
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) payload.append("email", contact);
+  feedbackFiles.forEach((file, index) => payload.append(`attachment${index + 1}`, file, file.name));
+
+  feedbackAbortController = new AbortController();
+  const timeoutMs = Math.min(
+    120000,
+    Math.max(60000, 30000 + Math.ceil(feedbackFilesTotalBytes() / (128 * 1024)) * 1000),
+  );
+  const timeout = window.setTimeout(() => feedbackAbortController?.abort(), timeoutMs);
+  setFeedbackSending(true);
+  setFeedbackNotice("正在上传反馈和图片，请不要关闭页面。");
+
+  try {
+    const response = await fetch(FEEDBACK_ENDPOINT, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: payload,
+      signal: feedbackAbortController.signal,
+    });
+    const raw = await response.text();
+    let result = null;
+    try {
+      result = raw ? JSON.parse(raw) : null;
+    } catch {
+      result = null;
+    }
+    const accepted = response.ok && result && (result.success === true || result.success === "true");
+    if (!accepted) {
+      const failure = new Error(result?.message || `邮件服务暂时不可用（${response.status}）`);
+      failure.confirmedFailure = true;
+      throw failure;
+    }
+
+    const activationRequired = /activat|confirm(?:ation)? email|verify your email/i.test(`${result.message || ""} ${raw}`);
+    if (activationRequired) {
+      feedbackSubmissionAccepted = false;
+      setFeedbackNotice(
+        `邮件服务已受理，编号 ${feedbackId}。收件箱需要先点击激活邮件；内容已保留，请激活后用同一编号再提交一次。`,
+        "activation",
+      );
+    } else {
+      feedbackSubmissionAccepted = true;
+      setFeedbackNotice(
+        `邮件服务已受理，编号 ${feedbackId}。这不等于邮箱已经送达，请以收件箱为准。`,
+        "success",
+      );
+    }
+  } catch (error) {
+    const aborted = error?.name === "AbortError";
+    feedbackSubmissionAccepted = false;
+    if (aborted || !error?.confirmedFailure) {
+      setFeedbackNotice(
+        `发送结果未确认，邮件服务可能已收到。内容和编号 ${feedbackId} 已保留，请先检查收件箱，不要立刻重复提交。`,
+        "activation",
+      );
+    } else {
+      setFeedbackNotice(`发送失败：${error?.message || "请检查网络后重试。"} 内容已保留。`, "error");
+    }
+  } finally {
+    window.clearTimeout(timeout);
+    feedbackAbortController = null;
+    setFeedbackSending(false);
+  }
 }
 
 function startAddingAccount() {
@@ -5551,9 +5889,92 @@ function isMarkdownImageBlock(line) {
     || /^!\[[^\]\n]*\]\((?:<[^>]+>|[^\s)]+)(?:\s+[^)]*)?\)$/.test(line);
 }
 
+function collectMultilineUnderlineMarkers(text) {
+  const markers = [];
+  let searchFrom = 0;
+  while (searchFrom < text.length) {
+    const open = text.indexOf("{{underline:", searchFrom);
+    if (open === -1) break;
+    const marker = matchUnderlineMarker(text, open);
+    if (marker && text.slice(marker.innerStart, marker.innerEnd).includes("\n")) {
+      markers.push({
+        ...marker,
+        open,
+        tokens: applyInlineStyle(
+          parseInline(text.slice(marker.innerStart, marker.innerEnd), marker.innerStart),
+          { underline: marker.style },
+        ),
+      });
+    }
+    searchFrom = open + 2;
+  }
+  return markers;
+}
+
+function sliceInlineTokensBySourceRange(tokens, start, end) {
+  const sliced = [];
+  for (const token of tokens) {
+    if (!Number.isFinite(token.sourceStart) || !Number.isFinite(token.sourceEnd)) continue;
+    if (token.sourceEnd <= start || token.sourceStart >= end) continue;
+    if (token.type === "image") {
+      sliced.push({ ...token });
+      continue;
+    }
+    const from = Math.max(start, token.sourceStart);
+    const to = Math.min(end, token.sourceEnd);
+    if (to <= from) continue;
+    const textStart = from - token.sourceStart;
+    const textEnd = to - token.sourceStart;
+    const text = token.text.slice(textStart, textEnd);
+    if (!text) continue;
+    sliced.push({ ...token, text, sourceStart: from, sourceEnd: to });
+  }
+  return sliced;
+}
+
+function parseInlineSourceRange(source, start, end, multilineUnderlines = []) {
+  const safeStart = clamp(Number(start) || 0, 0, source.length);
+  const safeEnd = clamp(Number(end) || safeStart, safeStart, source.length);
+  const relevant = multilineUnderlines.filter((marker) => marker.open < safeEnd && marker.end > safeStart);
+  if (!relevant.length) return parseInline(source.slice(safeStart, safeEnd), safeStart);
+
+  const syntaxRanges = relevant.flatMap((marker) => [
+    { start: marker.open, end: marker.innerStart },
+    { start: marker.innerEnd, end: marker.end },
+  ]);
+  const boundaries = new Set([safeStart, safeEnd]);
+  for (const marker of relevant) {
+    for (const boundary of [marker.open, marker.innerStart, marker.innerEnd, marker.end]) {
+      if (boundary > safeStart && boundary < safeEnd) boundaries.add(boundary);
+    }
+  }
+
+  const points = [...boundaries].sort((a, b) => a - b);
+  const tokens = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const partStart = points[index];
+    const partEnd = points[index + 1];
+    if (partEnd <= partStart) continue;
+    if (syntaxRanges.some((range) => range.start <= partStart && partEnd <= range.end)) continue;
+
+    const active = relevant
+      .filter((marker) => marker.innerStart <= partStart && partEnd <= marker.innerEnd)
+      .sort((a, b) => (a.innerEnd - a.innerStart) - (b.innerEnd - b.innerStart));
+    let partTokens = active.length
+      ? sliceInlineTokensBySourceRange(active[0].tokens, partStart, partEnd)
+      : parseInline(source.slice(partStart, partEnd), partStart);
+    for (const marker of active) {
+      partTokens = applyInlineStyle(partTokens, { underline: marker.style });
+    }
+    tokens.push(...partTokens);
+  }
+  return tokens;
+}
+
 function parseBlocks(content, images = {}) {
   const normalized = content.replace(/\r\n/g, "\n");
   const lines = normalized.split("\n");
+  const multilineUnderlines = collectMultilineUnderlineMarkers(normalized);
   const imageLookup = buildImageReferenceLookup(images);
   const lineOffsets = [];
   let runningOffset = 0;
@@ -5645,13 +6066,19 @@ function parseBlocks(content, images = {}) {
         index = rowIndex - 1;
       } else {
         const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        const listMarker = trimmed.match(/^([-*+]\s+|\d+[.)]\s+)/);
         if (heading) {
           flushParagraph();
           const level = heading[1].length;
-          const contentStart = trimmedStart + heading[1].length + 1;
+          const contentStart = trimmedStart + heading[0].length - heading[2].length;
           blocks.push({
             type: level === 1 ? "h1" : level === 2 ? "h2" : "h3",
-            tokens: parseInline(heading[2].trim(), contentStart),
+            tokens: parseInlineSourceRange(
+              normalized,
+              contentStart,
+              trimmedStart + trimmed.length,
+              multilineUnderlines,
+            ),
             sourceStart: lineOffsets[index],
             sourceEnd: lineOffsets[index] + line.length,
           });
@@ -5660,18 +6087,47 @@ function parseBlocks(content, images = {}) {
           const contentStart = trimmedStart + 2 + countLeadingSpaces(trimmed.slice(2));
           blocks.push({
             type: "quote",
-            tokens: parseInline(trimmed.slice(2).trim(), contentStart),
+            tokens: parseInlineSourceRange(
+              normalized,
+              contentStart,
+              contentStart + trimmed.slice(2).trim().length,
+              multilineUnderlines,
+            ),
             sourceStart: lineOffsets[index],
             sourceEnd: lineOffsets[index] + line.length,
           });
-        } else if (/^([-*+]\s+|\d+[.)]\s+)/.test(trimmed)) {
-          const text = trimmed.replace(/^([-*+]\s+|\d+[.)]\s+)/, "• ");
-          appendParagraphTokens(parseInline(text, trimmedStart), index, line);
+        } else if (listMarker) {
+          const itemStart = trimmedStart + listMarker[0].length;
+          const itemTokens = parseInlineSourceRange(
+            normalized,
+            itemStart,
+            trimmedStart + trimmed.length,
+            multilineUnderlines,
+          );
+          const bullet = {
+            text: "• ",
+            sourceStart: trimmedStart,
+            sourceEnd: itemStart,
+          };
+          const bulletUnderline = multilineUnderlines
+            .filter((marker) => marker.innerStart <= trimmedStart && itemStart <= marker.innerEnd)
+            .sort((a, b) => (a.innerEnd - a.innerStart) - (b.innerEnd - b.innerStart))[0];
+          if (bulletUnderline) bullet.underline = bulletUnderline.style;
+          appendParagraphTokens([bullet, ...itemTokens], index, line);
         } else if (/^([-*_])(?:\s*\1){2,}\s*$/.test(trimmed)) {
           flushParagraph();
           blocks.push({ type: "spacer", sourceStart: lineOffsets[index], sourceEnd: lineOffsets[index] + line.length });
         } else {
-          appendParagraphTokens(parseInline(trimmed, trimmedStart), index, line);
+          appendParagraphTokens(
+            parseInlineSourceRange(
+              normalized,
+              trimmedStart,
+              trimmedStart + trimmed.length,
+              multilineUnderlines,
+            ),
+            index,
+            line,
+          );
         }
       }
     } else {
@@ -6618,7 +7074,15 @@ function renderArticlePreview(settings) {
 }
 
 function markdownToArticleHtml(markdown, images = {}) {
-  const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+  const normalized = String(markdown || "").replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const lineOffsets = [];
+  let runningOffset = 0;
+  lines.forEach((line) => {
+    lineOffsets.push(runningOffset);
+    runningOffset += line.length + 1;
+  });
+  const multilineUnderlines = collectMultilineUnderlineMarkers(normalized);
   const imageLookup = buildImageReferenceLookup(images);
   const html = [];
   let paragraph = [];
@@ -6626,14 +7090,18 @@ function markdownToArticleHtml(markdown, images = {}) {
   let code = [];
   let inCode = false;
 
+  const renderSourceRange = (start, end) => renderArticleInlineTokens(
+    parseInlineSourceRange(normalized, start, end, multilineUnderlines),
+  );
+
   const flushParagraph = () => {
     if (!paragraph.length) return;
-    html.push(`<p>${renderArticleInline(paragraph.join(" "))}</p>`);
+    html.push(`<p>${renderSourceRange(paragraph[0].start, paragraph[paragraph.length - 1].end)}</p>`);
     paragraph = [];
   };
   const flushList = () => {
     if (!list.length) return;
-    html.push(`<ul>${list.map((item) => `<li>${renderArticleInline(item)}</li>`).join("")}</ul>`);
+    html.push(`<ul>${list.map((item) => `<li>${renderSourceRange(item.start, item.end)}</li>`).join("")}</ul>`);
     list = [];
   };
   const flushCode = () => {
@@ -6648,7 +7116,11 @@ function markdownToArticleHtml(markdown, images = {}) {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const leading = line.match(/^\s*/)?.[0].length || 0;
+    const trailing = line.match(/\s*$/)?.[0].length || 0;
     const trimmed = line.trim();
+    const trimmedStart = lineOffsets[index] + leading;
+    const trimmedEnd = lineOffsets[index] + line.length - trailing;
     if (trimmed.startsWith("```")) {
       if (inCode) {
         flushCode();
@@ -6709,25 +7181,27 @@ function markdownToArticleHtml(markdown, images = {}) {
       flushParagraph();
       flushList();
       const level = Math.min(3, heading[1].length);
-      html.push(`<h${level}>${renderArticleInline(heading[2])}</h${level}>`);
+      const contentStart = trimmedStart + heading[0].length - heading[2].length;
+      html.push(`<h${level}>${renderSourceRange(contentStart, trimmedEnd)}</h${level}>`);
       continue;
     }
 
     if (trimmed.startsWith("> ")) {
       flushParagraph();
       flushList();
-      html.push(`<blockquote>${renderArticleInline(trimmed.slice(2))}</blockquote>`);
+      html.push(`<blockquote>${renderSourceRange(trimmedStart + 2, trimmedEnd)}</blockquote>`);
       continue;
     }
 
     const listMatch = trimmed.match(/^[-*+]\s+(.+)$/);
     if (listMatch) {
       flushParagraph();
-      list.push(listMatch[1]);
+      const markerLength = trimmed.length - listMatch[1].length;
+      list.push({ start: trimmedStart + markerLength, end: trimmedEnd });
       continue;
     }
 
-    paragraph.push(trimmed);
+    paragraph.push({ start: trimmedStart, end: trimmedEnd });
   }
 
   flushParagraph();
@@ -6737,7 +7211,11 @@ function markdownToArticleHtml(markdown, images = {}) {
 }
 
 function renderArticleInline(text) {
-  return parseInline(String(text || ""))
+  return renderArticleInlineTokens(parseInline(String(text || "")));
+}
+
+function renderArticleInlineTokens(tokens) {
+  return tokens
     .map((token) => {
       let inner = escapeHtml(token.text).replace(/`([^`]+)`/g, "<code>$1</code>");
       if (token.bold) inner = `<strong>${inner}</strong>`;
@@ -10591,6 +11069,9 @@ function bindEvents() {
   els.accountModal.addEventListener("click", (event) => {
     if (event.target === els.accountModal) closeAccountModal();
   });
+  els.feedbackModal?.addEventListener("click", (event) => {
+    if (event.target === els.feedbackModal) closeFeedbackModal();
+  });
   els.welcomeBackModal?.addEventListener("click", (event) => {
     if (event.target === els.welcomeBackModal) closeWelcomeBack();
   });
@@ -10615,6 +11096,31 @@ function bindEvents() {
   els.welcomeBackDirect?.addEventListener("click", () => closeWelcomeBack());
   els.welcomeBackTour?.addEventListener("click", () => closeWelcomeBack({ startTour: true }));
   els.account.addEventListener("click", toggleAccountMenu);
+  els.feedback?.addEventListener("click", openFeedbackModal);
+  els.feedbackClose?.addEventListener("click", closeFeedbackModal);
+  els.feedbackCancel?.addEventListener("click", closeFeedbackModal);
+  els.feedbackForm?.addEventListener("submit", submitFeedback);
+  els.feedbackMessage?.addEventListener("input", handleFeedbackFieldInput);
+  els.feedbackContact?.addEventListener("input", handleFeedbackFieldInput);
+  els.feedbackImageInput?.addEventListener("change", (event) => addFeedbackFiles(event.target.files));
+  els.feedbackUploadDropzone?.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    els.feedbackUploadDropzone.classList.add("is-dragging");
+  });
+  els.feedbackUploadDropzone?.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  });
+  els.feedbackUploadDropzone?.addEventListener("dragleave", (event) => {
+    if (!els.feedbackUploadDropzone.contains(event.relatedTarget)) {
+      els.feedbackUploadDropzone.classList.remove("is-dragging");
+    }
+  });
+  els.feedbackUploadDropzone?.addEventListener("drop", (event) => {
+    event.preventDefault();
+    els.feedbackUploadDropzone.classList.remove("is-dragging");
+    addFeedbackFiles(event.dataTransfer?.files);
+  });
   els.accountMenuLogin?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -10706,6 +11212,11 @@ function bindEvents() {
   window.addEventListener("mousemove", moveCropDrag);
   window.addEventListener("mouseup", stopCropDrag);
   window.addEventListener("keydown", (event) => {
+    if (feedbackModalIsOpen()) {
+      if (event.key === "Escape") closeFeedbackModal();
+      else if (event.key === "Tab") trapFeedbackFocus(event);
+      return;
+    }
     if (event.key === "Escape" && !els.cropModal.classList.contains("hidden")) closeCropper();
     if (event.key === "Escape" && !els.wechatModal.classList.contains("hidden")) closeWechatModal();
     if (event.key === "Escape" && !els.livePhotoModal.classList.contains("hidden")) closeLivePhotoModal();
