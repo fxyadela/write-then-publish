@@ -1882,6 +1882,15 @@ async function submitFeedback(event) {
     } catch {
       result = null;
     }
+    const activationRequired = /activat|confirm(?:ation)? email|verify your email/i.test(`${result?.message || ""} ${raw}`);
+    if (activationRequired) {
+      feedbackSubmissionAccepted = false;
+      setFeedbackNotice(
+        `邮件通道尚未激活。激活邮件已发送到收件箱；内容和编号 ${feedbackId} 已保留，点击激活后再提交。`,
+        "activation",
+      );
+      return;
+    }
     const accepted = response.ok && result && (result.success === true || result.success === "true");
     if (!accepted) {
       const failure = new Error(result?.message || `邮件服务暂时不可用（${response.status}）`);
@@ -1889,20 +1898,11 @@ async function submitFeedback(event) {
       throw failure;
     }
 
-    const activationRequired = /activat|confirm(?:ation)? email|verify your email/i.test(`${result.message || ""} ${raw}`);
-    if (activationRequired) {
-      feedbackSubmissionAccepted = false;
-      setFeedbackNotice(
-        `邮件服务已受理，编号 ${feedbackId}。收件箱需要先点击激活邮件；内容已保留，请激活后用同一编号再提交一次。`,
-        "activation",
-      );
-    } else {
-      feedbackSubmissionAccepted = true;
-      setFeedbackNotice(
-        `邮件服务已受理，编号 ${feedbackId}。这不等于邮箱已经送达，请以收件箱为准。`,
-        "success",
-      );
-    }
+    feedbackSubmissionAccepted = true;
+    setFeedbackNotice(
+      `邮件服务已受理，编号 ${feedbackId}。这不等于邮箱已经送达，请以收件箱为准。`,
+      "success",
+    );
   } catch (error) {
     const aborted = error?.name === "AbortError";
     feedbackSubmissionAccepted = false;
