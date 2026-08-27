@@ -38,7 +38,7 @@ const ACCOUNT_SESSIONS_STORAGE_KEY = "writeThenPublishAccountSessions.v1";
 const MAX_STORED_ACCOUNT_SESSIONS = 6;
 const GOOGLE_OAUTH_PENDING_SESSION_KEY = "writeThenPublishGoogleOauthPending.v1";
 const ACCOUNT_ADD_PENDING_SESSION_KEY = "writeThenPublishAccountAddPending.v1";
-const EXPERIENCE_VERSION = "2026.07";
+const EXPERIENCE_VERSION = "2026.08";
 const WELCOME_BACK_STORAGE_KEY = "writeThenPublishWelcomeBackVersion.v1";
 const WHATS_NEW_STORAGE_KEY = "writeThenPublishWhatsNewVersion.v1";
 const FEEDBACK_ENDPOINT = "https://formsubmit.co/ajax/heytomato@gmail.com";
@@ -242,6 +242,15 @@ const els = {
   zhFont: $("#zhFontInput"),
   enFont: $("#enFontInput"),
   imageHeight: $("#imageHeightInput"),
+  pairModal: $("#pairModal"),
+  pairClose: $("#pairCloseBtn"),
+  pairCanvasLeft: $("#pairCanvasLeft"),
+  pairCanvasRight: $("#pairCanvasRight"),
+  pairCropLeft: $("#pairCropLeftBtn"),
+  pairCropRight: $("#pairCropRightBtn"),
+  pairSwap: $("#pairSwapBtn"),
+  pairDone: $("#pairDoneBtn"),
+  pairRatioButtons: document.querySelectorAll("[data-pair-ratio]"),
   cropModal: $("#cropModal"),
   cropCanvas: $("#cropCanvas"),
   cropTitle: $("#cropTitle"),
@@ -3183,36 +3192,27 @@ const FIRST_RUN_ONBOARDING_STEPS = [
 
 const WHATS_NEW_ONBOARDING_STEPS = [
   {
-    target: "#accountBtn",
-    title: "账户同步",
-    body: () => cloudState.user
-      ? "你的账户同步已经开启。头像、昵称和图文草稿会按当前账号保存，换设备登录也能继续编辑。"
-      : "需要长期保存时，可以随时登录并同步；继续使用游客模式，也不影响原来的排版和下载流程。",
-    actionLabel: () => cloudState.user ? "查看同步状态" : "登录并同步",
-    action: () => {
-      if (cloudState.user) {
-        openAccountMenu();
-        return;
-      }
-      finishOnboarding({ remember: false });
-      openAccountModal();
-    },
-  },
-  {
-    target: "#livePhotoToolbarBtn",
-    title: "实况图片",
-    body: "从这里选择视频、裁剪画面并插入图文。导出时会自动识别实况页，单张和批量都按对应格式处理。",
-  },
-  {
     target: ".preview-image-box",
     fallbackTarget: "#previewPanel",
-    title: "拖动图片调整位置",
-    body: "直接按住右侧预览中的图片，拖到蓝色落点线后松手。图片会移动到对应段落，左侧 Markdown 顺序也会同步更新。",
+    title: "双图拼图",
+    body: "点选预览里的图片，右缘会出现 ＋。选一张新图，它就会拼在右边，两张图左右并排合成一块。",
   },
   {
-    target: "#obsidianImportMenu",
-    title: "连接 Obsidian",
-    body: "连接仓库后，可以读取笔记里的图片并同步修改后的 Markdown。暂不连接也不会影响普通编辑。",
+    target: ".preview-pair-box",
+    fallbackTarget: "#previewPanel",
+    title: "拼图随时可调",
+    body: "拼完会自动弹出调整窗口：选 16:9、3:2、4:3 或 1:1 整体比例，左右互换，两张图也能分别裁剪。之后点预览里的拼图块可以再次打开。",
+  },
+  {
+    target: '[data-format="bold"]',
+    fallbackTarget: "#previewPanel",
+    title: "多行加粗修复",
+    body: "选中多行文字点加粗或斜体，现在会逐行生效，标题和引用的前缀不受影响；再点一次整体取消。",
+  },
+  {
+    target: "#previewPanel",
+    title: "两处体验修复",
+    body: "裁剪窗口里，裁剪框角柄压在图片边缘时也能直接拖动了；切换账号后，右侧预览会立即刷新为新账号的内容。",
   },
 ];
 
@@ -3488,6 +3488,58 @@ function mapPositionAfterTextRemovals(position, ranges) {
   return position - removed;
 }
 
+// 跨行选区的加粗/斜体：星号对不能跨行生效（解析按行进行），
+// 所以逐行分别包裹或取消，块前缀（标题/引用/列表）留在标记外面。
+function toggleMultilineInlineStyle(kind) {
+  const textarea = els.content;
+  const viewport = captureTextareaViewport(textarea);
+  const value = textarea.value;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const delimiter = kind === "bold" ? "**" : "*";
+  const label = kind === "bold" ? "加粗" : "斜体";
+
+  const parts = value.slice(start, end).split("\n").map((line) => {
+    const match = line.match(/^(\s*)((?:#{1,6}\s+)|(?:>\s+)|(?:[-*+]\s+)|(?:\d+[.)]\s+))?([\s\S]*)$/);
+    const lead = (match[1] || "") + (match[2] || "");
+    const body = match[3] || "";
+    const skip = !body.trim() || isMarkdownImageBlock(body.trim()) || body.trimStart().startsWith("|");
+    if (skip) return { line, skip: true };
+    const open = body.match(/^\*+/)?.[0].length || 0;
+    const close = body.match(/\*+$/)?.[0].length || 0;
+    const runCount = body.replace(/\*/g, "").trim() ? Math.min(open, close) : 0;
+    const wrapped = kind === "bold" ? runCount >= 2 : runCount % 2 === 1;
+    return { line, skip: false, lead, body, runCount, wrapped };
+  });
+
+  const formattable = parts.filter((part) => !part.skip);
+  if (!formattable.length) return false;
+  const removing = formattable.every((part) => part.wrapped);
+
+  const nextLines = parts.map((part) => {
+    if (part.skip) return part.line;
+    if (removing) {
+      const removeCount = kind === "bold"
+        ? part.runCount >= 4
+          ? part.runCount - (part.runCount % 2)
+          : 2
+        : 1;
+      return part.lead + part.body.slice(removeCount, part.body.length - removeCount);
+    }
+    if (part.wrapped) return part.line;
+    return `${part.lead}${delimiter}${part.body}${delimiter}`;
+  });
+
+  const next = nextLines.join("\n");
+  commitTextHistory();
+  textarea.value = `${value.slice(0, start)}${next}${value.slice(end)}`;
+  restoreTextareaSelection(textarea, start, start + next.length, viewport);
+  commitTextHistory();
+  requestRender();
+  els.status.textContent = removing ? `已取消${label}` : `已按行应用${label}`;
+  return true;
+}
+
 function toggleMarkdownInlineStyle(kind) {
   const textarea = els.content;
   const viewport = captureTextareaViewport(textarea);
@@ -3496,6 +3548,10 @@ function toggleMarkdownInlineStyle(kind) {
   const end = textarea.selectionEnd;
   const delimiter = kind === "bold" ? "**" : "*";
   const label = kind === "bold" ? "加粗" : "斜体";
+
+  if (start !== end && value.slice(start, end).includes("\n")) {
+    return toggleMultilineInlineStyle(kind);
+  }
 
   if (start === end) {
     const placeholder = "文字";
@@ -5583,6 +5639,7 @@ function applyCropper() {
   }
   updateImageList();
   closeCropper();
+  refreshPairEditor();
   requestRender();
 }
 
@@ -5764,7 +5821,7 @@ function detectCropHit(point) {
     se: [crop.x + crop.width, crop.y + crop.height],
   };
   for (const [handle, [x, y]] of Object.entries(corners)) {
-    if (Math.hypot(point.x - x, point.y - y) <= 16) return handle;
+    if (Math.hypot(point.x - x, point.y - y) <= 20) return handle;
   }
   if (point.x >= crop.x && point.x <= crop.x + crop.width && point.y >= crop.y && point.y <= crop.y + crop.height) {
     return "move";
@@ -5774,20 +5831,23 @@ function detectCropHit(point) {
 
 function startCropDrag(event) {
   if (!cropper.image || !cropper.rect) return;
+  event.preventDefault();
   cropper.display = getCropDisplay();
   const canvasPoint = canvasPointFromEvent(event);
   const display = cropper.display;
-  if (
-    canvasPoint.x < display.x ||
-    canvasPoint.x > display.x + display.width ||
-    canvasPoint.y < display.y ||
-    canvasPoint.y > display.y + display.height
-  ) {
+  const action = detectCropHit(canvasPoint);
+  // 默认全图裁剪框的四个角柄正好压在图片显示区边缘，命中半径会伸到
+  // 显示区外侧；先判角柄再做边界检查，否则点角柄偏外半格就被吞掉。
+  const insideDisplay =
+    canvasPoint.x >= display.x &&
+    canvasPoint.x <= display.x + display.width &&
+    canvasPoint.y >= display.y &&
+    canvasPoint.y <= display.y + display.height;
+  if (!insideDisplay && (action === "move" || action === "move-new")) {
     return;
   }
 
   const sourcePoint = sourcePointFromCanvas(canvasPoint);
-  const action = detectCropHit(canvasPoint);
   if (action === "move-new") {
     cropper.rect = clampMovedRect(
       {
@@ -5869,6 +5929,20 @@ function resizeCropRect(handle, startRect, point, image, aspect) {
   if (x + width > image.width) x = image.width - width;
   if (y + height > image.height) y = image.height - height;
   return fitRectToAspect({ x, y, width, height }, image, aspect);
+}
+
+// [[image:a|b]] 双图拼图：两张图左右并排合成一块；
+// 第三段是可选的整体比例，如 [[image:a|b|4x3]]
+const PAIR_RATIOS = { "16x9": 16 / 9, "3x2": 3 / 2, "4x3": 4 / 3, "1x1": 1 };
+const DEFAULT_PAIR_RATIO = "16x9";
+
+function normalizePairRatio(value) {
+  return PAIR_RATIOS[value] ? value : DEFAULT_PAIR_RATIO;
+}
+
+function resolveInternalImagePairBlock(line) {
+  const pair = line.match(/^\[\[image:([\w-]+)\|([\w-]+)(?:\|([\w-]+))?\]\]$/);
+  return pair ? { ids: [pair[1], pair[2]], ratio: normalizePairRatio(pair[3]) } : null;
 }
 
 function resolveMarkdownImageBlock(line, imageLookup) {
@@ -6033,8 +6107,29 @@ function parseBlocks(content, images = {}) {
     const trimmedStart = lineOffsets[index] + leading;
 
     if (trimmed) {
+      const pairBlock = resolveInternalImagePairBlock(trimmed);
       const imageId = resolveMarkdownImageBlock(trimmed, imageLookup);
-      if (isMarkdownImageBlock(trimmed)) {
+      if (pairBlock) {
+        flushParagraph();
+        const validIds = pairBlock.ids.filter((id) => images[id]);
+        if (validIds.length > 1) {
+          blocks.push({
+            type: "imagePair",
+            ids: validIds,
+            ratio: pairBlock.ratio,
+            sourceStart: lineOffsets[index],
+            sourceEnd: lineOffsets[index] + line.length,
+          });
+        } else if (validIds.length === 1) {
+          // 拼图里的一张图被删掉时降级为单图
+          blocks.push({
+            type: "image",
+            id: validIds[0],
+            sourceStart: lineOffsets[index],
+            sourceEnd: lineOffsets[index] + line.length,
+          });
+        }
+      } else if (isMarkdownImageBlock(trimmed)) {
         flushParagraph();
         if (imageId) {
           blocks.push({
@@ -6673,6 +6768,48 @@ async function buildPages(settings) {
       continue;
     }
 
+    if (block.type === "imagePair") {
+      const cells = [];
+      for (const id of block.ids) {
+        const data = settings.images[id];
+        if (!data) continue;
+        if (!imageCache[id]) {
+          imageCache[id] = await loadImage(data.src).catch(() => null);
+        }
+        const img = imageCache[id];
+        if (!img) continue;
+        cells.push({ imageId: id, image: img, sourceRect: getImageSourceRect(img, data.crop) });
+      }
+      if (!cells.length) continue;
+      // 拼图整体按 ratio 定高，两格等分，中缝露出卡片背景色；
+      // 超过最大图高时保持比例缩小并水平居中
+      const pairAspect = PAIR_RATIOS[normalizePairRatio(block.ratio)];
+      let pairWidth = contentWidth;
+      let pairHeight = Math.round(pairWidth / pairAspect);
+      const pairMaxHeight = Math.min(settings.imageHeight, page.bounds.bottom - page.bounds.top);
+      if (pairHeight > pairMaxHeight) {
+        pairHeight = pairMaxHeight;
+        pairWidth = Math.round(pairHeight * pairAspect);
+      }
+      ensureSpace(pairHeight, hasContent && previousBlockType !== "spacer" ? 24 : 0);
+      page.items.push({
+        type: "imagePair",
+        cells,
+        x: page.bounds.left + Math.round((contentWidth - pairWidth) / 2),
+        y,
+        width: pairWidth,
+        height: pairHeight,
+        gap: 5,
+        radius: 13,
+        sourceStart: block.sourceStart,
+        sourceEnd: block.sourceEnd,
+      });
+      y += pairHeight + 34;
+      hasContent = true;
+      previousBlockType = "image";
+      continue;
+    }
+
     if (block.type === "image") {
       const data = settings.images[block.id];
       if (!data) continue;
@@ -6765,6 +6902,7 @@ function drawPageToContext(ctx, page) {
 
   for (const item of page.items) {
     if (item.type === "image") drawImageBlock(ctx, item);
+    if (item.type === "imagePair") drawImagePairBlock(ctx, item);
     if (item.type === "table") drawTableBlock(ctx, item, page.settings);
     if (item.type === "text") drawTextLine(ctx, item, page.settings);
   }
@@ -6894,6 +7032,20 @@ function drawImageBlock(ctx, item) {
   roundedRect(ctx, item.x, item.y, item.width, item.height, item.radius);
   ctx.clip();
   drawSourceCoverImage(ctx, item.image, item.sourceRect, item.x, item.y, item.width, item.height);
+  ctx.restore();
+}
+
+// 双图拼图：外框整体圆角，内部左右两格 cover 裁剪，中缝露背景
+function drawImagePairBlock(ctx, item) {
+  ctx.save();
+  roundedRect(ctx, item.x, item.y, item.width, item.height, item.radius);
+  ctx.clip();
+  const count = item.cells.length;
+  const slotWidth = (item.width - item.gap * (count - 1)) / count;
+  item.cells.forEach((cell, index) => {
+    const x = item.x + index * (slotWidth + item.gap);
+    drawSourceCoverImage(ctx, cell.image, cell.sourceRect, x, item.y, slotWidth, item.height);
+  });
   ctx.restore();
 }
 
@@ -8479,8 +8631,14 @@ async function applyLivePhotoAsset(event) {
   }
 }
 
+// 渲染序号：切换账号/项目时旧渲染可能晚于新渲染完成，
+// 没有这个守卫时，旧账号的卡片会覆盖新账号的预览（表现为“切换后页面没刷新”）。
+let renderSequence = 0;
+
 async function render() {
+  const seq = ++renderSequence;
   await Promise.all([hydrateLiveMediaForState(), hydrateImageSourcesForState()]);
+  if (seq !== renderSequence) return;
   const settings = readForm();
   updateAppMode();
   updateArticleControls();
@@ -8490,6 +8648,7 @@ async function render() {
     return;
   }
   const pages = await buildPages(settings);
+  if (seq !== renderSequence) return;
   state.canvases = pages.map((page, index) => renderPage(page, index, pages.length));
   drawPreview(state.canvases);
   saveState();
@@ -8636,6 +8795,127 @@ function drawPreview(canvases) {
   if (window.lucide) window.lucide.createIcons();
 }
 
+function imageHitIsPairable(hit) {
+  if (!Number.isFinite(hit.sourceStart) || !Number.isFinite(hit.sourceEnd)) return false;
+  const segment = els.content.value.slice(hit.sourceStart, hit.sourceEnd);
+  return /^\s*\[\[image:[\w-]+\]\]\s*$/.test(segment);
+}
+
+// ===== 拼图调整弹窗 =====
+const pairEditor = { leftId: null, rightId: null, ratio: DEFAULT_PAIR_RATIO };
+
+function pairModalIsOpen() {
+  return Boolean(els.pairModal && !els.pairModal.classList.contains("hidden"));
+}
+
+function pairReferenceRegExp(leftId, rightId) {
+  return new RegExp(`\\[\\[image:${leftId}\\|${rightId}(?:\\|[\\w-]+)?\\]\\]`);
+}
+
+// 把当前弹窗状态写回文本里的拼图引用
+function writePairReference(nextLeftId, nextRightId, nextRatio) {
+  const pattern = pairReferenceRegExp(pairEditor.leftId, pairEditor.rightId);
+  if (!pattern.test(els.content.value)) return false;
+  const ratioSuffix = nextRatio === DEFAULT_PAIR_RATIO ? "" : `|${nextRatio}`;
+  els.content.value = els.content.value.replace(pattern, `[[image:${nextLeftId}|${nextRightId}${ratioSuffix}]]`);
+  pairEditor.leftId = nextLeftId;
+  pairEditor.rightId = nextRightId;
+  pairEditor.ratio = nextRatio;
+  requestRender();
+  return true;
+}
+
+function drawPairEditorCell(canvas, imageId) {
+  const data = state.images[imageId];
+  if (!canvas || !data) return;
+  const aspect = PAIR_RATIOS[pairEditor.ratio];
+  // 单格比例 = (整体宽 - 中缝) / 2 : 整体高
+  const cellAspect = (aspect - 5 / 780) / 2;
+  const cssWidth = Math.min(250, Math.round(360 * cellAspect));
+  const cssHeight = Math.round(cssWidth / cellAspect);
+  canvas.width = cssWidth * 2;
+  canvas.height = cssHeight * 2;
+  canvas.style.width = `${cssWidth}px`;
+  canvas.style.height = `${cssHeight}px`;
+  void loadImage(data.src).then((img) => {
+    if (!pairModalIsOpen()) return;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingQuality = "high";
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawSourceCoverImage(ctx, img, getImageSourceRect(img, data.crop), 0, 0, canvas.width, canvas.height);
+  }).catch(() => undefined);
+}
+
+function refreshPairEditor() {
+  if (!pairModalIsOpen()) return;
+  els.pairRatioButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.pairRatio === pairEditor.ratio);
+  });
+  drawPairEditorCell(els.pairCanvasLeft, pairEditor.leftId);
+  drawPairEditorCell(els.pairCanvasRight, pairEditor.rightId);
+}
+
+function openPairEditor(leftId, rightId, ratio = DEFAULT_PAIR_RATIO) {
+  if (!els.pairModal || !state.images[leftId] || !state.images[rightId]) return;
+  pairEditor.leftId = leftId;
+  pairEditor.rightId = rightId;
+  pairEditor.ratio = normalizePairRatio(ratio);
+  els.pairModal.classList.remove("hidden");
+  refreshPairEditor();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closePairEditor() {
+  els.pairModal?.classList.add("hidden");
+}
+
+function setPairRatio(ratio) {
+  const next = normalizePairRatio(ratio);
+  if (!writePairReference(pairEditor.leftId, pairEditor.rightId, next)) {
+    pairEditor.ratio = next;
+  }
+  refreshPairEditor();
+}
+
+function swapPairImages() {
+  writePairReference(pairEditor.rightId, pairEditor.leftId, pairEditor.ratio);
+  refreshPairEditor();
+}
+
+// 点预览图片右侧的加号：选一张新图，替换源文本为 [[image:旧|新]] 拼图
+async function addPairImageToHit(hit) {
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = "image/*";
+  picker.addEventListener("change", async () => {
+    const result = await addImageFiles(picker.files);
+    const newId = result.ids[0];
+    if (!newId) return;
+    const value = els.content.value;
+    const segment = value.slice(hit.sourceStart, hit.sourceEnd);
+    let leftId = "";
+    const replaced = segment.replace(
+      /^(\s*)\[\[image:([\w-]+)\]\](\s*)$/,
+      (whole, lead, id, tail) => {
+        leftId = id;
+        return `${lead}[[image:${id}|${newId}]]${tail}`;
+      },
+    );
+    if (replaced === segment) {
+      els.status.textContent = "这张图片的引用已变化，请重新选中后再拼图";
+      return;
+    }
+    commitTextHistory();
+    els.content.value = `${value.slice(0, hit.sourceStart)}${replaced}${value.slice(hit.sourceEnd)}`;
+    commitTextHistory();
+    updateImageList();
+    requestRender();
+    els.status.textContent = "已拼入第二张图；在编辑框里删掉 |图片编号 可拆回单图";
+    openPairEditor(leftId, newId);
+  });
+  picker.click();
+}
+
 function createImageEditLayer(canvas) {
   const layer = document.createElement("div");
   layer.className = "preview-image-edit-layer";
@@ -8726,6 +9006,51 @@ function createImageEditLayer(canvas) {
     resize.addEventListener("pointerdown", startPreviewImageResize);
 
     box.append(alignBar, cropButton, resize);
+
+    // 单图（内部 [[image:id]] 语法）右侧提供加号：再选一张拼在右边
+    if (!isLive && imageHitIsPairable(hit)) {
+      const pairButton = document.createElement("button");
+      pairButton.type = "button";
+      pairButton.className = "preview-image-pair";
+      pairButton.title = "再拼一张图在右边";
+      pairButton.setAttribute("aria-label", "再拼一张图在右边");
+      pairButton.innerHTML = '<i data-lucide="plus"></i>';
+      pairButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void addPairImageToHit(hit);
+      });
+      box.append(pairButton);
+    }
+    layer.append(box);
+  }
+
+  // 拼图块：点击打开拼图调整弹窗（比例、互换、分别裁剪）
+  for (const item of canvas._page?.items || []) {
+    if (item.type !== "imagePair" || item.cells.length < 2) continue;
+    const box = document.createElement("div");
+    box.className = "preview-image-box preview-pair-box";
+    box.tabIndex = 0;
+    box.setAttribute("role", "button");
+    box.setAttribute("aria-label", "调整拼图");
+    box.title = "点击调整拼图比例、互换或分别裁剪";
+    applyImageBoxStyle(box, item);
+    const badge = document.createElement("span");
+    badge.className = "preview-pair-badge";
+    badge.innerHTML = '<i data-lucide="layout-grid"></i>调整拼图';
+    box.append(badge);
+    const openFromItem = () => {
+      const segment = els.content.value.slice(item.sourceStart, item.sourceEnd);
+      const parsed = resolveInternalImagePairBlock(segment.trim());
+      if (parsed) openPairEditor(parsed.ids[0], parsed.ids[1], parsed.ratio);
+    };
+    box.addEventListener("click", openFromItem);
+    box.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openFromItem();
+      }
+    });
     layer.append(box);
   }
 
@@ -11060,6 +11385,17 @@ function bindEvents() {
   els.cropModal.addEventListener("click", (event) => {
     if (event.target === els.cropModal) closeCropper();
   });
+  els.pairClose?.addEventListener("click", closePairEditor);
+  els.pairDone?.addEventListener("click", closePairEditor);
+  els.pairSwap?.addEventListener("click", swapPairImages);
+  els.pairCropLeft?.addEventListener("click", () => void openCropper("image", pairEditor.leftId));
+  els.pairCropRight?.addEventListener("click", () => void openCropper("image", pairEditor.rightId));
+  els.pairRatioButtons.forEach((button) => {
+    button.addEventListener("click", () => setPairRatio(button.dataset.pairRatio));
+  });
+  els.pairModal?.addEventListener("click", (event) => {
+    if (event.target === els.pairModal) closePairEditor();
+  });
   els.wechatModal.addEventListener("click", (event) => {
     if (event.target === els.wechatModal) closeWechatModal();
   });
@@ -11218,6 +11554,7 @@ function bindEvents() {
       return;
     }
     if (event.key === "Escape" && !els.cropModal.classList.contains("hidden")) closeCropper();
+    else if (event.key === "Escape" && pairModalIsOpen()) closePairEditor();
     if (event.key === "Escape" && !els.wechatModal.classList.contains("hidden")) closeWechatModal();
     if (event.key === "Escape" && !els.livePhotoModal.classList.contains("hidden")) closeLivePhotoModal();
     if (event.key === "Escape" && !els.livePhotoHandoffModal.classList.contains("hidden")) closeLivePhotoHandoff();

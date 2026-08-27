@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260815-feedback-underline" />
+    <link rel="stylesheet" href="src/styles.css?v=20260826-pair-editor" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -547,24 +547,24 @@
         </header>
         <div class="welcome-back-features" aria-label="本次新增功能">
           <article>
-            <span class="welcome-back-feature-icon"><i data-lucide="circle-user-round"></i></span>
-            <div><strong>账户同步</strong><p>登录后跨设备保存头像、昵称和草稿</p></div>
-            <span id="welcomeBackAccountState" class="welcome-back-feature-state">可选开启</span>
-          </article>
-          <article>
-            <span class="welcome-back-feature-icon"><i data-lucide="video"></i></span>
-            <div><strong>实况图片</strong><p>视频可制作并批量导出 Live Photo</p></div>
+            <span class="welcome-back-feature-icon"><i data-lucide="layout-grid"></i></span>
+            <div><strong>双图拼图</strong><p>点选图片后按右侧 ＋，把第二张图拼在右边</p></div>
             <span class="welcome-back-feature-state">新功能</span>
           </article>
           <article>
-            <span class="welcome-back-feature-icon"><i data-lucide="move"></i></span>
-            <div><strong>拖动排版</strong><p>在右侧预览区直接拖动图片调整段落位置</p></div>
+            <span class="welcome-back-feature-icon"><i data-lucide="sliders-horizontal"></i></span>
+            <div><strong>拼图调整</strong><p>弹窗里选整体比例、左右互换、两张图分别裁剪</p></div>
             <span class="welcome-back-feature-state">新功能</span>
           </article>
           <article>
-            <span class="welcome-back-feature-icon"><i data-lucide="box"></i></span>
-            <div><strong>Obsidian</strong><p>连接仓库后读取和同步 Markdown</p></div>
-            <span class="welcome-back-feature-state">新功能</span>
+            <span class="welcome-back-feature-icon"><i data-lucide="bold"></i></span>
+            <div><strong>多行加粗</strong><p>跨行选中加粗、斜体逐行生效，再点一次取消</p></div>
+            <span class="welcome-back-feature-state">已修复</span>
+          </article>
+          <article>
+            <span class="welcome-back-feature-icon"><i data-lucide="crop"></i></span>
+            <div><strong>裁剪与切换账号</strong><p>裁剪框角柄在边缘也能拖动；切换账号后预览立即刷新</p></div>
+            <span class="welcome-back-feature-state">已修复</span>
           </article>
         </div>
         <div class="welcome-back-actions">
@@ -754,6 +754,59 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="pairModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pairModalTitle">
+      <div class="modal-card pair-modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="pairModalTitle">调整拼图</h3>
+            <p>选择拼图整体比例；两张图可以分别裁剪</p>
+          </div>
+          <button id="pairCloseBtn" class="icon-button ghost" type="button" title="关闭" aria-label="关闭拼图调整">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="pair-editor">
+          <div id="pairPreview" class="pair-preview">
+            <div class="pair-cell">
+              <canvas id="pairCanvasLeft"></canvas>
+              <button id="pairCropLeftBtn" class="secondary-button" type="button">
+                <i data-lucide="crop"></i>
+                裁剪左图
+              </button>
+            </div>
+            <div class="pair-cell">
+              <canvas id="pairCanvasRight"></canvas>
+              <button id="pairCropRightBtn" class="secondary-button" type="button">
+                <i data-lucide="crop"></i>
+                裁剪右图
+              </button>
+            </div>
+          </div>
+          <aside class="pair-controls">
+            <div>
+              <div class="section-title">整体比例</div>
+              <div class="ratio-grid">
+                <button class="ratio-button" type="button" data-pair-ratio="16x9">16:9 宽幅</button>
+                <button class="ratio-button" type="button" data-pair-ratio="3x2">3:2</button>
+                <button class="ratio-button" type="button" data-pair-ratio="4x3">4:3</button>
+                <button class="ratio-button" type="button" data-pair-ratio="1x1">1:1 方形</button>
+              </div>
+            </div>
+            <div class="pair-actions">
+              <button id="pairSwapBtn" class="secondary-button" type="button">
+                <i data-lucide="arrow-left-right"></i>
+                左右互换
+              </button>
+              <button id="pairDoneBtn" class="primary-button" type="button">
+                <i data-lucide="check"></i>
+                完成
+              </button>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
 
@@ -1142,6 +1195,6 @@
         document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260815-feedback-underline-v2"></script>
+    <script src="src/app.js?v=20260826-pair-editor"></script>
   </body>
 </html>

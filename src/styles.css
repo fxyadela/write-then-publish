@@ -2720,6 +2720,135 @@ body.export-busy {
   transform: translateY(0);
 }
 
+/* 拼图加号：悬停图片时出现在右缘中部 */
+.preview-image-pair {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--control-text);
+  background: var(--popover-bg);
+  box-shadow: var(--shadow-soft);
+  opacity: 0;
+  transform: translateY(-50%) translateX(4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: auto;
+}
+
+.preview-image-pair:hover {
+  color: var(--active-text);
+  background: var(--active-bg);
+}
+
+.preview-image-box:hover .preview-image-pair,
+.preview-image-box:focus-within .preview-image-pair,
+.preview-image-box.is-selected .preview-image-pair {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* 拼图块：悬停显示“调整拼图”标识，点击打开调整弹窗 */
+.preview-pair-box {
+  cursor: pointer;
+}
+
+.preview-pair-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--control-text);
+  background: var(--popover-bg);
+  box-shadow: var(--shadow-soft);
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+}
+
+.preview-pair-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
+.preview-pair-box:hover .preview-pair-badge,
+.preview-pair-box:focus-visible .preview-pair-badge {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 拼图调整弹窗 */
+.pair-modal-card {
+  width: min(760px, 100%);
+}
+
+.pair-editor {
+  display: grid;
+  grid-template-columns: 1fr 200px;
+  min-height: 0;
+}
+
+.pair-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 22px;
+  background: #111827;
+  overflow: auto;
+}
+
+.pair-cell {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.pair-cell canvas {
+  display: block;
+  border-radius: 8px;
+  background: #0b1020;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.45);
+}
+
+.pair-controls {
+  display: grid;
+  align-content: space-between;
+  gap: 20px;
+  padding: 18px;
+  border-left: 1px solid var(--line);
+  background: var(--panel-bg, #fbfcfe);
+}
+
+.pair-actions {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .pair-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .pair-controls {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
 .preview-image-align button {
   display: inline-flex;
   width: 24px;
