@@ -3192,27 +3192,36 @@ const FIRST_RUN_ONBOARDING_STEPS = [
 
 const WHATS_NEW_ONBOARDING_STEPS = [
   {
+    target: "#accountBtn",
+    title: "账户同步",
+    body: () => cloudState.user
+      ? "你的账户同步已经开启。头像、昵称和图文草稿会按当前账号保存，换设备登录也能继续编辑。"
+      : "需要长期保存时，可以随时登录并同步；继续使用游客模式，也不影响原来的排版和下载流程。",
+    actionLabel: () => cloudState.user ? "查看同步状态" : "登录并同步",
+    action: () => {
+      if (cloudState.user) {
+        openAccountMenu();
+        return;
+      }
+      finishOnboarding({ remember: false });
+      openAccountModal();
+    },
+  },
+  {
+    target: "#livePhotoToolbarBtn",
+    title: "实况图片",
+    body: "从这里选择视频、裁剪画面并插入图文。导出时会自动识别实况页，单张和批量都按对应格式处理。",
+  },
+  {
     target: ".preview-image-box",
     fallbackTarget: "#previewPanel",
-    title: "双图拼图",
-    body: "点选预览里的图片，右缘会出现 ＋。选一张新图，它就会拼在右边，两张图左右并排合成一块。",
+    title: "拖动图片调整位置",
+    body: "直接按住右侧预览中的图片，拖到蓝色落点线后松手。图片会移动到对应段落，左侧 Markdown 顺序也会同步更新。",
   },
   {
-    target: ".preview-pair-box",
-    fallbackTarget: "#previewPanel",
-    title: "拼图随时可调",
-    body: "拼完会自动弹出调整窗口：选 16:9、3:2、4:3 或 1:1 整体比例，左右互换，两张图也能分别裁剪。之后点预览里的拼图块可以再次打开。",
-  },
-  {
-    target: '[data-format="bold"]',
-    fallbackTarget: "#previewPanel",
-    title: "多行加粗修复",
-    body: "选中多行文字点加粗或斜体，现在会逐行生效，标题和引用的前缀不受影响；再点一次整体取消。",
-  },
-  {
-    target: "#previewPanel",
-    title: "两处体验修复",
-    body: "裁剪窗口里，裁剪框角柄压在图片边缘时也能直接拖动了；切换账号后，右侧预览会立即刷新为新账号的内容。",
+    target: "#obsidianImportMenu",
+    title: "连接 Obsidian",
+    body: "连接仓库后，可以读取笔记里的图片并同步修改后的 Markdown。暂不连接也不会影响普通编辑。",
   },
 ];
 
