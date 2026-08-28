@@ -2269,6 +2269,30 @@ async function hydrateCloudProject(project) {
   return project;
 }
 
+// 同一项目的素材下载去重：登录后台预载与打开项目的兜底加载可能并发
+const hydratingCloudProjects = new Map();
+
+function hydrateCloudProjectOnce(project) {
+  const key = project?.id;
+  if (!key) return hydrateCloudProject(project);
+  if (!hydratingCloudProjects.has(key)) {
+    hydratingCloudProjects.set(
+      key,
+      hydrateCloudProject(project).finally(() => hydratingCloudProjects.delete(key)),
+    );
+  }
+  return hydratingCloudProjects.get(key);
+}
+
+// 登录时只等当前打开项目的素材，其余项目在后台逐个补齐（hydrate 幂等，已有 src 的图片会跳过）
+function hydrateCloudProjectsInBackground(projects) {
+  void (async () => {
+    for (const project of projects) {
+      await hydrateCloudProjectOnce(project).catch(() => undefined);
+    }
+  })();
+}
+
 async function activateWorkspaceScope(scope, projects = null, profile = null) {
   cloudState.loadingWorkspace = true;
   activeStorageScope = scope;
@@ -2289,10 +2313,13 @@ async function activateWorkspaceScope(scope, projects = null, profile = null) {
     }
 
     if (Array.isArray(projects)) {
-      const hydrated = await Promise.all(projects.map(hydrateCloudProject));
-      state.projects = hydrated.filter(Boolean).slice(0, MAX_PROJECTS);
+      // 登录提速：只等第一个（默认打开的）项目下载素材，其余项目后台补齐
+      const list = projects.filter(Boolean).slice(0, MAX_PROJECTS);
+      if (list.length) await hydrateCloudProjectOnce(list[0]);
+      state.projects = list;
       state.currentProjectId = state.projects[0]?.id || GUIDE_CARDS_PROJECT_ID;
       saveProjectStore();
+      hydrateCloudProjectsInBackground(list.slice(1));
     } else {
       const store = loadProjectStore();
       state.projects = store.projects;
@@ -3082,6 +3109,10 @@ async function openProject(projectId) {
   saveState();
   const project = findHistoryProject(projectId);
   if (!project) return;
+  // 后台预载可能还没轮到这个项目：打开前把缺的云端素材补齐（幂等，已就绪时立即返回）
+  if (cloudIsReady() && !isBuiltInProject(project)) {
+    await hydrateCloudProjectOnce(project).catch(() => undefined);
+  }
   state.currentProjectId = project.id;
   applyForm(project.data);
   syncGuideReadOnlyMode();
@@ -9833,7 +9864,12 @@ function finishExportProgress(scope, options = {}) {
   elements.bar.setAttribute("aria-valuetext", elements.detail.textContent);
   syncExportBusyState();
   if (window.lucide) window.lucide.createIcons();
-  const delay = Number.isFinite(options.hideAfter) ? options.hideAfter : success || cancelled ? 2400 : 5200;
+  // 成功即收起——下载已经完成，不需要用户再看一段停留的完成态
+  const delay = Number.isFinite(options.hideAfter) ? options.hideAfter : success ? 0 : cancelled ? 2400 : 5200;
+  if (delay <= 0) {
+    resetExportProgress(scope);
+    return;
+  }
   stateForScope.hideTimer = window.setTimeout(() => resetExportProgress(scope), delay);
 }
 
