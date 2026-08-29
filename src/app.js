@@ -190,6 +190,7 @@ const els = {
   articleSizeButtons: document.querySelectorAll("[data-article-size]"),
   articleColorButtons: document.querySelectorAll("[data-article-color]"),
   contentImage: $("#contentImageInput"),
+  copyPlainText: $("#copyPlainTextBtn"),
   contentVideo: $("#contentVideoInput"),
   obsidianImportMenu: $("#obsidianImportMenu"),
   connectObsidianVault: $("#connectObsidianVaultBtn"),
@@ -3526,6 +3527,70 @@ function mapPositionAfterTextRemovals(position, ranges) {
     if (position <= range.end) break;
   }
   return position - removed;
+}
+
+// 复制模式：把正文转成纯文本——去掉图片、星号、颜色/背景/下划线标记
+// 和标题、引用前缀，适合粘贴到不认 Markdown 的正文区。
+function plainTextForCopy(content) {
+  let text = String(content || "").replace(/\r\n/g, "\n");
+
+  // 整行图片（含拼图与 Obsidian / Markdown 图片语法）
+  text = text
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (/^\[\[image:[\w-]+(?:\|[\w-]+){0,2}\]\]$/.test(trimmed)) return false;
+      return !isMarkdownImageBlock(trimmed);
+    })
+    .join("\n");
+
+  // 行内图片引用
+  text = text.replace(/\[\[image:[\w-]+(?:\|[\w-]+){0,2}\]\]/g, "");
+
+  // 颜色 / 背景 / 下划线标记：保留内文，循环剥掉嵌套
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/\{\{(?:color|bg|underline):[^|{}]*\|([\s\S]*?)\}\}/g, "$1");
+  } while (text !== previous);
+
+  // 加粗 / 斜体星号
+  do {
+    previous = text;
+    text = text.replace(/\*{1,3}([^*\n]+)\*{1,3}/g, "$1");
+  } while (text !== previous);
+
+  // 标题与引用前缀
+  text = text.replace(/^(\s*)#{1,6}\s+/gm, "$1").replace(/^(\s*)>\s?/gm, "$1");
+
+  // 删图片行留下的连续空行收敛为一个空行
+  return text.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+async function copyPlainTextToClipboard() {
+  const text = plainTextForCopy(els.content.value);
+  if (!text) {
+    els.status.textContent = "正文还是空的，没有可复制的内容";
+    return;
+  }
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    copied = true;
+  } catch {
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    helper.style.position = "fixed";
+    helper.style.opacity = "0";
+    document.body.append(helper);
+    helper.select();
+    copied = document.execCommand("copy");
+    helper.remove();
+  }
+  els.status.textContent = copied
+    ? "已复制全文纯文本（图片与格式已去除）"
+    : "复制失败，请手动全选复制";
 }
 
 // 跨行选区的加粗/斜体：星号对不能跨行生效（解析按行进行），
@@ -10145,11 +10210,16 @@ async function prepareCloudLivePhotoBatch() {
     for (const [path, entry, marker] of entries) {
       const relative = path.slice(Number(marker) + 5);
       if (!relative) continue;
+      // 平铺导出：实况拆成与图片同级的同名 JPG+MOV，不再套 .pvt 文件夹，
+      // 方便与普通图片一起投送；plist 只在 .pvt 目录结构里有意义，跳过。
+      const name = relative.split("/").pop();
+      if (/\.plist$/i.test(name)) continue;
+      const extension = name.includes(".") ? name.split(".").pop() : "bin";
       const data = await entry.async("arraybuffer");
-      zip.file(`${String(result.pageIndex + 1).padStart(2, "0")}-实况.pvt/${relative}`, data);
+      zip.file(`${String(result.pageIndex + 1).padStart(2, "0")}-实况.${extension}`, data);
       copied += 1;
     }
-    if (!copied) throw new Error(`第 ${result.pageIndex + 1} 页云端包缺少完整 .pvt。`);
+    if (!copied) throw new Error(`第 ${result.pageIndex + 1} 页云端包缺少实况文件。`);
   }
   for (const file of livePhotoHandoffState.staticPackage?.files || []) {
     zip.file(`${String(file.pageIndex + 1).padStart(2, "0")}-图片.png`, file.blob);
@@ -10184,7 +10254,11 @@ async function prepareBrowserLivePhotoBatch() {
   for (const result of livePhotoHandoffState.liveResults) {
     const prefix = `${String(result.pageIndex + 1).padStart(2, "0")}-实况`;
     for (const part of result.archive_parts || []) {
-      zip.file(`${prefix}/${part.path}`, part.bytes);
+      // 平铺导出：拆出 .pvt 里的 JPG+MOV 与图片同级命名，plist 跳过
+      const name = part.path.split("/").pop();
+      if (/\.plist$/i.test(name)) continue;
+      const extension = name.includes(".") ? name.split(".").pop() : "bin";
+      zip.file(`${prefix}.${extension}`, part.bytes);
     }
   }
   for (const file of livePhotoHandoffState.staticPackage?.files || []) {
@@ -10625,7 +10699,7 @@ async function downloadLivePhotoBatch() {
     els.livePhotoHandoffReveal.hidden = !livePhotoHandoffHasLocalFile();
     els.livePhotoHandoffHint.textContent = "";
     els.status.textContent = isBatch
-      ? `已下载 ${livePhotoHandoffState.items.length} 页内容，ZIP 内只包含全部 .pvt 和普通 PNG。`
+      ? `已下载 ${livePhotoHandoffState.items.length} 页内容，实况以同名 JPG+MOV 与图片平铺存放，可一起投送。`
       : "实况照片 ZIP 已下载，解压后只有一个完整 .pvt。";
     updateLivePhotoHandoffProgressSteps(-1, livePhotoHandoffState.items.map((item) => item.pageIndex));
     finishExportProgress("handoff", {
@@ -11416,6 +11490,7 @@ function bindEvents() {
   buildSelectionSwatches("color");
   buildSelectionSwatches("bg");
   els.contentImage.addEventListener("change", handleContentImage);
+  els.copyPlainText?.addEventListener("click", () => void copyPlainTextToClipboard());
   els.contentVideo.addEventListener("change", handleLivePhotoVideo);
   els.connectObsidianVault?.addEventListener("click", connectObsidianVault);
   els.syncObsidianVault?.addEventListener("click", syncCurrentNoteToObsidian);
