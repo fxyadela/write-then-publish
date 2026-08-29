@@ -1966,6 +1966,16 @@ async function waitForCloudSyncBeforeAccountSwitch() {
   }
 }
 
+// Supabase 的 refresh token 是一次性的：轮换之后再拿旧 token 换登录态，
+// 服务端会回 Invalid Refresh Token: Already Used / Not Found 这类错误。
+function accountSessionTokenIsStale(error) {
+  const text = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+  return text.includes("refresh token")
+    || text.includes("refresh_token")
+    || text.includes("already used")
+    || text.includes("invalid_grant");
+}
+
 async function switchToStoredAccount(userId) {
   const targetId = String(userId || "");
   if (!targetId || targetId === cloudState.user?.id) {
@@ -1990,6 +2000,11 @@ async function switchToStoredAccount(userId) {
   els.status.textContent = `正在切换到 ${accountSessionName(snapshot)}…`;
   try {
     await waitForCloudSyncBeforeAccountSwitch();
+    // 离开当前账号前，把它此刻真实的 token 存回本机，避免下次切回来时用到旧的。
+    const currentSession = await cloudApi().getSession().catch(() => null);
+    if (currentSession?.user && currentSession.user.id !== targetId) {
+      rememberAccountSession(currentSession);
+    }
     const result = await cloudApi().setSession({
       access_token: snapshot.accessToken,
       refresh_token: snapshot.refreshToken,
@@ -2006,8 +2021,24 @@ async function switchToStoredAccount(userId) {
     els.status.textContent = `已切换到 ${accountSessionName(snapshot)} 的云端工作区`;
   } catch (error) {
     console.error("账号切换失败", error);
-    openAccountModal();
-    setAccountNotice(error?.message || "账号切换失败，请重新登录这个账号。", "error");
+    // 登录状态已失效时，本机这条记录已经没用了；留着只会让用户反复撞同一个错。
+    const staleToken = accountSessionTokenIsStale(error);
+    if (staleToken) {
+      removeStoredAccountSession(targetId);
+      localStorage.setItem(LAST_ACCOUNT_EMAIL_KEY, snapshot.email || "");
+    }
+    if (staleToken && cloudState.user) {
+      startAddingAccount();
+      els.accountEmail.value = snapshot.email || "";
+    } else {
+      openAccountModal();
+    }
+    setAccountNotice(
+      staleToken
+        ? `${accountSessionName(snapshot)} 的本机登录状态已过期，请重新登录一次这个账号。`
+        : error?.message || "账号切换失败，请重新登录这个账号。",
+      "error",
+    );
   } finally {
     cloudState.switchingAccount = false;
     setAccountBusy(false);
@@ -2450,6 +2481,12 @@ async function initializeCloudAccount() {
         setAccountAuthMode("reset");
         setAccountNotice("请设置一个新密码，保存后即可用它登录。");
       }, 0);
+      return;
+    }
+    // Supabase 每次自动刷新都会轮换 refresh token 并作废旧的。不接住这个事件，
+    // 本机快照会一直停在最初那个已作废的 token，之后切回这个账号必然失败。
+    if (event === "TOKEN_REFRESHED") {
+      if (session?.user) rememberAccountSession(session);
       return;
     }
     if (!["SIGNED_IN", "SIGNED_OUT", "USER_UPDATED"].includes(event)) return;
