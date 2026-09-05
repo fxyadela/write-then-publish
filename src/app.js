@@ -7582,6 +7582,7 @@ function createLivePreviewVideo(image, imageId, className) {
   }
   video.addEventListener("loadedmetadata", () => {
     video.currentTime = Math.min(video.duration || settings.start, settings.start);
+    video.playbackRate = settings.speed;
     video.play().catch(() => {});
   });
   video.addEventListener("timeupdate", () => {
@@ -8324,7 +8325,7 @@ function seekLivePhotoPreview(toCover = false) {
 }
 
 /**
- * 视频比目标时长（小红书 5 秒 / 微信 3 秒）长时，让用户在缩略图时间轴上直接拖方框选片段。
+ * 视频比要取用的时长长时，让用户在缩略图时间轴上直接拖方框选片段。
  * 刚好等于或短于目标时长就没得选，整条时间轴收起来。
  */
 function updateLivePhotoTrimUi(start, target, availableStart) {
@@ -8334,11 +8335,16 @@ function updateLivePhotoTrimUi(start, target, availableStart) {
   if (!trimmable) return;
   const total = livePhotoState.sourceDuration;
   const end = Math.min(total, start + target);
+  const speed = livePhotoSpeed();
   if (els.livePhotoTrimOutput) {
-    els.livePhotoTrimOutput.textContent = `第 ${start.toFixed(1)} – ${end.toFixed(1)} 秒`;
+    els.livePhotoTrimOutput.textContent = speed === 1
+      ? `第 ${start.toFixed(1)} – ${end.toFixed(1)} 秒`
+      : `第 ${start.toFixed(1)} – ${end.toFixed(1)} 秒 → 成片 ${livePhotoDuration()} 秒`;
   }
   if (els.livePhotoTrimHint) {
-    els.livePhotoTrimHint.textContent = `视频共 ${formatLivePhotoDuration(total)}，方框就是会被做成实况的那一段`;
+    els.livePhotoTrimHint.textContent = speed === 1
+      ? `视频共 ${formatLivePhotoDuration(total)}，方框就是会被做成实况的那一段`
+      : `视频共 ${formatLivePhotoDuration(total)}；${speed}× 要取用 ${target.toFixed(1)} 秒原片，压进 ${livePhotoDuration()} 秒实况`;
   }
   if (els.livePhotoTrimWindow) {
     els.livePhotoTrimWindow.style.width = `${(target / total) * 100}%`;
@@ -8520,6 +8526,8 @@ function syncLivePhotoTimingUi() {
       : `取用原片 ${(duration * speed).toFixed(1)} 秒，压进 ${duration} 秒（无声）`;
   }
   els.livePhotoCover.max = String(Math.max(0, duration - 0.05));
+  // 预览直接按倍速播，看到的就是成片的节奏。
+  els.livePhotoVideo.playbackRate = speed;
   // 倍速下音频要重采样才能对上，成片一律静音，这里同步把开关置灰。
   if (els.livePhotoSound) els.livePhotoSound.disabled = speed !== 1;
   normalizeLivePhotoTiming();
@@ -8591,6 +8599,7 @@ function handleLivePhotoMetadata() {
   normalizeLivePhotoTiming();
   setLivePhotoAspect(livePhotoState.aspect, { preserveCropSize: Boolean(livePhotoState.savedCrop) });
   seekLivePhotoPreview(false);
+  els.livePhotoVideo.playbackRate = livePhotoSpeed();
   applyLivePhotoPreviewSound();
   void buildLivePhotoTrimStrip();
   els.livePhotoVideo.play().catch(() => {
