@@ -10247,10 +10247,8 @@ async function prepareCloudLivePhotoBatch() {
     for (const [path, entry, marker] of entries) {
       const relative = path.slice(Number(marker) + 5);
       if (!relative) continue;
-      // 平铺导出：实况拆成与图片同级的同名 JPG+MOV，不再套 .pvt 文件夹，
-      // 方便与普通图片一起投送；plist 只在 .pvt 目录结构里有意义，跳过。
+      // 平铺导出：.pvt 里的文件原样保留，只是不再套一层文件夹，与图片同级同名。
       const name = relative.split("/").pop();
-      if (/\.plist$/i.test(name)) continue;
       const extension = name.includes(".") ? name.split(".").pop() : "bin";
       const data = await entry.async("arraybuffer");
       zip.file(`${String(result.pageIndex + 1).padStart(2, "0")}-实况.${extension}`, data);
@@ -10291,9 +10289,8 @@ async function prepareBrowserLivePhotoBatch() {
   for (const result of livePhotoHandoffState.liveResults) {
     const prefix = `${String(result.pageIndex + 1).padStart(2, "0")}-实况`;
     for (const part of result.archive_parts || []) {
-      // 平铺导出：拆出 .pvt 里的 JPG+MOV 与图片同级命名，plist 跳过
+      // 平铺导出：.pvt 里的文件原样保留，只是不再套一层文件夹，与图片同级同名。
       const name = part.path.split("/").pop();
-      if (/\.plist$/i.test(name)) continue;
       const extension = name.includes(".") ? name.split(".").pop() : "bin";
       zip.file(`${prefix}.${extension}`, part.bytes);
     }
@@ -10736,7 +10733,7 @@ async function downloadLivePhotoBatch() {
     els.livePhotoHandoffReveal.hidden = !livePhotoHandoffHasLocalFile();
     els.livePhotoHandoffHint.textContent = "";
     els.status.textContent = isBatch
-      ? `已下载 ${livePhotoHandoffState.items.length} 页内容，实况以同名 JPG+MOV 与图片平铺存放，可一起投送。`
+      ? `已下载 ${livePhotoHandoffState.items.length} 页内容，实况文件与图片平铺存放。`
       : "实况照片 ZIP 已下载，解压后只有一个完整 .pvt。";
     updateLivePhotoHandoffProgressSteps(-1, livePhotoHandoffState.items.map((item) => item.pageIndex));
     finishExportProgress("handoff", {
