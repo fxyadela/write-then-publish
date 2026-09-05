@@ -6469,6 +6469,17 @@ function parseInline(text, baseStart = 0) {
       continue;
     }
 
+    // [文字](链接)：从 Obsidian 等处粘贴过来的超链接，此前会把方括号和整条
+    // URL 原样显示出来。这里解析成文字，链接留给长文的 <a> 用。
+    const linkMatch = text.slice(i).match(/^\[([^\[\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))*)(?:\s+"[^"]*")?\)/);
+    if (linkMatch) {
+      const href = /^(?:https?:|mailto:)/i.test(linkMatch[2]) ? linkMatch[2] : "";
+      const inner = parseInline(linkMatch[1], baseStart + i + 1);
+      tokens.push(...(href ? applyInlineStyle(inner, { link: href }) : inner));
+      i += linkMatch[0].length;
+      continue;
+    }
+
     const underlineMatch = matchUnderlineMarker(text, i);
     if (underlineMatch) {
       tokens.push(
@@ -6537,7 +6548,7 @@ function parseInline(text, baseStart = 0) {
       }
     }
 
-    const nextMarkers = ["[[image:", "{{underline:", "{{color:", "{{bg:", "***", "**", "*"]
+    const nextMarkers = ["[[image:", "[", "{{underline:", "{{color:", "{{bg:", "***", "**", "*"]
       .map((marker) => text.indexOf(marker, i + 1))
       .filter((index) => index !== -1);
     const next = nextMarkers.length ? Math.min(...nextMarkers) : text.length;
@@ -7532,6 +7543,9 @@ function renderArticleInlineTokens(tokens) {
       let inner = escapeHtml(token.text).replace(/`([^`]+)`/g, "<code>$1</code>");
       if (token.bold) inner = `<strong>${inner}</strong>`;
       if (token.italic) inner = `<em>${inner}</em>`;
+      if (token.link) {
+        inner = `<a href="${escapeAttribute(token.link)}" style="color: inherit; text-decoration: none;">${inner}</a>`;
+      }
 
       const styles = [];
       if (token.color) styles.push(`color: ${token.color}`);
@@ -7543,6 +7557,9 @@ function renderArticleInlineTokens(tokens) {
       }
       if (token.bgColor) {
         styles.push(`background-color: ${token.bgColor}`);
+        // 微信深色模式只反转没有显式颜色的文字，却照样保留内联背景色：
+        // 浅色高亮块上的字会被反成浅色而看不见。这里按底色明暗写死文字色。
+        if (!token.color) styles.push(`color: ${isDarkHexColor(token.bgColor) ? "#ffffff" : "#1f2329"}`);
         styles.push("border-radius: 4px");
         styles.push("box-decoration-break: clone");
         styles.push("-webkit-box-decoration-break: clone");
