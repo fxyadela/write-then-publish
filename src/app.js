@@ -7944,6 +7944,17 @@ function livePhotoSourceSpan() {
   return livePhotoDuration() * livePhotoSpeed();
 }
 
+/** 这个「时长 × 倍速」要取用的原片长度，当前视频够不够。没选视频时不拦。 */
+function livePhotoComboFits(duration, speed) {
+  const total = livePhotoState.sourceDuration;
+  if (!total) return true;
+  return duration * speed <= total + 0.03;
+}
+
+function livePhotoComboMessage(duration, speed) {
+  return `视频只有 ${formatLivePhotoDuration(livePhotoState.sourceDuration)}，${duration} 秒${speed === 1 ? "" : ` × ${speed}×`} 需要 ${(duration * speed).toFixed(1)} 秒素材。`;
+}
+
 function livePhotoSpeed() {
   return LIVE_PHOTO_SPEEDS.includes(livePhotoState.speed) ? livePhotoState.speed : 1;
 }
@@ -8499,14 +8510,22 @@ function normalizeLivePhotoTiming() {
 }
 
 function setLivePhotoDuration(value) {
-  const duration = Number(value);
-  livePhotoState.duration = LIVE_PHOTO_DURATIONS.includes(duration) ? duration : 5;
+  const duration = LIVE_PHOTO_DURATIONS.includes(Number(value)) ? Number(value) : 5;
+  if (!livePhotoComboFits(duration, livePhotoSpeed())) {
+    setLivePhotoServiceMessage(livePhotoComboMessage(duration, livePhotoSpeed()), "error");
+    return;
+  }
+  livePhotoState.duration = duration;
   syncLivePhotoTimingUi();
 }
 
 function setLivePhotoSpeed(value) {
-  const speed = Number(value);
-  livePhotoState.speed = LIVE_PHOTO_SPEEDS.includes(speed) ? speed : 1;
+  const speed = LIVE_PHOTO_SPEEDS.includes(Number(value)) ? Number(value) : 1;
+  if (!livePhotoComboFits(livePhotoDuration(), speed)) {
+    setLivePhotoServiceMessage(livePhotoComboMessage(livePhotoDuration(), speed), "error");
+    return;
+  }
+  livePhotoState.speed = speed;
   syncLivePhotoTimingUi();
 }
 
@@ -8514,10 +8533,20 @@ function syncLivePhotoTimingUi() {
   const duration = livePhotoDuration();
   const speed = livePhotoSpeed();
   els.livePhotoDurationButtons.forEach((button) => {
-    button.classList.toggle("active", Number(button.dataset.liveDuration) === duration);
+    const value = Number(button.dataset.liveDuration);
+    const fits = livePhotoComboFits(value, speed);
+    button.classList.toggle("active", value === duration);
+    button.classList.toggle("is-unavailable", !fits);
+    button.setAttribute("aria-disabled", fits ? "false" : "true");
+    button.title = fits ? "" : livePhotoComboMessage(value, speed);
   });
   els.livePhotoSpeedButtons.forEach((button) => {
-    button.classList.toggle("active", Number(button.dataset.liveSpeed) === speed);
+    const value = Number(button.dataset.liveSpeed);
+    const fits = livePhotoComboFits(duration, value);
+    button.classList.toggle("active", value === speed);
+    button.classList.toggle("is-unavailable", !fits);
+    button.setAttribute("aria-disabled", fits ? "false" : "true");
+    button.title = fits ? "" : livePhotoComboMessage(duration, value);
   });
   els.livePhotoDurationHint.textContent = `成片固定 ${duration} 秒`;
   if (els.livePhotoSpeedHint) {

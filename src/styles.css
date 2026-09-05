@@ -4571,6 +4571,12 @@ body.export-busy {
   color: var(--active-text);
   background: var(--active-bg);
 }
+/* 素材长度不够的档位：置灰但仍可点，点了会说明差多少 */
+.live-photo-platforms button.is-unavailable {
+  opacity: 0.38;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
 
 .live-photo-ratio-grid {
   grid-template-columns: repeat(4, 1fr);
