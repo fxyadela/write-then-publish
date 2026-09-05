@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260827-pvt-no-wrapper" />
+    <link rel="stylesheet" href="src/styles.css?v=20260828-live-speed" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -946,12 +946,26 @@
 
             <div class="live-photo-section">
               <div class="live-photo-section-title">
-                <strong>发布平台</strong>
-                <span id="livePhotoDurationHint">小红书版本固定生成 5 秒</span>
+                <strong>实况时长</strong>
+                <span id="livePhotoDurationHint">成片固定 5 秒</span>
               </div>
-              <div class="live-photo-platforms" role="group" aria-label="发布平台">
-                <button class="active" type="button" data-live-platform="xhs">小红书 · 5 秒</button>
-                <button type="button" data-live-platform="wechat">公众号 · 3 秒</button>
+              <div class="live-photo-platforms" role="group" aria-label="实况时长">
+                <button type="button" data-live-duration="3">3 秒</button>
+                <button class="active" type="button" data-live-duration="5">5 秒</button>
+                <button type="button" data-live-duration="8">8 秒</button>
+              </div>
+            </div>
+
+            <div class="live-photo-section">
+              <div class="live-photo-section-title">
+                <strong>倍速</strong>
+                <span id="livePhotoSpeedHint">原速播放</span>
+              </div>
+              <div class="live-photo-platforms" role="group" aria-label="播放倍速">
+                <button class="active" type="button" data-live-speed="1">原速</button>
+                <button type="button" data-live-speed="1.5">1.5×</button>
+                <button type="button" data-live-speed="2">2×</button>
+                <button type="button" data-live-speed="3">3×</button>
               </div>
             </div>
 
@@ -1183,7 +1197,7 @@
     <script src="src/vendor/jszip.min.js?v=3.10.1"></script>
     <script src="src/vendor/mp4box.all.min.js?v=0.5.3" defer></script>
     <script src="src/vendor/mp4muxer.js?v=5.2.1" defer></script>
-    <script src="src/live-photo-browser.js?v=20260802-bigvideo" defer></script>
+    <script src="src/live-photo-browser.js?v=20260828-live-speed" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
@@ -1199,6 +1213,6 @@
         document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260827-pvt-no-wrapper"></script>
+    <script src="src/app.js?v=20260828-live-speed"></script>
   </body>
 </html>

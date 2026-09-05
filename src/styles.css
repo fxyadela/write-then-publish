@@ -4548,7 +4548,9 @@ body.export-busy {
 
 .live-photo-platforms {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* 时长 3 个、倍速 4 个，按数量自动等分 */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 5px;
   padding: 4px;
   border: 1px solid var(--line);

@@ -70,9 +70,12 @@ DATA_IMAGE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+LIVE_PHOTO_DURATIONS = (3.0, 5.0, 8.0)
+LIVE_PHOTO_SPEEDS = (1.0, 1.5, 2.0, 3.0)
+# 老客户端只会传 platform，按时长映射过来。
 LIVE_PHOTO_PLATFORMS = {
-    "xhs": {"label": "小红书", "duration": 5.0, "suffix": "XHS_5S"},
-    "wechat": {"label": "微信公众号", "duration": 3.0, "suffix": "WECHAT_3S"},
+    "xhs": {"duration": 5.0},
+    "wechat": {"duration": 3.0},
 }
 # 实况成片参数：30fps 与 iPhone 原生实况一致；CRF 18 / medium 相对 CRF 10 / slow
 # 实测 VMAF 96.7（视觉无损），编码快约 3 倍、体积小约一半，上传下载同步减半。
@@ -331,9 +334,16 @@ def render_live_photo(form: Any) -> dict[str, Any]:
         raise ValueError(status["message"])
 
     platform_key = str(form.getfirst("platform", "xhs")).strip().lower()
-    platform = LIVE_PHOTO_PLATFORMS.get(platform_key)
-    if not platform:
-        raise ValueError("请选择小红书或微信公众号。")
+    fallback = LIVE_PHOTO_PLATFORMS.get(platform_key, {"duration": 5.0})
+    raw_duration = form.getfirst("duration")
+    duration_value = float(raw_duration) if raw_duration not in (None, "") else fallback["duration"]
+    if duration_value not in LIVE_PHOTO_DURATIONS:
+        raise ValueError("实况时长只能是 3、5 或 8 秒。")
+    raw_speed = form.getfirst("speed")
+    speed_value = float(raw_speed) if raw_speed not in (None, "") else 1.0
+    if speed_value not in LIVE_PHOTO_SPEEDS:
+        raise ValueError("倍速只能是 1、1.5、2 或 3。")
+    platform = {"duration": duration_value, "speed": speed_value}
     start = parse_float(form.getfirst("start", "0"), "开始时间", 0, 1800)
     cover_offset = parse_float(
         form.getfirst("cover_offset", "0.2"),
@@ -362,7 +372,8 @@ def render_live_photo(form: Any) -> dict[str, Any]:
     job_id = uuid.uuid4().hex[:12]
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     stem = safe_live_photo_stem(title, "live-photo")
-    file_stem = f"{stem}_{platform['suffix']}_LIVE"
+    speed_tag = "" if platform["speed"] == 1 else f"_{platform['speed']:g}X".replace(".", "_")
+    file_stem = f"{stem}_{platform['duration']:g}S{speed_tag}_LIVE"
     job_dir = LIVE_PHOTO_OUTPUT_ROOT / f"{timestamp}-{job_id[:6]}-{stem}"
     job_dir.mkdir(parents=True, mode=0o700, exist_ok=False)
 
@@ -431,14 +442,20 @@ def render_live_photo(form: Any) -> dict[str, Any]:
 
             media = probe_video(source_path)
             target_duration = float(platform["duration"])
+            speed = float(platform["speed"])
+            # 倍速：成片仍是 target_duration，但要从原片里取用这么长的一段。
+            source_span = target_duration * speed
             # iPhone 实况本身就是 30fps，源视频更高帧率只会成倍拉长编码时间和文件体积。
             output_fps = min(LIVE_PHOTO_MAX_FPS, float(media["fps"]))
-            if start + target_duration > media["duration"] + 0.03:
+            if start + source_span > media["duration"] + 0.03:
                 raise ValueError(
-                    f"所选片段需要 {target_duration:g} 秒，但视频从当前起点只剩 "
+                    f"所选片段需要 {source_span:g} 秒素材，但视频从当前起点只剩 "
                     f"{max(0, media['duration'] - start):.2f} 秒。"
                 )
 
+            speed_filter = "" if speed == 1 else f"setpts=PTS/{speed:g},"
+            if speed != 1:
+                keep_sound = False
             mov_path = job_dir / f"{file_stem}.MOV"
             jpg_path = job_dir / f"{file_stem}.JPG"
             output_width = well_geometry[2] if well_geometry else 1080
@@ -448,13 +465,13 @@ def render_live_photo(form: Any) -> dict[str, Any]:
                 base_filter = (
                     f"crop=iw*{crop_width:.8f}:ih*{crop_height:.8f}:iw*{crop_x:.8f}:ih*{crop_y:.8f},"
                     f"scale={output_width}:{output_height}:flags=lanczos,"
-                    f"fps={output_fps:.6f},setsar=1"
+                    f"{speed_filter}fps={output_fps:.6f},setsar=1"
                 )
             else:
                 base_filter = (
                     f"scale={output_width}:{output_height}:force_original_aspect_ratio=increase:flags=lanczos,"
                     f"crop={output_width}:{output_height}:(iw-{output_width})*{focus_x / 100:.6f}:"
-                    f"(ih-{output_height})*{focus_y / 100:.6f},fps={output_fps:.6f},setsar=1"
+                    f"(ih-{output_height})*{focus_y / 100:.6f},{speed_filter}fps={output_fps:.6f},setsar=1"
                 )
             command = [
                 command_path("ffmpeg"),
@@ -563,7 +580,7 @@ def render_live_photo(form: Any) -> dict[str, Any]:
             "archive_path": archive_path,
             "job_dir": job_dir,
             "token": handoff_token,
-            "platform_label": platform["label"],
+            "platform_label": f"{platform['duration']:g} 秒",
             "duration": target_duration,
         }
         if reveal:
@@ -577,7 +594,7 @@ def render_live_photo(form: Any) -> dict[str, Any]:
             "ok": True,
             "job_id": job_id,
             "platform": platform_key,
-            "platform_label": platform["label"],
+            "platform_label": f"{platform['duration']:g} 秒",
             "duration": target_duration,
             "asset_id": packaged["asset_id"],
             "output_dir": str(job_dir),

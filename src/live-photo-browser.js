@@ -16,6 +16,8 @@
   const OUTPUT_WIDTH = 1080;
   const OUTPUT_HEIGHT = 1440;
   const OUTPUT_FPS = 30;
+  const LIVE_DURATIONS = [3, 5, 8];
+  const LIVE_SPEEDS = [1, 1.5, 2, 3];
   const WELL_RADIUS = 26;
   // 服务端等价设置是 libx264 CRF 18；1080x1440 30fps 下约 6Mbps 与之体积相当。
   const VIDEO_BITRATE = 6_000_000;
@@ -167,7 +169,10 @@
 
   async function composeLiveVideo(options) {
     const { samples, track, description, audioSamples, audioTrack, audioDescription,
-            pageBitmap, well, crop, focusX, focusY, startSeconds, durationSeconds, coverOffsetSeconds, keepSound, onProgress } = options;
+            pageBitmap, well, crop, focusX, focusY, startSeconds, durationSeconds, speed = 1,
+            coverOffsetSeconds, keepSound, onProgress } = options;
+    // 倍速：成片仍是 durationSeconds，只是从源视频里取用 durationSeconds × speed 这么长的一段。
+    const sourceSpanSeconds = durationSeconds * speed;
     const codec = await pickCodec();
     const wantFrames = Math.round(durationSeconds * OUTPUT_FPS);
     // 封面帧直接从合成过程里截，不要再用 <video> 去读刚生成的 MOV：
@@ -181,8 +186,9 @@
     context.imageSmoothingQuality = "high";
 
     // 源是 AAC 就把音轨原样搬进成片；其它编码（少见）宁可静音也不做有损转码。
+    // 音频是不解码直通的，变速就得重采样重编码，代价太大：倍速时直接静音。
     const canCopyAudio = Boolean(
-      keepSound && audioTrack && audioSamples?.length && audioDescription &&
+      keepSound && speed === 1 && audioTrack && audioSamples?.length && audioDescription &&
       /mp4a/i.test(String(audioTrack.codec || "")),
     );
     const muxer = new window.Mp4Muxer.Muxer({
@@ -224,24 +230,29 @@
         try {
           // start 之前的帧只是用来建立参考帧，不参与合成。
           if (kept >= wantFrames || frame.timestamp < startMicros) return;
-          context.drawImage(pageBitmap, 0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT);
-          context.save();
-          context.beginPath();
-          context.roundRect(well.x, well.y, well.width, well.height, WELL_RADIUS);
-          context.clip();
-          context.drawImage(frame, rect.x, rect.y, rect.width, rect.height, well.x, well.y, well.width, well.height);
-          context.restore();
-          if (kept === coverFrameIndex) {
-            coverBlobPromise = canvas.convertToBlob({ type: "image/jpeg", quality: 0.95 });
+          const frameSeconds = frame.timestamp / 1_000_000;
+          // 成片第 kept 帧对应的源时间；倍速越高，两帧之间跨过的源时间越长，
+          // 中间的帧直接跳过。按源时间取帧而不是按解码顺序，倍速才准。
+          while (kept < wantFrames && frameSeconds + 1e-6 >= startSeconds + (kept * speed) / OUTPUT_FPS) {
+            context.drawImage(pageBitmap, 0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT);
+            context.save();
+            context.beginPath();
+            context.roundRect(well.x, well.y, well.width, well.height, WELL_RADIUS);
+            context.clip();
+            context.drawImage(frame, rect.x, rect.y, rect.width, rect.height, well.x, well.y, well.width, well.height);
+            context.restore();
+            if (kept === coverFrameIndex) {
+              coverBlobPromise = canvas.convertToBlob({ type: "image/jpeg", quality: 0.95 });
+            }
+            const composed = new VideoFrame(canvas, {
+              timestamp: Math.round((kept * 1_000_000) / OUTPUT_FPS),
+              duration: Math.round(1_000_000 / OUTPUT_FPS),
+            });
+            encoder.encode(composed, { keyFrame: kept % OUTPUT_FPS === 0 });
+            composed.close();
+            kept += 1;
+            if (kept % 15 === 0) onProgress?.(kept / wantFrames);
           }
-          const composed = new VideoFrame(canvas, {
-            timestamp: Math.round((kept * 1_000_000) / OUTPUT_FPS),
-            duration: Math.round(1_000_000 / OUTPUT_FPS),
-          });
-          encoder.encode(composed, { keyFrame: kept % OUTPUT_FPS === 0 });
-          composed.close();
-          kept += 1;
-          if (kept % 15 === 0) onProgress?.(kept / wantFrames);
         } finally {
           frame.close();
         }
@@ -264,7 +275,7 @@
       if (samples[index].is_sync) firstIndex = index;
     }
     // 末尾多送一点，避免解码器因缺少后续样本而少吐最后一帧。
-    const endSeconds = startSeconds + durationSeconds + 2 / OUTPUT_FPS;
+    const endSeconds = startSeconds + sourceSpanSeconds + 2 / OUTPUT_FPS;
     for (let index = firstIndex; index < samples.length; index += 1) {
       if (kept >= wantFrames) break;
       const sample = samples[index];
@@ -482,7 +493,8 @@
       videoBlob,
       pageCanvas,
       well,
-      platform = "xhs",
+      durationSeconds: requestedDuration = 5,
+      speed: requestedSpeed = 1,
       start = 0,
       coverOffset = 0.2,
       focusX = 50,
@@ -494,17 +506,19 @@
     } = options;
 
     if (!supported()) throw new Error("当前浏览器不支持在本地生成实况，请改用云端生成。");
-    const durationSeconds = platform === "wechat" ? 3 : 5;
-    const suffix = platform === "wechat" ? "WECHAT_3S" : "XHS_5S";
+    const durationSeconds = LIVE_DURATIONS.includes(Number(requestedDuration)) ? Number(requestedDuration) : 5;
+    const speed = LIVE_SPEEDS.includes(Number(requestedSpeed)) ? Number(requestedSpeed) : 1;
+    const sourceSpanSeconds = durationSeconds * speed;
+    const suffix = `${durationSeconds}S${speed === 1 ? "" : `_${String(speed).replace(".", "_")}X`}`;
 
     onProgress?.({ stage: "demux", progress: 6, detail: "正在读取视频画面…" });
     // 只解出所选时间窗，末尾留两帧余量给解码器补参考帧。
     const { samples, track, description, audioSamples, audioTrack, audioDescription } =
-      await demuxVideo(videoBlob, start, start + durationSeconds + 2 / OUTPUT_FPS);
+      await demuxVideo(videoBlob, start, start + sourceSpanSeconds + 2 / OUTPUT_FPS);
 
     const available = track.duration / track.timescale;
-    if (start + durationSeconds > available + 0.05) {
-      throw new Error(`所选片段需要 ${durationSeconds} 秒，但视频从当前起点只剩 ${Math.max(0, available - start).toFixed(2)} 秒。`);
+    if (start + sourceSpanSeconds > available + 0.05) {
+      throw new Error(`${speed === 1 ? "" : `${speed}× 倍速的 `}${durationSeconds} 秒实况需要 ${sourceSpanSeconds.toFixed(1)} 秒素材，但视频从当前起点只剩 ${Math.max(0, available - start).toFixed(2)} 秒。`);
     }
 
     onProgress?.({ stage: "compose", progress: 14, detail: "正在合成卡片与实况画面…" });
@@ -516,6 +530,7 @@
         pageBitmap, well, crop, focusX, focusY,
         startSeconds: start,
         durationSeconds,
+        speed,
         coverOffsetSeconds: coverOffset,
         keepSound: sound,
         onProgress: (ratio) => onProgress?.({
