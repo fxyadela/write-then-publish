@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260828-live-speed-3" />
+    <link rel="stylesheet" href="src/styles.css?v=20260828-pair-draft" />
   </head>
   <body class="entry-choice-pending">
     <main class="workspace">
@@ -766,7 +766,7 @@
         <div class="modal-head">
           <div>
             <h3 id="pairModalTitle">调整拼图</h3>
-            <p>选择拼图整体比例；两张图可以分别裁剪</p>
+            <p>选择整体比例，两张图可分别裁剪或删除；关闭不保存，点「完成」才生效</p>
           </div>
           <button id="pairCloseBtn" class="icon-button ghost" type="button" title="关闭" aria-label="关闭拼图调整">
             <i data-lucide="x"></i>
@@ -776,17 +776,29 @@
           <div id="pairPreview" class="pair-preview">
             <div class="pair-cell">
               <canvas id="pairCanvasLeft"></canvas>
-              <button id="pairCropLeftBtn" class="secondary-button" type="button">
-                <i data-lucide="crop"></i>
-                裁剪左图
-              </button>
+              <div class="pair-cell-actions">
+                <button id="pairCropLeftBtn" class="secondary-button" type="button" aria-label="裁剪左图">
+                  <i data-lucide="crop"></i>
+                  裁剪
+                </button>
+                <button id="pairDropLeftBtn" class="secondary-button" type="button" aria-label="删除左图，只保留右图">
+                  <i data-lucide="trash-2"></i>
+                  删除
+                </button>
+              </div>
             </div>
             <div class="pair-cell">
               <canvas id="pairCanvasRight"></canvas>
-              <button id="pairCropRightBtn" class="secondary-button" type="button">
-                <i data-lucide="crop"></i>
-                裁剪右图
-              </button>
+              <div class="pair-cell-actions">
+                <button id="pairCropRightBtn" class="secondary-button" type="button" aria-label="裁剪右图">
+                  <i data-lucide="crop"></i>
+                  裁剪
+                </button>
+                <button id="pairDropRightBtn" class="secondary-button" type="button" aria-label="删除右图，只保留左图">
+                  <i data-lucide="trash-2"></i>
+                  删除
+                </button>
+              </div>
             </div>
           </div>
           <aside class="pair-controls">
@@ -1197,7 +1209,7 @@
     <script src="src/vendor/jszip.min.js?v=3.10.1"></script>
     <script src="src/vendor/mp4box.all.min.js?v=0.5.3" defer></script>
     <script src="src/vendor/mp4muxer.js?v=5.2.1" defer></script>
-    <script src="src/live-photo-browser.js?v=20260828-live-speed-3" defer></script>
+    <script src="src/live-photo-browser.js?v=20260828-pair-draft" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
@@ -1213,6 +1225,6 @@
         document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260828-live-speed-3"></script>
+    <script src="src/app.js?v=20260828-pair-draft"></script>
   </body>
 </html>

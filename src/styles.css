@@ -2817,6 +2817,15 @@ body.export-busy {
   justify-items: center;
 }
 
+.pair-cell-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pair-cell-actions .secondary-button {
+  padding-inline: 10px;
+}
+
 .pair-cell canvas {
   display: block;
   border-radius: 8px;

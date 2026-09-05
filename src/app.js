@@ -249,6 +249,8 @@ const els = {
   pairCanvasRight: $("#pairCanvasRight"),
   pairCropLeft: $("#pairCropLeftBtn"),
   pairCropRight: $("#pairCropRightBtn"),
+  pairDropLeft: $("#pairDropLeftBtn"),
+  pairDropRight: $("#pairDropRightBtn"),
   pairSwap: $("#pairSwapBtn"),
   pairDone: $("#pairDoneBtn"),
   pairRatioButtons: document.querySelectorAll("[data-pair-ratio]"),
@@ -5811,6 +5813,7 @@ function resetCropperTarget() {
   }
   updateImageList();
   closeCropper();
+  refreshPairEditor();
   requestRender();
 }
 
@@ -9037,7 +9040,27 @@ function imageHitIsPairable(hit) {
 }
 
 // ===== 拼图调整弹窗 =====
-const pairEditor = { leftId: null, rightId: null, ratio: DEFAULT_PAIR_RATIO };
+// 拼图弹窗按草稿处理：打开时记下原样，关闭即回滚，只有「完成」才留下改动。
+const pairEditor = {
+  leftId: null,
+  rightId: null,
+  ratio: DEFAULT_PAIR_RATIO,
+  originalRef: "",
+  originalCrops: null,
+  createdImageId: "",
+};
+
+function pairRefText(leftId, rightId, ratio) {
+  const suffix = normalizePairRatio(ratio) === DEFAULT_PAIR_RATIO ? "" : `|${normalizePairRatio(ratio)}`;
+  return `[[image:${leftId}|${rightId}${suffix}]]`;
+}
+
+/** 正文里已经没人引用这张图时，把它从素材里一并清掉，免得列表留空壳。 */
+function dropUnreferencedImage(imageId) {
+  if (!imageId || !state.images[imageId]) return;
+  if (new RegExp(`\\[\\[image:(?:${imageId}\\b|[\\w-]+\\|${imageId}\\b)`).test(els.content.value)) return;
+  delete state.images[imageId];
+}
 
 function pairModalIsOpen() {
   return Boolean(els.pairModal && !els.pairModal.classList.contains("hidden"));
@@ -9090,18 +9113,70 @@ function refreshPairEditor() {
   drawPairEditorCell(els.pairCanvasRight, pairEditor.rightId);
 }
 
-function openPairEditor(leftId, rightId, ratio = DEFAULT_PAIR_RATIO) {
+function openPairEditor(leftId, rightId, ratio = DEFAULT_PAIR_RATIO, options = {}) {
   if (!els.pairModal || !state.images[leftId] || !state.images[rightId]) return;
   pairEditor.leftId = leftId;
   pairEditor.rightId = rightId;
   pairEditor.ratio = normalizePairRatio(ratio);
+  // 取消时要还原到这一刻：正文里的引用、两张图各自的裁剪、以及刚加进来的那张图。
+  pairEditor.originalRef = options.originalRef || pairRefText(leftId, rightId, pairEditor.ratio);
+  pairEditor.originalCrops = {
+    [leftId]: state.images[leftId]?.crop || null,
+    [rightId]: state.images[rightId]?.crop || null,
+  };
+  pairEditor.createdImageId = options.createdImageId || "";
   els.pairModal.classList.remove("hidden");
   refreshPairEditor();
   if (window.lucide) window.lucide.createIcons();
 }
 
-function closePairEditor() {
+function hidePairModal() {
   els.pairModal?.classList.add("hidden");
+  pairEditor.originalRef = "";
+  pairEditor.originalCrops = null;
+  pairEditor.createdImageId = "";
+}
+
+/** 「完成」：改动就地留下。 */
+function commitPairEditor() {
+  hidePairModal();
+}
+
+/** 关闭 / Esc / 点遮罩：回到打开弹窗前的样子。 */
+function cancelPairEditor() {
+  if (!pairModalIsOpen()) return;
+  const current = pairRefText(pairEditor.leftId, pairEditor.rightId, pairEditor.ratio);
+  if (pairEditor.originalRef && els.content.value.includes(current)) {
+    els.content.value = els.content.value.replace(current, pairEditor.originalRef);
+  }
+  for (const [id, crop] of Object.entries(pairEditor.originalCrops || {})) {
+    if (state.images[id]) state.images[id].crop = crop;
+  }
+  const created = pairEditor.createdImageId;
+  hidePairModal();
+  dropUnreferencedImage(created);
+  updateImageList();
+  requestRender();
+}
+
+/** 删掉其中一张，另一张退回普通单图。 */
+function removePairImage(side) {
+  const keepId = side === "left" ? pairEditor.rightId : pairEditor.leftId;
+  const dropId = side === "left" ? pairEditor.leftId : pairEditor.rightId;
+  if (!keepId || !dropId) return;
+  const current = pairRefText(pairEditor.leftId, pairEditor.rightId, pairEditor.ratio);
+  if (!els.content.value.includes(current)) {
+    els.status.textContent = "这张拼图的引用已变化，请关闭后重新打开";
+    return;
+  }
+  commitTextHistory();
+  els.content.value = els.content.value.replace(current, `[[image:${keepId}]]`);
+  commitTextHistory();
+  hidePairModal();
+  dropUnreferencedImage(dropId);
+  updateImageList();
+  requestRender();
+  els.status.textContent = `已删除${side === "left" ? "左" : "右"}图，这里恢复成单张图片`;
 }
 
 function setPairRatio(ratio) {
@@ -9145,8 +9220,11 @@ async function addPairImageToHit(hit) {
     commitTextHistory();
     updateImageList();
     requestRender();
-    els.status.textContent = "已拼入第二张图；在编辑框里删掉 |图片编号 可拆回单图";
-    openPairEditor(leftId, newId);
+    els.status.textContent = "已拼入第二张图；关闭弹窗可撤回，点「完成」才保留";
+    openPairEditor(leftId, newId, DEFAULT_PAIR_RATIO, {
+      originalRef: `[[image:${leftId}]]`,
+      createdImageId: newId,
+    });
   });
   picker.click();
 }
@@ -9277,7 +9355,9 @@ function createImageEditLayer(canvas) {
     const openFromItem = () => {
       const segment = els.content.value.slice(item.sourceStart, item.sourceEnd);
       const parsed = resolveInternalImagePairBlock(segment.trim());
-      if (parsed) openPairEditor(parsed.ids[0], parsed.ids[1], parsed.ratio);
+      if (parsed) {
+        openPairEditor(parsed.ids[0], parsed.ids[1], parsed.ratio, { originalRef: segment.trim() });
+      }
     };
     box.addEventListener("click", openFromItem);
     box.addEventListener("keydown", (event) => {
@@ -11633,8 +11713,10 @@ function bindEvents() {
   els.cropModal.addEventListener("click", (event) => {
     if (event.target === els.cropModal) closeCropper();
   });
-  els.pairClose?.addEventListener("click", closePairEditor);
-  els.pairDone?.addEventListener("click", closePairEditor);
+  els.pairClose?.addEventListener("click", cancelPairEditor);
+  els.pairDone?.addEventListener("click", commitPairEditor);
+  els.pairDropLeft?.addEventListener("click", () => removePairImage("left"));
+  els.pairDropRight?.addEventListener("click", () => removePairImage("right"));
   els.pairSwap?.addEventListener("click", swapPairImages);
   els.pairCropLeft?.addEventListener("click", () => void openCropper("image", pairEditor.leftId));
   els.pairCropRight?.addEventListener("click", () => void openCropper("image", pairEditor.rightId));
@@ -11642,7 +11724,7 @@ function bindEvents() {
     button.addEventListener("click", () => setPairRatio(button.dataset.pairRatio));
   });
   els.pairModal?.addEventListener("click", (event) => {
-    if (event.target === els.pairModal) closePairEditor();
+    if (event.target === els.pairModal) cancelPairEditor();
   });
   els.wechatModal.addEventListener("click", (event) => {
     if (event.target === els.wechatModal) closeWechatModal();
@@ -11805,7 +11887,7 @@ function bindEvents() {
       return;
     }
     if (event.key === "Escape" && !els.cropModal.classList.contains("hidden")) closeCropper();
-    else if (event.key === "Escape" && pairModalIsOpen()) closePairEditor();
+    else if (event.key === "Escape" && pairModalIsOpen()) cancelPairEditor();
     if (event.key === "Escape" && !els.wechatModal.classList.contains("hidden")) closeWechatModal();
     if (event.key === "Escape" && !els.livePhotoModal.classList.contains("hidden")) closeLivePhotoModal();
     if (event.key === "Escape" && !els.livePhotoHandoffModal.classList.contains("hidden")) closeLivePhotoHandoff();
