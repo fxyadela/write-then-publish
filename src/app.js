@@ -79,6 +79,10 @@ const MAX_PROJECTS = 24;
 const MAX_SAVED_CUSTOM_COLORS = 12;
 // 超过这个体积的原片不做云端备份：实况生成不需要它，自动上传几百 MB 只会拖慢同步。
 const MAX_CLOUD_BACKUP_VIDEO_BYTES = 80 * 1024 * 1024;
+// 实况原视频是云端存储与流量的大头（免费额度 1GB 存储 / 5GB 月流量），
+// 而生成实况只用本机素材，云端备份只为换设备继续编辑，性价比太低，默认关闭。
+// 已经备份过的视频不受影响；改回 true 即恢复新视频的备份。
+const CLOUD_BACKUP_LIVE_VIDEO = false;
 const BUILT_IN_PROJECT_PREFIX = "guide_";
 const GUIDE_CARDS_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}cards`;
 const GUIDE_ARTICLE_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}article`;
@@ -2297,9 +2301,16 @@ async function hydrateCloudProject(project) {
         }
         if (image.kind === "live" && image.videoStoragePath) {
           const key = String(image.videoKey || id);
-          const videoBlob = await api.downloadProjectAsset(image.videoStoragePath);
-          await writeLiveMediaBlob(key, videoBlob);
-          replaceLiveMediaCache(key, videoBlob, image.videoName || "video.mov");
+          // 本机内存或 IndexedDB 里已经有这段原视频就直接用，不再从云端下：
+          // 之前这里无条件下载，每次登录都会把整段视频重新拉一遍，流量额度就是这么耗光的。
+          const cached = liveMediaFiles.get(key)?.blob || await readLiveMediaBlob(key).catch(() => null);
+          if (cached) {
+            if (!liveMediaFiles.get(key)?.blob) replaceLiveMediaCache(key, cached, image.videoName || "video.mov");
+          } else {
+            const videoBlob = await api.downloadProjectAsset(image.videoStoragePath);
+            await writeLiveMediaBlob(key, videoBlob);
+            replaceLiveMediaCache(key, videoBlob, image.videoName || "video.mov");
+          }
         }
       } catch (error) {
         console.error("云端素材读取失败", error);
@@ -2828,7 +2839,9 @@ async function prepareProjectForCloud(project) {
       cloudImage.src = "";
     }
 
-    if (sourceImage.kind === "live" && !sourceImage.videoStoragePath) {
+    if (sourceImage.kind === "live" && !sourceImage.videoStoragePath && !CLOUD_BACKUP_LIVE_VIDEO) {
+      sourceImage.videoBackupSkipped = true;
+    } else if (sourceImage.kind === "live" && !sourceImage.videoStoragePath) {
       const videoKey = String(sourceImage.videoKey || id);
       try {
         const cachedBlob = liveMediaFiles.get(videoKey)?.blob || await readLiveMediaBlob(videoKey);
@@ -10310,7 +10323,11 @@ async function generateLivePackageForCanvas(canvas, pageIndex, reveal = true, se
     throw new Error("本机实况服务没有运行。请双击项目里的「启动写了就发.command」，保留终端窗口后再试。");
   }
   const media = liveMediaFiles.get(String(image.videoKey || hit.imageId));
-  if (!media?.blob) throw new Error("实况原视频已经丢失，请在左侧重新上传这段视频。");
+  if (!media?.blob) {
+    throw new Error(image.videoBackupSkipped
+      ? "这段实况的原视频只保存在上传它的那台设备上（为节省云端空间不做备份）。请在那台设备导出，或在这里重新上传视频。"
+      : "实况原视频已经丢失，请在左侧重新上传这段视频。");
+  }
 
   // 浏览器自己就能合成实况，不必把原视频传上云再等一台云端 Mac。
   if (canRenderInBrowser) {
