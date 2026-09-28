@@ -6527,6 +6527,7 @@ function parseBlocks(content, images = {}) {
   let paragraphLines = [];
   let paragraphStart = null;
   let paragraphEnd = null;
+  let lastQuoteLineIndex = -2;
 
   const flushParagraph = () => {
     if (!paragraphLines.length) return;
@@ -6647,17 +6648,26 @@ function parseBlocks(content, images = {}) {
         } else if (trimmed.startsWith("> ")) {
           flushParagraph();
           const contentStart = trimmedStart + 2 + countLeadingSpaces(trimmed.slice(2));
-          blocks.push({
-            type: "quote",
-            tokens: parseInlineSourceRange(
-              normalized,
-              contentStart,
-              contentStart + trimmed.slice(2).trim().length,
-              multilineUnderlines,
-            ),
-            sourceStart: lineOffsets[index],
-            sourceEnd: lineOffsets[index] + line.length,
-          });
+          const quoteTokens = parseInlineSourceRange(
+            normalized,
+            contentStart,
+            contentStart + trimmed.slice(2).trim().length,
+            multilineUnderlines,
+          );
+          // 连续的 > 行归入同一个引用块，每行仍各自换行；空行才断开
+          const previousBlock = blocks[blocks.length - 1];
+          if (lastQuoteLineIndex === index - 1 && previousBlock?.type === "quote") {
+            previousBlock.lines.push(quoteTokens);
+            previousBlock.sourceEnd = lineOffsets[index] + line.length;
+          } else {
+            blocks.push({
+              type: "quote",
+              lines: [quoteTokens],
+              sourceStart: lineOffsets[index],
+              sourceEnd: lineOffsets[index] + line.length,
+            });
+          }
+          lastQuoteLineIndex = index;
         } else if (listMarker) {
           const itemStart = trimmedStart + listMarker[0].length;
           const itemTokens = parseInlineSourceRange(
@@ -7339,6 +7349,7 @@ async function buildPages(settings) {
         x: page.bounds.left + (style.quote ? 28 : 0),
         y,
         lineHeight,
+        quoteBlock: style.quote ? block : null,
         sourceStart: line.find((token) => Number.isFinite(token.sourceStart))?.sourceStart ?? block.sourceStart,
         sourceEnd: [...line].reverse().find((token) => Number.isFinite(token.sourceEnd))?.sourceEnd ?? block.sourceEnd,
       });
@@ -7377,12 +7388,32 @@ function drawPageToContext(ctx, page) {
   if (page.showHeader !== false) {
     drawHeader(ctx, page.settings, page.avatar, page.badge);
   }
+  drawQuoteBars(ctx, page);
 
   for (const item of page.items) {
     if (item.type === "image") drawImageBlock(ctx, item);
     if (item.type === "imagePair") drawImagePairBlock(ctx, item);
     if (item.type === "table") drawTableBlock(ctx, item, page.settings);
-    if (item.type === "text") drawTextLine(ctx, item, page.settings);
+    if (item.type === "text") drawTextLine(ctx, item);
+  }
+}
+
+// 同一引用块在本页的所有行共用一根竖条；跨页时每页各画一段
+function drawQuoteBars(ctx, page) {
+  const bars = new Map();
+  for (const item of page.items) {
+    if (item.type !== "text" || !item.quoteBlock) continue;
+    const bar = bars.get(item.quoteBlock);
+    if (bar) {
+      bar.bottom = item.y + item.lineHeight;
+    } else {
+      bars.set(item.quoteBlock, { x: item.x, top: item.y, bottom: item.y + item.lineHeight });
+    }
+  }
+  ctx.fillStyle = page.settings.accentColor;
+  for (const bar of bars.values()) {
+    roundedRect(ctx, bar.x - 28, bar.top + 7, 7, bar.bottom - bar.top - 13, 4);
+    ctx.fill();
   }
 }
 
@@ -7550,7 +7581,7 @@ function drawTableBlock(ctx, item, settings) {
           x: x + 10,
           y: lineY,
           lineHeight: row.lineHeight,
-        }, settings);
+        });
         lineY += row.lineHeight;
       }
     }
@@ -7576,14 +7607,8 @@ function drawUnderlineRun(ctx, run, style, baseline) {
   ctx.restore();
 }
 
-function drawTextLine(ctx, item, settings) {
+function drawTextLine(ctx, item) {
   const { style, line, x, y, lineHeight } = item;
-  if (style.quote) {
-    ctx.fillStyle = settings.accentColor;
-    roundedRect(ctx, x - 28, y + 7, 7, lineHeight - 13, 4);
-    ctx.fill();
-  }
-
   let cursor = x;
   const baseline = y + Math.round(lineHeight * 0.75);
   let underlineRun = null;
@@ -7717,6 +7742,7 @@ function markdownToArticleHtml(markdown, images = {}) {
   const html = [];
   let paragraph = [];
   let list = [];
+  let quote = [];
   let code = [];
   let inCode = false;
 
@@ -7733,6 +7759,12 @@ function markdownToArticleHtml(markdown, images = {}) {
     if (!list.length) return;
     html.push(`<ul>${list.map((item) => `<li>${renderSourceRange(item.start, item.end)}</li>`).join("")}</ul>`);
     list = [];
+  };
+  // 连续的 > 行合成一个 blockquote，行与行之间保留换行
+  const flushQuote = () => {
+    if (!quote.length) return;
+    html.push(`<blockquote>${quote.map((item) => renderSourceRange(item.start, item.end)).join("<br>")}</blockquote>`);
+    quote = [];
   };
   const flushCode = () => {
     if (!code.length) return;
@@ -7751,6 +7783,7 @@ function markdownToArticleHtml(markdown, images = {}) {
     const trimmed = line.trim();
     const trimmedStart = lineOffsets[index] + leading;
     const trimmedEnd = lineOffsets[index] + line.length - trailing;
+    if (!trimmed.startsWith("> ")) flushQuote();
     if (trimmed.startsWith("```")) {
       if (inCode) {
         flushCode();
@@ -7819,7 +7852,7 @@ function markdownToArticleHtml(markdown, images = {}) {
     if (trimmed.startsWith("> ")) {
       flushParagraph();
       flushList();
-      html.push(`<blockquote>${renderSourceRange(trimmedStart + 2, trimmedEnd)}</blockquote>`);
+      quote.push({ start: trimmedStart + 2, end: trimmedEnd });
       continue;
     }
 
@@ -7836,6 +7869,7 @@ function markdownToArticleHtml(markdown, images = {}) {
 
   flushParagraph();
   flushList();
+  flushQuote();
   flushCode();
   return html.length ? html.join("") : '<p class="article-empty">在左侧输入 Markdown，右侧会生成长文预览。</p>';
 }
