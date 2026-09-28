@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260928-restricted-notice" />
+    <link rel="stylesheet" href="src/styles.css?v=20260929-migration" />
   </head>
   <body class="entry-choice-pending history-disabled">
     <main class="workspace">
@@ -512,7 +512,7 @@
           <header class="entry-choice-head">
             <span class="entry-choice-brand">写了就发</span>
             <h2 id="entryChoiceTitle">这次想怎么使用？</h2>
-            <p>临时排版可以直接进入；需要长期保存和跨设备使用时再登录。</p>
+            <p>临时排版可以直接进入；想保留历史草稿时再登录。</p>
           </header>
           <div id="entryChoiceNotice" class="entry-choice-notice" hidden></div>
           <div class="entry-choice-options">
@@ -537,10 +537,10 @@
               <div>
                 <span class="entry-choice-kicker">长期保存</span>
                 <h3>登录工作区</h3>
-                <p>按账号保存头像、昵称、图文和素材，换设备登录后仍能继续编辑。</p>
+                <p>头像和昵称跟着账号走；图文草稿和历史记录保存在这台设备上，随时回来接着改。</p>
               </div>
               <ul>
-                <li><i data-lucide="check"></i>自动同步到 Supabase</li>
+                <li><i data-lucide="check"></i>头像昵称多设备同步</li>
                 <li><i data-lucide="check"></i>不同账号的数据相互隔离</li>
               </ul>
               <span id="entryChoiceReturningHint" class="entry-choice-returning" hidden></span>
@@ -609,11 +609,11 @@
             </div>
             <div class="account-benefit-row">
               <span class="account-benefit-icon"><i data-lucide="file-text"></i></span>
-              <div><strong>保存图文草稿</strong><span>自动保存，不再丢失</span></div>
+              <div><strong>保留历史草稿</strong><span>保存在这台设备上，随时接着改</span></div>
             </div>
             <div class="account-benefit-row">
-              <span class="account-benefit-icon"><i data-lucide="laptop"></i></span>
-              <div><strong>跨设备继续编辑</strong><span>随时随地继续你的创作</span></div>
+              <span class="account-benefit-icon"><i data-lucide="users-round"></i></span>
+              <div><strong>多个身份切换</strong><span>不同账号的头像昵称一键切换</span></div>
             </div>
           </div>
         </aside>
@@ -1227,7 +1227,7 @@
     <script src="src/vendor/jszip.min.js?v=3.10.1"></script>
     <script src="src/vendor/mp4box.all.min.js?v=0.5.3" defer></script>
     <script src="src/vendor/mp4muxer.js?v=5.2.1" defer></script>
-    <script src="src/live-photo-browser.js?v=20260928-restricted-notice" defer></script>
+    <script src="src/live-photo-browser.js?v=20260929-migration" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
@@ -1240,9 +1240,9 @@
       } else {
         document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
         document.write('<script src="src/supabase-config.js?v=20260729-auth"><\/script>');
-        document.write('<script src="src/supabase.js?v=20260928-restricted-notice"><\/script>');
+        document.write('<script src="src/supabase.js?v=20260929-migration"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260928-restricted-notice"></script>
+    <script src="src/app.js?v=20260929-migration"></script>
   </body>
 </html>

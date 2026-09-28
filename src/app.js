@@ -1628,7 +1628,7 @@ function updateAccountUi() {
     els.accountEmailLabel.textContent = cloudState.user.email || "";
     const localCount = cloudState.localImportProjects.length;
     els.accountImportLocal.hidden = localCount < 1;
-    if (localCount) els.accountImportLocal.innerHTML = `<i data-lucide="cloud-upload"></i>导入 ${localCount} 条游客 / 旧本机草稿到此账号`;
+    if (localCount) els.accountImportLocal.innerHTML = `<i data-lucide="folder-input"></i>导入 ${localCount} 条游客 / 旧本机草稿到此账号`;
   }
   updateFeatureBadges();
   if (window.lucide) window.lucide.createIcons();
@@ -2309,17 +2309,31 @@ function cloudProjectFromRow(row) {
   });
 }
 
+/** blob: 链接刷新即失效（旧版本本机缓存里的云端图片全是这种），当作没有。 */
+function isPersistableImageSource(src) {
+  return typeof src === "string" && src.length > 0 && !src.startsWith("blob:");
+}
+
+/** 把云端素材补到本机，返回没下载成功的数量。 */
 async function hydrateCloudProject(project) {
   const api = cloudApi();
   const images = project?.data?.images;
-  if (!api?.configured || !images || typeof images !== "object") return project;
+  if (!api?.configured || !images || typeof images !== "object") return 0;
+  let failed = 0;
   await Promise.all(
     Object.entries(images).map(async ([id, image]) => {
       if (!image || typeof image !== "object") return;
       try {
-        if (image.storagePath && !image.src) {
-          const blob = await api.downloadProjectAsset(image.storagePath);
-          image.src = URL.createObjectURL(blob);
+        if (image.storagePath && !isPersistableImageSource(image.src)) {
+          // 本机 IndexedDB 里已有就直接用，不花云端流量
+          const local = image.srcKey ? await readImageSource(image.srcKey).catch(() => null) : null;
+          if (local) {
+            image.src = local;
+          } else {
+            // 存成 data URL 而不是 blob 链接：saveProjectStore 会把它写进 IndexedDB，刷新后还在
+            const blob = await api.downloadProjectAsset(image.storagePath);
+            image.src = await readFileAsDataURL(blob);
+          }
         }
         if (image.kind === "live" && image.videoStoragePath) {
           const key = String(image.videoKey || id);
@@ -2335,11 +2349,115 @@ async function hydrateCloudProject(project) {
           }
         }
       } catch (error) {
+        failed += 1;
         console.error("云端素材读取失败", error);
       }
     }),
   );
-  return project;
+  return failed;
+}
+
+// ── 云端迁移 ──
+// 图文草稿改为保存在本机，云端只同步头像昵称。账号在每台设备上第一次登录时，
+// 把云端已有的草稿（正文、图片、实况视频）一次性拉回本机存好；全部成功后记一笔，
+// 这台设备以后不再读云端项目。
+const CLOUD_PROJECT_SYNC = false;
+const CLOUD_MIGRATION_KEY = "writeThenPublishCloudMigrated.v1";
+
+function cloudMigrationKey(userId) {
+  return `${CLOUD_MIGRATION_KEY}.${accountScope(userId)}`;
+}
+
+function cloudMigrationDone(userId) {
+  try {
+    return localStorage.getItem(cloudMigrationKey(userId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markCloudMigrationDone(userId) {
+  try {
+    localStorage.setItem(cloudMigrationKey(userId), "1");
+  } catch {
+    // 记不下来只是下次登录再检查一遍，素材已在本机的不会重复下载。
+  }
+}
+
+/** 云端草稿并入本机：两边都有的取更新时间较新的；图片的云端路径与本机缓存键两边互补。 */
+function mergeCloudProjectsIntoLocal(cloudProjects) {
+  const merged = new Map();
+  for (const project of state.projects) {
+    if (!isBuiltInProject(project)) merged.set(project.id, project);
+  }
+  for (const cloud of cloudProjects) {
+    const local = merged.get(cloud.id);
+    if (!local) {
+      merged.set(cloud.id, cloud);
+      continue;
+    }
+    const cloudIsNewer = (Number(cloud.updatedAt) || 0) > (Number(local.updatedAt) || 0);
+    const newer = cloudIsNewer ? cloud : local;
+    const older = cloudIsNewer ? local : cloud;
+    const olderImages = older.data?.images || {};
+    for (const [id, image] of Object.entries(newer.data?.images || {})) {
+      const other = olderImages[id];
+      if (!image || !other) continue;
+      if (!image.storagePath && other.storagePath) image.storagePath = other.storagePath;
+      if (!image.videoStoragePath && other.videoStoragePath) image.videoStoragePath = other.videoStoragePath;
+      if (!image.srcKey && other.srcKey) image.srcKey = other.srcKey;
+      if (!isPersistableImageSource(image.src) && isPersistableImageSource(other.src)) image.src = other.src;
+    }
+    merged.set(cloud.id, newer);
+  }
+  state.projects = [...merged.values()]
+    .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))
+    .slice(0, MAX_PROJECTS);
+  saveProjectStore();
+  updateProjectHistory();
+}
+
+function projectNeedsCloudAssets(project) {
+  return Object.values(project?.data?.images || {}).some((image) => image && (
+    (image.storagePath && !isPersistableImageSource(image.src))
+    || (image.kind === "live" && image.videoStoragePath)
+  ));
+}
+
+/** 当前打开的项目补完图后，把新图同步给编辑区正在用的那份。 */
+function refreshCurrentProjectImages(project) {
+  for (const [id, image] of Object.entries(project.data?.images || {})) {
+    const current = state.images[id];
+    if (current && !isPersistableImageSource(current.src) && isPersistableImageSource(image.src)) {
+      current.src = image.src;
+    }
+  }
+  requestRender();
+}
+
+/** 后台逐篇下载云端素材并落盘；中途切走或关掉页面，下次登录接着迁，已存好的不重下。 */
+async function migrateCloudAssets(userId) {
+  const scope = accountScope(userId);
+  const pending = state.projects.filter(projectNeedsCloudAssets);
+  if (!pending.length) {
+    markCloudMigrationDone(userId);
+    return;
+  }
+  let failed = 0;
+  for (const [index, project] of pending.entries()) {
+    if (activeStorageScope !== scope) return;
+    if (els.accountSyncStatus) els.accountSyncStatus.textContent = `正在把云端草稿保存到本机 ${index + 1}/${pending.length}…`;
+    failed += await hydrateCloudProjectOnce(project).catch(() => 1);
+    if (activeStorageScope !== scope) return;
+    saveProjectStore();
+    if (project.id === state.currentProjectId) refreshCurrentProjectImages(project);
+  }
+  if (!failed) markCloudMigrationDone(userId);
+  if (els.accountSyncStatus) {
+    els.accountSyncStatus.textContent = failed
+      ? `草稿已存到本机，有 ${failed} 个素材暂时没下载成功，下次登录会自动重试`
+      : "云端草稿已全部保存到这台设备";
+  }
 }
 
 // 同一项目的素材下载去重：登录后台预载与打开项目的兜底加载可能并发
@@ -2366,9 +2484,17 @@ function hydrateCloudProjectsInBackground(projects) {
   })();
 }
 
+/** 登录用户和本地版的草稿长期存在本机，历史照常可用；游客草稿只留在当前标签页，不显示历史。 */
+function syncHistoryAvailability() {
+  const disabled = activeStorageScope === "guest";
+  document.body.classList.toggle("history-disabled", disabled);
+  if (disabled) setHistoryOpen(false);
+}
+
 async function activateWorkspaceScope(scope, projects = null, profile = null) {
   cloudState.loadingWorkspace = true;
   activeStorageScope = scope;
+  syncHistoryAvailability();
   buildSelectionSwatches("color");
   buildSelectionSwatches("bg");
   try {
@@ -2427,7 +2553,9 @@ async function loadCloudWorkspace(session) {
   if (els.accountSyncStatus) els.accountSyncStatus.textContent = "正在读取账号数据…";
   updateAccountUi();
   try {
-    const [profile, rows] = await Promise.all([api.getProfile(), api.listProjects()]);
+    const migrated = cloudMigrationDone(user.id);
+    // 迁移过的设备不再读云端项目，只取头像昵称
+    const [profile, rows] = await Promise.all([api.getProfile(), migrated ? [] : api.listProjects()]);
     let resolvedProfile = profile;
     if (!resolvedProfile) {
       const cached = loadStoredAuthorProfile() || normalizeAuthorProfile({
@@ -2436,9 +2564,20 @@ async function loadCloudWorkspace(session) {
       });
       resolvedProfile = await api.upsertProfile(cached);
     }
-    const projects = rows.map(cloudProjectFromRow).filter(Boolean);
-    await activateWorkspaceScope(accountScope(user.id), projects, resolvedProfile);
-    els.accountSyncStatus.textContent = projects.length ? `已同步 ${projects.length} 条图文` : "云端还没有图文，可导入游客或旧本机草稿";
+    // 先打开这台设备上该账号已有的草稿，再把云端的并进来
+    await activateWorkspaceScope(accountScope(user.id), null, resolvedProfile);
+    els.accountSyncStatus.textContent = "图文草稿保存在这台设备上";
+    if (!migrated) {
+      const cloudProjects = rows.map(cloudProjectFromRow).filter(Boolean);
+      if (cloudProjects.length) {
+        const wasOnGuide = isBuiltInProjectId(state.currentProjectId);
+        mergeCloudProjectsIntoLocal(cloudProjects);
+        if (wasOnGuide && state.projects[0]) await openProject(state.projects[0].id);
+        void migrateCloudAssets(user.id);
+      } else {
+        markCloudMigrationDone(user.id);
+      }
+    }
     setAccountNotice("");
   } catch (error) {
     console.error(error);
@@ -2828,6 +2967,7 @@ async function signOutAccount() {
 }
 
 function scheduleCloudProjectSync(project) {
+  if (!CLOUD_PROJECT_SYNC) return;
   if (!cloudIsReady() || cloudState.loadingWorkspace || cloudState.switchingAccount || !project || isBuiltInProject(project)) return;
   cloudState.pendingProjects.set(project.id, project);
   window.clearTimeout(cloudState.syncTimer);
@@ -2899,6 +3039,7 @@ async function prepareProjectForCloud(project) {
 }
 
 async function flushCloudProjectSync() {
+  if (!CLOUD_PROJECT_SYNC) return;
   if (!cloudIsReady() || cloudState.loadingWorkspace || cloudState.syncingProjects) return;
   const projects = Array.from(cloudState.pendingProjects.values());
   if (!projects.length) return;
@@ -2962,23 +3103,20 @@ async function flushCloudProfileSync() {
 }
 
 async function importLocalProjectsToAccount() {
-  if (!cloudIsReady() || !cloudState.localImportProjects.length) return;
-  setAccountBusy(true);
-  els.accountSyncStatus.textContent = `正在导入 ${cloudState.localImportProjects.length} 条游客 / 本机草稿…`;
-  try {
-    const prepared = [];
-    for (const project of cloudState.localImportProjects) prepared.push(await prepareProjectForCloud(project));
-    await cloudApi().upsertProjects(prepared);
-    cloudState.localImportProjects = [];
-    await loadCloudWorkspace(cloudState.session);
-    setAccountNotice("游客 / 本机草稿已复制到当前账号，原数据仍然保留。", "success");
-  } catch (error) {
-    console.error(error);
-    setAccountNotice(error?.message || "本机草稿导入失败。", "error");
-  } finally {
-    setAccountBusy(false);
-    updateAccountUi();
-  }
+  if (!cloudState.user || !cloudState.localImportProjects.length) return;
+  // 草稿改为本机保存后，导入就是并进这个账号在本机的历史记录，不经过云端。
+  // 图片缓存键只跟项目和图片编号有关，不分作用域，直接复用。
+  const count = cloudState.localImportProjects.length;
+  const existing = new Set(state.projects.map((project) => project.id));
+  const incoming = cloudState.localImportProjects.filter((project) => !existing.has(project.id));
+  state.projects = [...incoming, ...state.projects.filter((project) => !isBuiltInProject(project))]
+    .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))
+    .slice(0, MAX_PROJECTS);
+  saveProjectStore();
+  updateProjectHistory();
+  cloudState.localImportProjects = [];
+  setAccountNotice(`已把 ${count} 条游客 / 本机草稿加进这个账号的历史记录，原数据仍然保留。`, "success");
+  updateAccountUi();
 }
 
 function migrateStoredState(data) {
@@ -3319,8 +3457,8 @@ const WHATS_NEW_ONBOARDING_STEPS = [
     target: "#accountBtn",
     title: "账户同步",
     body: () => cloudState.user
-      ? "你的账户同步已经开启。头像、昵称和图文草稿会按当前账号保存，换设备登录也能继续编辑。"
-      : "需要长期保存时，可以随时登录并同步；继续使用游客模式，也不影响原来的排版和下载流程。",
+      ? "你已经登录。头像和昵称会跟着账号同步，图文草稿和历史记录保存在这台设备上。"
+      : "想保留历史草稿时，可以随时登录；继续使用游客模式，也不影响原来的排版和下载流程。",
     actionLabel: () => cloudState.user ? "查看同步状态" : "登录并同步",
     action: () => {
       if (cloudState.user) {
