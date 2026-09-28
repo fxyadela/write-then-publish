@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260928-guest-profile" />
+    <link rel="stylesheet" href="src/styles.css?v=20260928-restricted-notice" />
   </head>
   <body class="entry-choice-pending history-disabled">
     <main class="workspace">
@@ -620,6 +620,10 @@
 
         <section class="account-modal-body">
           <div id="accountConfigNotice" class="account-notice" hidden></div>
+          <button id="accountGuestFallbackBtn" class="secondary-button wide account-guest-fallback" type="button" hidden>
+            <i data-lucide="user-round"></i>
+            以游客身份继续
+          </button>
 
           <div id="accountOauth" class="account-oauth" hidden>
             <button id="accountGoogleBtn" class="account-oauth-button" type="button">
@@ -1223,7 +1227,7 @@
     <script src="src/vendor/jszip.min.js?v=3.10.1"></script>
     <script src="src/vendor/mp4box.all.min.js?v=0.5.3" defer></script>
     <script src="src/vendor/mp4muxer.js?v=5.2.1" defer></script>
-    <script src="src/live-photo-browser.js?v=20260928-guest-profile" defer></script>
+    <script src="src/live-photo-browser.js?v=20260928-restricted-notice" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
@@ -1236,9 +1240,9 @@
       } else {
         document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
         document.write('<script src="src/supabase-config.js?v=20260729-auth"><\/script>');
-        document.write('<script src="src/supabase.js?v=20260806-account-switch"><\/script>');
+        document.write('<script src="src/supabase.js?v=20260928-restricted-notice"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260928-guest-profile"></script>
+    <script src="src/app.js?v=20260928-restricted-notice"></script>
   </body>
 </html>

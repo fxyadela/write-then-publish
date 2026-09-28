@@ -65,6 +65,8 @@
    */
   let googleProviderEnabled = null;
   let googleReachable = null;
+  // 项目超出免费额度被限流时，所有接口都返回 402；记下来好让界面提前说明。
+  let serviceRestricted = false;
 
   async function googleProviderIsEnabled() {
     if (!configured) return false;
@@ -78,6 +80,7 @@
         cache: "no-store",
         signal: controller.signal,
       });
+      if (response.status === 402) serviceRestricted = true;
       if (!response.ok) throw new Error(`settings request failed: ${response.status}`);
       const settings = await response.json();
       googleProviderEnabled = settings?.external?.google === true;
@@ -441,6 +444,7 @@
     signIn,
     signInWithGoogle,
     googleSignInAvailable,
+    isServiceRestricted: () => serviceRestricted,
     resendSignUp,
     sendPasswordReset,
     updatePassword,

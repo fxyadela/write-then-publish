@@ -135,6 +135,7 @@ const els = {
   accountModal: $("#accountModal"),
   accountClose: $("#accountCloseBtn"),
   accountConfigNotice: $("#accountConfigNotice"),
+  accountGuestFallback: $("#accountGuestFallbackBtn"),
   accountResendConfirmation: $("#accountResendConfirmationBtn"),
   accountOauth: $("#accountOauth"),
   accountGoogle: $("#accountGoogleBtn"),
@@ -1237,11 +1238,24 @@ function loadProjectStoreForScope(scope) {
   return store;
 }
 
+// 云端超出免费额度时 Supabase 直接返回一段英文的 402 说明，用户看不懂也无从下手。
+// 所有账号相关提示都经过 setAccountNotice，在这里统一换成中文并给出游客入口。
+const CLOUD_RESTRICTED_NOTICE = "云端同步暂时维护中，登录和注册暂不可用。可以先用游客模式继续排版，头像和昵称会保存在这台设备上。";
+
+function isCloudRestrictedMessage(message) {
+  const text = String(message || "");
+  return text === CLOUD_RESTRICTED_NOTICE || /service for this project is restricted|exceed_\w*quota/i.test(text);
+}
+
 function setAccountNotice(message = "", tone = "") {
   if (!els.accountConfigNotice) return;
-  els.accountConfigNotice.hidden = !message;
-  els.accountConfigNotice.textContent = message;
-  els.accountConfigNotice.className = `account-notice${tone ? ` ${tone}` : ""}`;
+  const restricted = isCloudRestrictedMessage(message);
+  const text = restricted ? CLOUD_RESTRICTED_NOTICE : message;
+  els.accountConfigNotice.hidden = !text;
+  els.accountConfigNotice.textContent = text;
+  // 维护中不是用户的错，用中性样式，不标红
+  els.accountConfigNotice.className = `account-notice${!restricted && tone ? ` ${tone}` : ""}`;
+  if (els.accountGuestFallback) els.accountGuestFallback.hidden = !restricted;
 }
 
 let accountAuthMode = "signin";
@@ -2432,7 +2446,7 @@ async function loadCloudWorkspace(session) {
       await activateWorkspaceScope(accountScope(user.id));
     }
     setAccountNotice(error?.message || "云端数据读取失败，请检查数据库初始化是否完成。", "error");
-    els.accountSyncStatus.textContent = "云端同步未完成";
+    els.accountSyncStatus.textContent = isCloudRestrictedMessage(error?.message) ? "云端同步维护中，本机草稿照常可用" : "云端同步未完成";
   } finally {
     cloudState.loadingUserId = "";
     setAccountBusy(false);
@@ -2592,7 +2606,10 @@ async function initializeCloudAccount() {
       await activateGuestWorkspace();
       finishEntryChoice("guest", { returning: true });
     } else {
-      showEntryChoice("暂时无法检查登录状态，你仍可先使用游客模式。", "error");
+      showEntryChoice(
+        isCloudRestrictedMessage(error?.message) ? CLOUD_RESTRICTED_NOTICE : "暂时无法检查登录状态，你仍可先使用游客模式。",
+        "error",
+      );
     }
   } finally {
     document.body.classList.remove("cloud-session-checking");
@@ -2716,6 +2733,7 @@ async function refreshGoogleSignInVisibility() {
     return;
   }
   els.accountOauth.hidden = !(await api.googleSignInAvailable());
+  if (api.isServiceRestricted?.()) setAccountNotice(CLOUD_RESTRICTED_NOTICE);
 }
 
 async function signInWithGoogleAccount() {
@@ -11992,6 +12010,11 @@ function bindEvents() {
   els.chooseGuest?.addEventListener("click", () => void chooseGuestMode());
   els.chooseLogin?.addEventListener("click", chooseLoginMode);
   els.accountClose.addEventListener("click", closeAccountModal);
+  els.accountGuestFallback?.addEventListener("click", async () => {
+    accountAuthAddMode = false;
+    els.accountModal.classList.add("hidden");
+    await chooseGuestMode();
+  });
   els.accountAuthForm.addEventListener("submit", submitAccountAuth);
   els.accountSignInMode.addEventListener("click", () => setAccountAuthMode("signin"));
   els.accountSignUp.addEventListener("click", () => setAccountAuthMode("signup"));

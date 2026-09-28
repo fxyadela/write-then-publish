@@ -3824,6 +3824,11 @@ body.export-busy {
   line-height: 1.55;
 }
 
+.account-guest-fallback {
+  width: 100%;
+  margin: -6px 0 14px;
+}
+
 .account-notice.error {
   border-color: #ef4444;
   color: #b91c1c;
