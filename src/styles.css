@@ -111,6 +111,22 @@ button:disabled {
   min-height: 0;
 }
 
+/* 历史记录暂时下线（等云端迁移完成再开）。元素保留在网格里、轨道压成 0，
+   直接 display:none 会让编辑区和预览在自动排布里错位。 */
+body.history-disabled .history-sidebar,
+body.history-disabled .panel-resizer[data-panel-resize="history"] {
+  visibility: hidden;
+  overflow: hidden;
+  pointer-events: none;
+  border: 0;
+  box-shadow: none;
+}
+
+body.history-disabled .workspace,
+body.history-disabled .workspace.history-open {
+  grid-template-columns: 0 0 minmax(360px, var(--editor-width, 500px)) 6px minmax(360px, 1fr);
+}
+
 .workspace.history-open {
   grid-template-columns: var(--history-width, 260px) 6px minmax(360px, var(--editor-width, 500px)) 6px minmax(360px, 1fr);
 }
@@ -5675,6 +5691,16 @@ body.onboarding-account-step .site-footer {
 }
 
 @media (max-width: 1240px), (any-pointer: coarse) and (max-width: 1366px) {
+  body.history-disabled .workspace,
+  body.history-disabled .workspace.history-open {
+    grid-template-columns: clamp(360px, var(--editor-width, 500px), calc(100% - 332px)) 12px minmax(320px, 1fr);
+    grid-template-rows: 0 minmax(0, 1fr);
+  }
+
+  body.history-disabled .history-sidebar {
+    height: 0;
+  }
+
   body {
     overflow: hidden;
   }
@@ -5861,6 +5887,15 @@ body.onboarding-account-step .site-footer {
 }
 
 @media (max-width: 680px) {
+  body.history-disabled .workspace,
+  body.history-disabled .workspace.history-open {
+    grid-template-rows: 0 auto auto;
+  }
+
+  body.history-disabled .history-sidebar {
+    height: 0;
+  }
+
   .workspace,
   .workspace.history-open {
     grid-template-columns: 1fr;

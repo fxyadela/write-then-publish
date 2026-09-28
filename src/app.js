@@ -896,9 +896,17 @@ function normalizeAuthorProfile(data = {}) {
   };
 }
 
+// 头像、昵称这类设置在任何模式下都要跨次访问保留，所以一律放 localStorage；
+// 游客的草稿仍放 sessionStorage，关掉标签页就清空。
+function authorProfileStorage() {
+  return localStorage;
+}
+
 function loadStoredAuthorProfile() {
   try {
-    const raw = storageForScope().getItem(scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY));
+    const key = scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY);
+    // 兼容改动前存在 sessionStorage 里的游客资料
+    const raw = authorProfileStorage().getItem(key) || storageForScope().getItem(key);
     return raw ? normalizeAuthorProfile(JSON.parse(raw)) : null;
   } catch {
     return null;
@@ -908,7 +916,7 @@ function loadStoredAuthorProfile() {
 function saveAuthorProfile(data = readForm()) {
   if (isBuiltInProjectId(state.currentProjectId)) return false;
   try {
-    storageForScope().setItem(scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY), JSON.stringify(normalizeAuthorProfile(data)));
+    authorProfileStorage().setItem(scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY), JSON.stringify(normalizeAuthorProfile(data)));
     scheduleCloudProfileSync();
     return true;
   } catch {
@@ -2358,7 +2366,7 @@ async function activateWorkspaceScope(scope, projects = null, profile = null) {
         avatarCrop: profile.avatar_crop,
       });
       cloudState.profileAvatarUrl = profile.avatar_url || "";
-      storageForScope().setItem(scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY), JSON.stringify(normalizedProfile));
+      authorProfileStorage().setItem(scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY), JSON.stringify(normalizedProfile));
     } else {
       cloudState.profileAvatarUrl = "";
     }
@@ -3151,8 +3159,13 @@ function setHistoryFilter(filter) {
   updateProjectHistory();
 }
 
+function historyEnabled() {
+  return !document.body.classList.contains("history-disabled");
+}
+
 function setHistoryOpen(open) {
   if (!els.historySidebar) return;
+  if (open && !historyEnabled()) return;
   els.historySidebar.classList.toggle("open", open);
   els.workspace?.classList.toggle("history-open", open);
   els.historyToggle?.setAttribute("aria-label", open ? "收起历史记录" : "打开历史记录");
@@ -3254,7 +3267,10 @@ async function createNewProject() {
   resetTextHistory();
   updateProjectHistory();
   await render();
-  els.status.textContent = "已新建图文，上一条已保存在历史记录";
+  // 历史记录暂时下线时，旧的一条没有入口可回，别让用户以为还能找回来。
+  els.status.textContent = historyEnabled()
+    ? "已新建图文，上一条已保存在历史记录"
+    : "已新建图文";
 }
 
 const FIRST_RUN_ONBOARDING_STEPS = [
@@ -5672,10 +5688,34 @@ async function handleEditorDrop(event) {
   els.status.textContent = `已插入 ${imported.tags.length} 张图片`;
 }
 
+/** 头像在卡片上最大只画到 164px，压到 512px 以内足够清晰，体积降一两个数量级。 */
+async function compressAvatarFile(file, maxEdge = 512) {
+  const raw = await readFileAsDataURL(file);
+  const img = await loadImage(raw).catch(() => null);
+  if (!img) return raw;
+  const width = img.naturalWidth || img.width;
+  const height = img.naturalHeight || img.height;
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
+  if (scale >= 1 && raw.length < 300 * 1024) return raw;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext("2d");
+  // PNG / WebP / GIF 可能带透明，保留 PNG；照片转 JPEG，先铺白底
+  const keepAlpha = /png|webp|gif/i.test(file.type);
+  if (!keepAlpha) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL(keepAlpha ? "image/png" : "image/jpeg", 0.9);
+}
+
 async function handleAvatar(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  state.avatar = await readFileAsDataURL(file);
+  state.avatar = await compressAvatarFile(file);
   state.avatarCrop = null;
   updateAvatarPreview();
   updateImageList();
