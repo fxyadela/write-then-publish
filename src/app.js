@@ -48,6 +48,7 @@ const FEEDBACK_MAX_FILE_BYTES = 5 * 1024 * 1024;
 const FEEDBACK_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 const FEEDBACK_ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const LOCAL_DEPLOYMENT_MODE = document.documentElement.dataset.writeThenPublishLocalMode === "true";
+const ACCOUNT_MAINTENANCE = true;
 let activeStorageScope = "guest";
 
 function scopedStorageKey(baseKey, scope = activeStorageScope) {
@@ -63,7 +64,7 @@ function livePhotoApiUrl(path) {
 }
 
 function cloudLivePhotoAvailable() {
-  return Boolean(cloudApi()?.livePhotoConfigured && cloudApi()?.createCloudLivePhotoJob);
+  return !ACCOUNT_MAINTENANCE && Boolean(cloudApi()?.livePhotoConfigured && cloudApi()?.createCloudLivePhotoJob);
 }
 
 function needsLivePhotoStaticFallback() {
@@ -1223,7 +1224,7 @@ function cloudApi() {
 }
 
 function cloudIsReady() {
-  return Boolean(cloudApi()?.configured && cloudState.user);
+  return !ACCOUNT_MAINTENANCE && Boolean(cloudApi()?.configured && cloudState.user);
 }
 
 function accountScope(userId) {
@@ -1240,7 +1241,7 @@ function loadProjectStoreForScope(scope) {
 
 // 云端超出免费额度时 Supabase 直接返回一段英文的 402 说明，用户看不懂也无从下手。
 // 所有账号相关提示都经过 setAccountNotice，在这里统一换成中文并给出游客入口。
-const CLOUD_RESTRICTED_NOTICE = "云端同步暂时维护中，登录和注册暂不可用。可以先用游客模式继续排版，头像和昵称会保存在这台设备上。";
+const CLOUD_RESTRICTED_NOTICE = "登录和注册暂不可用。预计 10 月 2 日检查迁移入口，开放时间以实际通知为准。游客草稿仅留在当前标签页；关闭前请下载成品，目前还不能从成品恢复编辑。";
 
 function isCloudRestrictedMessage(message) {
   const text = String(message || "");
@@ -1571,11 +1572,11 @@ function updateAccountUi() {
   const configured = Boolean(api?.configured);
   const signedIn = Boolean(cloudState.user);
   const showingAddAccountForm = signedIn && accountAuthAddMode;
-  els.account?.classList.toggle("is-online", signedIn);
+  els.account?.classList.toggle("is-online", signedIn && !ACCOUNT_MAINTENANCE);
   els.account?.classList.toggle("is-guest", entryState.mode === "guest" && !signedIn);
   if (els.accountLabel) {
     els.accountLabel.textContent = signedIn
-      ? "已同步"
+      ? (ACCOUNT_MAINTENANCE ? "本机旧稿" : "已同步")
       : entryState.mode === "guest"
         ? "游客模式"
         : "账号";
@@ -1589,7 +1590,7 @@ function updateAccountUi() {
   }
   if (els.accountMenuDescription) {
     els.accountMenuDescription.textContent = signedIn
-      ? cloudState.user.email || "云端工作区已连接"
+      ? (ACCOUNT_MAINTENANCE ? "账号维护中，仅打开这台设备上的旧稿" : cloudState.user.email || "云端工作区已连接")
       : "草稿仅临时保存在当前标签页";
   }
   if (els.accountMenuLogin) els.accountMenuLogin.hidden = signedIn;
@@ -1599,7 +1600,7 @@ function updateAccountUi() {
   if (els.accountMenuSwitchSection) els.accountMenuSwitchSection.hidden = !signedIn;
   if (els.accountMenuHint) {
     els.accountMenuHint.textContent = signedIn
-      ? "点击已登录账号即可切换；账号凭证只保存在这台浏览器。"
+      ? (ACCOUNT_MAINTENANCE ? "账号服务维护中，这台设备上的旧稿仍可编辑。" : "点击已登录账号即可切换；账号凭证只保存在这台浏览器。")
       : "继续使用游客模式无需操作，点击菜单外即可关闭。";
   }
   if (els.accountAuthForm) els.accountAuthForm.hidden = signedIn && !showingAddAccountForm;
@@ -1630,6 +1631,27 @@ function updateAccountUi() {
     els.accountImportLocal.hidden = localCount < 1;
     if (localCount) els.accountImportLocal.innerHTML = `<i data-lucide="folder-input"></i>导入 ${localCount} 条游客 / 旧本机草稿到此账号`;
   }
+  if (ACCOUNT_MAINTENANCE) {
+    if (els.accountMenuLogin) els.accountMenuLogin.innerHTML = '<i data-lucide="info"></i>登录/注册维护中';
+    if (els.accountEmail) els.accountEmail.value = "";
+    if (els.accountMenuSwitchSection) els.accountMenuSwitchSection.hidden = true;
+    if (els.accountMenuSwitch) els.accountMenuSwitch.hidden = true;
+    if (els.accountMenuSignOut) els.accountMenuSignOut.hidden = true;
+    if (els.accountAddAnother) els.accountAddAnother.hidden = true;
+    if (els.accountImportLocal) els.accountImportLocal.hidden = true;
+    if (els.accountSignOut) els.accountSignOut.hidden = true;
+    $("#accountModalTitle").textContent = "账号服务维护中";
+    if (signedIn) {
+      els.accountSignedIn?.querySelector(".account-online")?.replaceChildren("仅本机");
+      els.accountSignedIn?.querySelector(".account-sync-card strong")?.replaceChildren("旧稿状态");
+      if (els.accountGuestFallback) els.accountGuestFallback.hidden = true;
+    }
+    [els.accountEmail, els.accountPassword, els.accountPasswordToggle, els.accountPasswordConfirm,
+      els.accountNewPassword, els.accountSignInMode, els.accountSignUp, els.accountSignIn,
+      els.accountGoogle, els.accountResendConfirmation, els.accountForgotPassword]
+      .filter(Boolean).forEach((element) => { element.disabled = true; });
+    if (!signedIn) setAccountNotice(CLOUD_RESTRICTED_NOTICE);
+  }
   updateFeatureBadges();
   if (window.lucide) window.lucide.createIcons();
 }
@@ -1642,8 +1664,8 @@ function openAccountModal() {
   updateAccountUi();
   if (!cloudState.user || accountAuthAddMode) setAccountAuthMode(accountAuthMode, { keepNotice: true });
   const lastEmail = localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
-  if (!els.accountEmail.value && lastEmail) els.accountEmail.value = lastEmail;
-  if ((!cloudState.user || accountAuthAddMode) && cloudApi()?.configured) requestAnimationFrame(() => els.accountEmail.focus());
+  if (!ACCOUNT_MAINTENANCE && !els.accountEmail.value && lastEmail) els.accountEmail.value = lastEmail;
+  if (!ACCOUNT_MAINTENANCE && (!cloudState.user || accountAuthAddMode) && cloudApi()?.configured) requestAnimationFrame(() => els.accountEmail.focus());
 }
 
 function closeAccountModal() {
@@ -2287,7 +2309,9 @@ async function chooseGuestMode() {
   sessionStorage.setItem(ENTRY_MODE_SESSION_KEY, "guest");
   await activateGuestWorkspace();
   finishEntryChoice("guest");
-  els.status.textContent = "游客模式：内容仅临时保存在当前标签页";
+  els.status.textContent = ACCOUNT_MAINTENANCE
+    ? "游客模式 · 账号维护中，草稿仅临时保存在当前标签页"
+    : "游客模式：内容仅临时保存在当前标签页";
 }
 
 function chooseLoginMode() {
@@ -2624,6 +2648,33 @@ async function initializeCloudAccount() {
     els.status.textContent = "本地版：草稿只保存在这台电脑当前浏览器中";
     return;
   }
+  if (ACCOUNT_MAINTENANCE) {
+    document.body.classList.add("account-maintenance");
+    cloudState.initialized = true;
+    try {
+      const session = await cloudApi()?.getSession();
+      if (session?.user) {
+        const scope = accountScope(session.user.id);
+        const localCount = loadProjectStoreForScope(scope).projects.length;
+        cloudState.session = session;
+        cloudState.user = session.user;
+        await activateWorkspaceScope(scope);
+        finishEntryChoice("account", { returning: true });
+        els.accountSyncStatus.textContent = localCount
+          ? `这台设备有 ${localCount} 篇旧稿；云端旧稿待服务恢复后迁移`
+          : "这台设备暂无旧稿；云端旧稿待服务恢复后迁移";
+        els.status.textContent = localCount
+          ? "账号维护中，正在使用这台设备上的旧稿"
+          : "账号维护中，云端旧稿待服务恢复后迁移";
+        setAccountNotice(CLOUD_RESTRICTED_NOTICE);
+        return;
+      }
+    } catch {
+      // 账号接口不可用时进入游客空间；原账号本机数据不作改动。
+    }
+    await chooseGuestMode();
+    return;
+  }
   const api = cloudApi();
   const redirectStatus = authRedirectStatus();
   const googleOAuthWasPending = takeGoogleOAuthPending();
@@ -2939,6 +2990,7 @@ async function applyNewPassword() {
 
 async function submitAccountAuth(event) {
   event.preventDefault();
+  if (ACCOUNT_MAINTENANCE) return;
   if (accountAuthMode === "reset") await applyNewPassword();
   else if (accountAuthMode === "signup") await signUpAccount();
   else await signInAccount();
@@ -3414,6 +3466,8 @@ async function deleteProject(projectId) {
 }
 
 async function createNewProject() {
+  if (ACCOUNT_MAINTENANCE && activeStorageScope === "guest" && !isBuiltInProjectId(state.currentProjectId)
+    && !window.confirm("游客模式没有历史入口。新建后，当前稿将无法从页面找回；请先下载成品或复制正文。确定新建吗？")) return;
   saveState();
   const project = createProject(blankFormState());
   state.projects = [project, ...state.projects.filter((item) => item.id !== project.id)].slice(0, MAX_PROJECTS);

@@ -3953,6 +3953,46 @@ body.export-busy {
   display: none;
 }
 
+body.account-maintenance .account-auth-form,
+body.account-maintenance .account-oauth {
+  opacity: 0.48;
+}
+
+body.account-maintenance .account-modal-body {
+  align-content: start;
+  gap: 14px;
+  padding-top: 56px;
+  padding-bottom: 24px;
+}
+
+body.account-maintenance .account-auth-form {
+  gap: 18px;
+}
+
+body.account-maintenance .account-guest-fallback {
+  margin: 0;
+}
+
+body.account-maintenance .account-resend-confirmation {
+  display: none;
+}
+
+.account-maintenance-message {
+  display: none;
+}
+
+body.account-maintenance .account-maintenance-message {
+  display: block;
+  max-width: 280px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+body.account-maintenance .account-benefits {
+  display: none;
+}
+
 .account-auth-mode {
   display: grid;
   grid-template-columns: 1fr 1fr;

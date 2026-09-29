@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8" />
+<title>账号维护入口检查</title>
+<p id="result">检查中…</p>
+<iframe src="/" title="写了就发" hidden></iframe>
+<script>
+  const result = document.querySelector("#result");
+  const frame = document.querySelector("iframe");
+  const started = Date.now();
+  const check = () => {
+    try {
+      const page = frame.contentDocument;
+      if (!page || page.body.classList.contains("entry-choice-pending")) {
+        if (Date.now() - started < 10000) return setTimeout(check, 50);
+        throw new Error("10 秒内未进入工作区");
+      }
+      const expect = (condition, message) => { if (!condition) throw new Error(message); };
+      expect(page.querySelector("#accountButtonLabel")?.textContent === "游客模式", "没有直接进入游客模式");
+      page.querySelector("#accountBtn").click();
+      page.querySelector("#accountMenuLoginBtn").click();
+      expect(!page.querySelector("#accountModal").classList.contains("hidden"), "账号说明页未打开");
+      for (const id of ["accountSignInModeBtn", "accountSignUpBtn", "accountEmailInput", "accountPasswordInput", "accountSignInBtn", "accountGoogleBtn", "accountForgotPasswordBtn"]) {
+        expect(page.getElementById(id).disabled, `${id} 未禁用`);
+      }
+      expect(page.querySelector("#accountConfigNotice")?.textContent.includes("10 月 2 日"), "缺少迁移时间提示");
+      result.textContent = "PASS：游客直达，账号操作已置灰，迁移提示可见";
+    } catch (error) {
+      result.textContent = `FAIL：${error.message}`;
+    }
+  };
+  frame.addEventListener("load", check);
+</script>
+</html>
