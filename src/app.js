@@ -49,6 +49,7 @@ const FEEDBACK_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 const FEEDBACK_ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const LOCAL_DEPLOYMENT_MODE = document.documentElement.dataset.writeThenPublishLocalMode === "true";
 const ACCOUNT_MAINTENANCE = true;
+const REGISTRATION_PAUSED = true;
 let activeStorageScope = "guest";
 
 function scopedStorageKey(baseKey, scope = activeStorageScope) {
@@ -64,7 +65,8 @@ function livePhotoApiUrl(path) {
 }
 
 function cloudLivePhotoAvailable() {
-  return !ACCOUNT_MAINTENANCE && Boolean(cloudApi()?.livePhotoConfigured && cloudApi()?.createCloudLivePhotoJob);
+  // 迁移期不创建新的云端任务或上传原视频。
+  return false;
 }
 
 function needsLivePhotoStaticFallback() {
@@ -78,12 +80,6 @@ function needsLivePhotoStaticFallback() {
 }
 const MAX_PROJECTS = 24;
 const MAX_SAVED_CUSTOM_COLORS = 12;
-// 超过这个体积的原片不做云端备份：实况生成不需要它，自动上传几百 MB 只会拖慢同步。
-const MAX_CLOUD_BACKUP_VIDEO_BYTES = 80 * 1024 * 1024;
-// 实况原视频是云端存储与流量的大头（免费额度 1GB 存储 / 5GB 月流量），
-// 而生成实况只用本机素材，云端备份只为换设备继续编辑，性价比太低，默认关闭。
-// 已经备份过的视频不受影响；改回 true 即恢复新视频的备份。
-const CLOUD_BACKUP_LIVE_VIDEO = false;
 const BUILT_IN_PROJECT_PREFIX = "guide_";
 const GUIDE_CARDS_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}cards`;
 const GUIDE_ARTICLE_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}article`;
@@ -134,6 +130,12 @@ const els = {
   portableImportFolder: $("#portableImportFolderBtn"),
   portableImportZipInput: $("#portableImportZipInput"),
   portableImportFolderInput: $("#portableImportFolderInput"),
+  cloudMigration: $("#cloudMigrationBtn"),
+  cloudMigrationModal: $("#cloudMigrationModal"),
+  cloudMigrationClose: $("#cloudMigrationCloseBtn"),
+  cloudMigrationRefresh: $("#cloudMigrationRefreshBtn"),
+  cloudMigrationStatus: $("#cloudMigrationStatus"),
+  cloudMigrationList: $("#cloudMigrationList"),
   accountMenuSwitchSection: $("#accountMenuSwitchSection"),
   accountMenuAccountList: $("#accountMenuAccountList"),
   accountMenuAdd: $("#accountMenuAddBtn"),
@@ -561,13 +563,12 @@ const cloudState = {
   user: null,
   profileAvatarUrl: "",
   loadingWorkspace: false,
-  syncingProjects: false,
   syncingProfile: false,
-  syncTimer: 0,
   profileTimer: 0,
-  pendingProjects: new Map(),
   pendingAvatarUpload: false,
   localImportProjects: [],
+  legacyProjects: [],
+  migrationBusy: false,
   initialized: false,
   loadingUserId: "",
   signingOut: false,
@@ -1206,7 +1207,6 @@ function saveState() {
       JSON.stringify(withExternalizedImages(data, current.id)),
     );
     saveProjectStore();
-    scheduleCloudProjectSync(current);
     updateProjectHistory();
   } catch {
     els.status.textContent = "本次内容较大，浏览器未写入本地缓存";
@@ -1487,7 +1487,7 @@ function authRedirectStatus() {
 }
 
 function setAccountAuthMode(mode, { keepNotice = false } = {}) {
-  accountAuthMode = ["signup", "reset"].includes(mode) ? mode : "signin";
+  accountAuthMode = ["signup", "reset"].includes(mode) && !(REGISTRATION_PAUSED && mode === "signup") ? mode : "signin";
   const signingUp = accountAuthMode === "signup";
   const resetting = accountAuthMode === "reset";
   // 改密码时把登录/注册那一套整个藏起来，只留「设置新密码」一个输入框。
@@ -1531,7 +1531,9 @@ function accountAuthErrorMessage(error, mode) {
   const message = String(error?.message || "").toLowerCase();
   if (mode === "signin") {
     if (code === "invalid_credentials" || message.includes("invalid login credentials")) {
-      return "登录失败：邮箱尚未注册，或密码不正确。第一次使用请先切换到“注册新账号”。";
+      return REGISTRATION_PAUSED
+        ? "登录失败：邮箱尚未注册，或密码不正确。迁移期仅开放旧账号登录。"
+        : "登录失败：邮箱尚未注册，或密码不正确。第一次使用请先切换到“注册新账号”。";
     }
     if (code === "email_not_confirmed" || message.includes("email not confirmed")) {
       return "账号已经创建，但邮箱还没有确认。请先打开确认邮件，再回来登录。";
@@ -1581,7 +1583,7 @@ function updateAccountUi() {
   els.account?.classList.toggle("is-guest", entryState.mode === "guest" && !signedIn);
   if (els.accountLabel) {
     els.accountLabel.textContent = signedIn
-      ? (ACCOUNT_MAINTENANCE ? "本机旧稿" : "已同步")
+      ? (ACCOUNT_MAINTENANCE ? "本机旧稿" : "已登录")
       : entryState.mode === "guest"
         ? "游客模式"
         : "账号";
@@ -1602,6 +1604,8 @@ function updateAccountUi() {
   if (els.accountMenuManage) els.accountMenuManage.hidden = !signedIn;
   if (els.accountMenuSwitch) els.accountMenuSwitch.hidden = !signedIn;
   if (els.accountMenuSignOut) els.accountMenuSignOut.hidden = !signedIn;
+  if (els.cloudMigration) els.cloudMigration.hidden = !signedIn || ACCOUNT_MAINTENANCE;
+  if (els.accountSignUp) els.accountSignUp.hidden = REGISTRATION_PAUSED && !ACCOUNT_MAINTENANCE;
   if (els.accountMenuSwitchSection) els.accountMenuSwitchSection.hidden = !signedIn;
   if (els.accountMenuHint) {
     els.accountMenuHint.textContent = signedIn
@@ -1636,6 +1640,10 @@ function updateAccountUi() {
     els.accountImportLocal.hidden = localCount < 1;
     if (localCount) els.accountImportLocal.innerHTML = `<i data-lucide="folder-input"></i>导入 ${localCount} 条游客 / 旧本机草稿到此账号`;
   }
+  if (!ACCOUNT_MAINTENANCE && REGISTRATION_PAUSED) {
+    $("#accountModalTitle").textContent = "登录旧账号，迁移以前的稿件";
+    els.accountSignedIn?.querySelector(".account-sync-card strong")?.replaceChildren("旧稿迁移");
+  }
   if (ACCOUNT_MAINTENANCE) {
     if (els.accountMenuLogin) els.accountMenuLogin.innerHTML = '<i data-lucide="info"></i>登录/注册维护中';
     if (els.accountEmail) els.accountEmail.value = "";
@@ -1668,6 +1676,9 @@ function openAccountModal() {
   els.accountModal.classList.remove("hidden");
   updateAccountUi();
   if (!cloudState.user || accountAuthAddMode) setAccountAuthMode(accountAuthMode, { keepNotice: true });
+  if (!ACCOUNT_MAINTENANCE && REGISTRATION_PAUSED && !cloudState.user) {
+    setAccountNotice("当前仅开放旧账号登录迁移；新注册暂未开放。", "");
+  }
   const lastEmail = localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
   if (!ACCOUNT_MAINTENANCE && !els.accountEmail.value && lastEmail) els.accountEmail.value = lastEmail;
   if (!ACCOUNT_MAINTENANCE && (!cloudState.user || accountAuthAddMode) && cloudApi()?.configured) requestAnimationFrame(() => els.accountEmail.focus());
@@ -2010,20 +2021,17 @@ function startAddingAccount() {
 async function waitForCloudSyncBeforeAccountSwitch() {
   const deadline = Date.now() + 120000;
   const hasPendingProfile = Boolean(cloudState.profileTimer || cloudState.pendingAvatarUpload);
-  window.clearTimeout(cloudState.syncTimer);
   window.clearTimeout(cloudState.profileTimer);
-  cloudState.syncTimer = 0;
   cloudState.profileTimer = 0;
-  while ((cloudState.syncingProjects || cloudState.syncingProfile) && Date.now() < deadline) {
+  while (cloudState.syncingProfile && Date.now() < deadline) {
     await new Promise((resolve) => window.setTimeout(resolve, 50));
   }
-  if (cloudState.syncingProjects || cloudState.syncingProfile) {
-    throw new Error("当前账号仍在同步，请稍后再切换。");
+  if (cloudState.syncingProfile) {
+    throw new Error("当前账号资料仍在同步，请稍后再切换。");
   }
-  await flushCloudProjectSync();
   if (hasPendingProfile || cloudState.pendingAvatarUpload) await flushCloudProfileSync();
-  if (cloudState.pendingProjects.size || cloudState.pendingAvatarUpload || cloudState.syncingProjects || cloudState.syncingProfile) {
-    throw new Error("当前账号还有未同步的内容，请稍后再切换。");
+  if (cloudState.pendingAvatarUpload || cloudState.syncingProfile) {
+    throw new Error("当前账号资料仍未同步，请稍后再切换。");
   }
 }
 
@@ -2079,7 +2087,7 @@ async function switchToStoredAccount(userId) {
     entryState.resolved = true;
     updateAccountUi();
     closeAccountModal();
-    els.status.textContent = `已切换到 ${accountSessionName(snapshot)} 的云端工作区`;
+    els.status.textContent = `已切换到 ${accountSessionName(snapshot)} 的本机工作区`;
   } catch (error) {
     console.error("账号切换失败", error);
     // 登录状态已失效时，本机这条记录已经没用了；留着只会让用户反复撞同一个错。
@@ -2386,110 +2394,8 @@ async function hydrateCloudProject(project) {
   return failed;
 }
 
-// ── 云端迁移 ──
-// 图文草稿改为保存在本机，云端只同步头像昵称。账号在每台设备上第一次登录时，
-// 把云端已有的草稿（正文、图片、实况视频）一次性拉回本机存好；全部成功后记一笔，
-// 这台设备以后不再读云端项目。
-const CLOUD_PROJECT_SYNC = false;
-const CLOUD_MIGRATION_KEY = "writeThenPublishCloudMigrated.v1";
-
-function cloudMigrationKey(userId) {
-  return `${CLOUD_MIGRATION_KEY}.${accountScope(userId)}`;
-}
-
-function cloudMigrationDone(userId) {
-  try {
-    return localStorage.getItem(cloudMigrationKey(userId)) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function markCloudMigrationDone(userId) {
-  try {
-    localStorage.setItem(cloudMigrationKey(userId), "1");
-  } catch {
-    // 记不下来只是下次登录再检查一遍，素材已在本机的不会重复下载。
-  }
-}
-
-/** 云端草稿并入本机：两边都有的取更新时间较新的；图片的云端路径与本机缓存键两边互补。 */
-function mergeCloudProjectsIntoLocal(cloudProjects) {
-  const merged = new Map();
-  for (const project of state.projects) {
-    if (!isBuiltInProject(project)) merged.set(project.id, project);
-  }
-  for (const cloud of cloudProjects) {
-    const local = merged.get(cloud.id);
-    if (!local) {
-      merged.set(cloud.id, cloud);
-      continue;
-    }
-    const cloudIsNewer = (Number(cloud.updatedAt) || 0) > (Number(local.updatedAt) || 0);
-    const newer = cloudIsNewer ? cloud : local;
-    const older = cloudIsNewer ? local : cloud;
-    const olderImages = older.data?.images || {};
-    for (const [id, image] of Object.entries(newer.data?.images || {})) {
-      const other = olderImages[id];
-      if (!image || !other) continue;
-      if (!image.storagePath && other.storagePath) image.storagePath = other.storagePath;
-      if (!image.videoStoragePath && other.videoStoragePath) image.videoStoragePath = other.videoStoragePath;
-      if (!image.srcKey && other.srcKey) image.srcKey = other.srcKey;
-      if (!isPersistableImageSource(image.src) && isPersistableImageSource(other.src)) image.src = other.src;
-    }
-    merged.set(cloud.id, newer);
-  }
-  state.projects = [...merged.values()]
-    .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))
-    .slice(0, MAX_PROJECTS);
-  saveProjectStore();
-  updateProjectHistory();
-}
-
-function projectNeedsCloudAssets(project) {
-  return Object.values(project?.data?.images || {}).some((image) => image && (
-    (image.storagePath && !isPersistableImageSource(image.src))
-    || (image.kind === "live" && image.videoStoragePath)
-  ));
-}
-
-/** 当前打开的项目补完图后，把新图同步给编辑区正在用的那份。 */
-function refreshCurrentProjectImages(project) {
-  for (const [id, image] of Object.entries(project.data?.images || {})) {
-    const current = state.images[id];
-    if (current && !isPersistableImageSource(current.src) && isPersistableImageSource(image.src)) {
-      current.src = image.src;
-    }
-  }
-  requestRender();
-}
-
-/** 后台逐篇下载云端素材并落盘；中途切走或关掉页面，下次登录接着迁，已存好的不重下。 */
-async function migrateCloudAssets(userId) {
-  const scope = accountScope(userId);
-  const pending = state.projects.filter(projectNeedsCloudAssets);
-  if (!pending.length) {
-    markCloudMigrationDone(userId);
-    return;
-  }
-  let failed = 0;
-  for (const [index, project] of pending.entries()) {
-    if (activeStorageScope !== scope) return;
-    if (els.accountSyncStatus) els.accountSyncStatus.textContent = `正在把云端草稿保存到本机 ${index + 1}/${pending.length}…`;
-    failed += await hydrateCloudProjectOnce(project).catch(() => 1);
-    if (activeStorageScope !== scope) return;
-    saveProjectStore();
-    if (project.id === state.currentProjectId) refreshCurrentProjectImages(project);
-  }
-  if (!failed) markCloudMigrationDone(userId);
-  if (els.accountSyncStatus) {
-    els.accountSyncStatus.textContent = failed
-      ? `草稿已存到本机，有 ${failed} 个素材暂时没下载成功，下次登录会自动重试`
-      : "云端草稿已全部保存到这台设备";
-  }
-}
-
-// 同一项目的素材下载去重：登录后台预载与打开项目的兜底加载可能并发
+// 新稿只存在本机；旧云端稿仅在用户选择具体项目时读取素材。
+// 同一项目的素材下载去重。
 const hydratingCloudProjects = new Map();
 
 function hydrateCloudProjectOnce(project) {
@@ -2502,15 +2408,6 @@ function hydrateCloudProjectOnce(project) {
     );
   }
   return hydratingCloudProjects.get(key);
-}
-
-// 登录时只等当前打开项目的素材，其余项目在后台逐个补齐（hydrate 幂等，已有 src 的图片会跳过）
-function hydrateCloudProjectsInBackground(projects) {
-  void (async () => {
-    for (const project of projects) {
-      await hydrateCloudProjectOnce(project).catch(() => undefined);
-    }
-  })();
 }
 
 /** 登录用户和本地版的草稿长期存在本机，历史照常可用；游客草稿只留在当前标签页，不显示历史。 */
@@ -2542,13 +2439,10 @@ async function activateWorkspaceScope(scope, projects = null, profile = null) {
     }
 
     if (Array.isArray(projects)) {
-      // 登录提速：只等第一个（默认打开的）项目下载素材，其余项目后台补齐
       const list = projects.filter(Boolean).slice(0, MAX_PROJECTS);
-      if (list.length) await hydrateCloudProjectOnce(list[0]);
       state.projects = list;
       state.currentProjectId = state.projects[0]?.id || GUIDE_CARDS_PROJECT_ID;
       saveProjectStore();
-      hydrateCloudProjectsInBackground(list.slice(1));
     } else {
       const store = loadProjectStore();
       state.projects = store.projects;
@@ -2574,6 +2468,7 @@ async function loadCloudWorkspace(session) {
   cloudState.loadingUserId = user.id;
   cloudState.session = session;
   cloudState.user = user;
+  cloudState.legacyProjects = [];
   const guestProjects = loadProjectStoreForScope("guest").projects;
   const legacyProjects = loadProjectStoreForScope("local").projects;
   cloudState.localImportProjects = [...guestProjects, ...legacyProjects]
@@ -2583,9 +2478,8 @@ async function loadCloudWorkspace(session) {
   if (els.accountSyncStatus) els.accountSyncStatus.textContent = "正在读取账号数据…";
   updateAccountUi();
   try {
-    const migrated = cloudMigrationDone(user.id);
-    // 迁移过的设备不再读云端项目，只取头像昵称
-    const [profile, rows] = await Promise.all([api.getProfile(), migrated ? [] : api.listProjects()]);
+    const [profile, rows] = await Promise.all([api.getProfile(), api.listProjects()]);
+    if (cloudState.user?.id !== user.id) return;
     let resolvedProfile = profile;
     if (!resolvedProfile) {
       const cached = loadStoredAuthorProfile() || normalizeAuthorProfile({
@@ -2594,20 +2488,11 @@ async function loadCloudWorkspace(session) {
       });
       resolvedProfile = await api.upsertProfile(cached);
     }
-    // 先打开这台设备上该账号已有的草稿，再把云端的并进来
+    // 本机稿独立打开；云端旧稿留在迁移清单，避免登录时自动拉取全部素材。
     await activateWorkspaceScope(accountScope(user.id), null, resolvedProfile);
-    els.accountSyncStatus.textContent = "图文草稿保存在这台设备上";
-    if (!migrated) {
-      const cloudProjects = rows.map(cloudProjectFromRow).filter(Boolean);
-      if (cloudProjects.length) {
-        const wasOnGuide = isBuiltInProjectId(state.currentProjectId);
-        mergeCloudProjectsIntoLocal(cloudProjects);
-        if (wasOnGuide && state.projects[0]) await openProject(state.projects[0].id);
-        void migrateCloudAssets(user.id);
-      } else {
-        markCloudMigrationDone(user.id);
-      }
-    }
+    cloudState.legacyProjects = rows.map(cloudProjectFromRow).filter(Boolean);
+    renderCloudMigrationList();
+    els.accountSyncStatus.textContent = `本机草稿保留；云端旧稿 ${cloudState.legacyProjects.length} 篇可逐篇迁移`;
     setAccountNotice("");
   } catch (error) {
     console.error(error);
@@ -2639,6 +2524,8 @@ async function handleCloudSession(session) {
   cloudState.session = null;
   cloudState.user = null;
   cloudState.profileAvatarUrl = "";
+  cloudState.legacyProjects = [];
+  closeCloudMigrationModal();
   updateAccountUi();
 }
 
@@ -2746,7 +2633,7 @@ async function initializeCloudAccount() {
         entryState.mode = "account";
         entryState.resolved = true;
         closeAccountModal();
-        els.status.textContent = "已添加账号并切换到新的云端工作区";
+        els.status.textContent = "已添加账号并切换到对应的本机工作区";
         return;
       }
       if (entryState.mode === "account" && entryState.resolved) return;
@@ -2765,7 +2652,7 @@ async function initializeCloudAccount() {
         els.accountModal?.classList.add("hidden");
         document.body.classList.remove("entry-choice-pending", "cloud-session-checking");
         updateAccountUi();
-        els.status.textContent = "已添加账号并切换到新的云端工作区";
+        els.status.textContent = "已添加账号并切换到对应的本机工作区";
       } else {
         finishEntryChoice("account");
       }
@@ -2833,12 +2720,12 @@ async function signInAccount() {
       entryState.mode = "account";
       entryState.resolved = true;
       closeAccountModal();
-      els.status.textContent = "已添加账号并切换到新的云端工作区";
+      els.status.textContent = "已添加账号并切换到对应的本机工作区";
     } else {
       finishEntryChoice("account");
     }
     els.accountPassword.value = "";
-    if (!addingAccount) setAccountNotice("登录成功，已切换到你的云端工作区。", "success");
+    if (!addingAccount) setAccountNotice("登录成功，已切换到你的本机工作区。", "success");
   } catch (error) {
     setAccountNotice(accountAuthErrorMessage(error, "signin"), "error");
   } finally {
@@ -2847,6 +2734,10 @@ async function signInAccount() {
 }
 
 async function signUpAccount() {
+  if (REGISTRATION_PAUSED) {
+    setAccountNotice("新注册暂未开放。请用旧账号登录迁移。", "error");
+    return;
+  }
   const email = els.accountEmail.value.trim();
   const password = els.accountPassword.value;
   if (!email || password.length < 8) {
@@ -2873,7 +2764,7 @@ async function signUpAccount() {
         entryState.mode = "account";
         entryState.resolved = true;
         closeAccountModal();
-        els.status.textContent = "已创建账号并切换到新的云端工作区";
+        els.status.textContent = "已创建账号并切换到对应的本机工作区";
       } else {
         finishEntryChoice("account");
         setAccountNotice("注册成功，已登录。", "success");
@@ -2924,7 +2815,7 @@ async function resendAccountConfirmation() {
 async function refreshGoogleSignInVisibility() {
   if (!els.accountOauth) return;
   const api = cloudApi();
-  if (!api?.configured || (cloudState.user && !accountAuthAddMode) || accountAuthMode === "reset") {
+  if (REGISTRATION_PAUSED || !api?.configured || (cloudState.user && !accountAuthAddMode) || accountAuthMode === "reset") {
     els.accountOauth.hidden = true;
     return;
   }
@@ -2933,6 +2824,7 @@ async function refreshGoogleSignInVisibility() {
 }
 
 async function signInWithGoogleAccount() {
+  if (REGISTRATION_PAUSED) return;
   markAccountAddPending();
   markGoogleOAuthPending();
   setAccountBusy(true);
@@ -3021,102 +2913,6 @@ async function signOutAccount() {
   } finally {
     cloudState.signingOut = false;
     setAccountBusy(false);
-  }
-}
-
-function scheduleCloudProjectSync(project) {
-  if (!CLOUD_PROJECT_SYNC) return;
-  if (!cloudIsReady() || cloudState.loadingWorkspace || cloudState.switchingAccount || !project || isBuiltInProject(project)) return;
-  cloudState.pendingProjects.set(project.id, project);
-  window.clearTimeout(cloudState.syncTimer);
-  cloudState.syncTimer = window.setTimeout(() => void flushCloudProjectSync(), 850);
-}
-
-async function prepareProjectForCloud(project) {
-  const api = cloudApi();
-  const cloudProject = JSON.parse(JSON.stringify(project));
-  const sourceImages = project.data?.images || {};
-  const cloudImages = cloudProject.data?.images || {};
-
-  for (const [id, sourceImage] of Object.entries(sourceImages)) {
-    const cloudImage = cloudImages[id];
-    if (!sourceImage || !cloudImage || typeof sourceImage !== "object") continue;
-    // 非当前项目的画面还留在 IndexedDB 里没读回来，先取回再决定要不要上传。
-    if (!sourceImage.src && sourceImage.srcKey && !sourceImage.storagePath) {
-      try {
-        const restored = await readImageSource(sourceImage.srcKey);
-        if (restored) sourceImage.src = restored;
-      } catch {
-        // 读不回来就跳过上传，本机草稿仍然完整。
-      }
-    }
-    if (!sourceImage.storagePath && sourceImage.src && !/^https?:/i.test(sourceImage.src)) {
-      try {
-        const blob = await fetch(sourceImage.src).then((response) => response.blob());
-        sourceImage.storagePath = await api.uploadProjectAsset(project.id, `${id}-cover`, blob, sourceImage.name || `${id}.jpg`);
-      } catch (error) {
-        console.error("图片上传失败", error);
-      }
-    }
-    if (sourceImage.storagePath) {
-      cloudImage.storagePath = sourceImage.storagePath;
-      cloudImage.src = "";
-    }
-
-    if (sourceImage.kind === "live" && !sourceImage.videoStoragePath && !CLOUD_BACKUP_LIVE_VIDEO) {
-      sourceImage.videoBackupSkipped = true;
-    } else if (sourceImage.kind === "live" && !sourceImage.videoStoragePath) {
-      const videoKey = String(sourceImage.videoKey || id);
-      try {
-        const cachedBlob = liveMediaFiles.get(videoKey)?.blob || await readLiveMediaBlob(videoKey);
-        // 生成实况只用本地素材，云端备份纯粹是为了换设备时还能继续编辑。
-        // 一段几百 MB 的原片自动传上去，用户既没要求也未必愿意等，所以超过阈值就跳过：
-        // 项目本身照常同步，只是这段视频留在本机。
-        if (cachedBlob && cachedBlob.size > MAX_CLOUD_BACKUP_VIDEO_BYTES) {
-          sourceImage.videoBackupSkipped = true;
-        } else if (cachedBlob) {
-          sourceImage.videoStoragePath = await api.uploadProjectAsset(
-            project.id,
-            `${id}-video`,
-            cachedBlob,
-            sourceImage.videoName || "video.mov",
-          );
-        }
-      } catch (error) {
-        console.error("实况视频上传失败", error);
-      }
-    }
-    if (sourceImage.videoBackupSkipped) cloudImage.videoBackupSkipped = true;
-    if (sourceImage.videoStoragePath) cloudImage.videoStoragePath = sourceImage.videoStoragePath;
-    if (sourceImage.kind === "live" && !String(sourceImage.previewVideoSrc || "").startsWith("docs/")) {
-      delete cloudImage.previewVideoSrc;
-    }
-  }
-
-  return cloudProject;
-}
-
-async function flushCloudProjectSync() {
-  if (!CLOUD_PROJECT_SYNC) return;
-  if (!cloudIsReady() || cloudState.loadingWorkspace || cloudState.syncingProjects) return;
-  const projects = Array.from(cloudState.pendingProjects.values());
-  if (!projects.length) return;
-  cloudState.pendingProjects.clear();
-  cloudState.syncingProjects = true;
-  if (els.accountSyncStatus) els.accountSyncStatus.textContent = "正在同步图文和素材…";
-  try {
-    const prepared = [];
-    for (const project of projects) prepared.push(await prepareProjectForCloud(project));
-    await cloudApi().upsertProjects(prepared);
-    saveProjectStore();
-    if (els.accountSyncStatus) els.accountSyncStatus.textContent = `刚刚已同步 ${prepared.length} 条更新`;
-  } catch (error) {
-    console.error(error);
-    projects.forEach((project) => cloudState.pendingProjects.set(project.id, project));
-    if (els.accountSyncStatus) els.accountSyncStatus.textContent = "同步失败，将在下次修改时重试";
-    els.status.textContent = error?.message || "云端同步失败，本机草稿仍已保存";
-  } finally {
-    cloudState.syncingProjects = false;
   }
 }
 
@@ -3436,12 +3232,6 @@ async function deleteProject(projectId) {
   }
   const project = state.projects.find((item) => item.id === projectId);
   if (!project) return;
-  if (cloudIsReady() && activeStorageScope === accountScope(cloudState.user.id)) {
-    void Promise.all([cloudApi().deleteProject(projectId), cloudApi().deleteProjectAssets(projectId)]).catch((error) => {
-      console.error(error);
-      els.status.textContent = "本机已删除；云端删除失败，请稍后重试";
-    });
-  }
   const liveKeys = Object.entries(project.data?.images || {})
     .filter(([, image]) => image?.kind === "live")
     .map(([id, image]) => String(image.videoKey || id));
@@ -5214,6 +5004,14 @@ function portableMediaExtension(blob, name, video = false) {
   return byType[blob.type] || String(name || "").match(video ? /\.(mov|mp4|m4v|webm)$/i : /\.(gif|png|jpe?g|webp|avif)$/i)?.[1]?.toLowerCase() || "bin";
 }
 
+async function portableCloudBlob(path, label) {
+  try {
+    return await cloudApi().downloadProjectAsset(path);
+  } catch (error) {
+    throw new Error(`${label} 读取失败：${error?.message || "请稍后重试。"}`);
+  }
+}
+
 async function portableCoverBlob(image) {
   const src = image.src || (image.srcKey ? await readImageSource(image.srcKey) : "");
   if (src) {
@@ -5225,7 +5023,7 @@ async function portableCoverBlob(image) {
     }
   }
   if (image.storagePath && cloudApi()?.downloadProjectAsset) {
-    return cloudApi().downloadProjectAsset(image.storagePath);
+    return portableCloudBlob(image.storagePath, `图片/GIF ${image.name || "未命名素材"}`);
   }
   throw new Error(`图片或 GIF 原件缺失：${image.name || "未命名素材"}`);
 }
@@ -5235,15 +5033,17 @@ async function portableVideoBlob(image, id) {
   const local = liveMediaFiles.get(key)?.blob || await readLiveMediaBlob(key).catch(() => null);
   if (local) return local;
   if (image.videoStoragePath && cloudApi()?.downloadProjectAsset) {
-    return cloudApi().downloadProjectAsset(image.videoStoragePath);
+    return portableCloudBlob(image.videoStoragePath, `实况原视频 ${image.videoName || image.name || id}`);
   }
   throw new Error(`实况原视频缺失：${image.videoName || image.name || id}`);
 }
 
-async function exportPortableProject() {
+async function exportPortableProject(selectedProject = null) {
   closeAccountMenu();
-  saveState();
-  const project = state.projects.find((item) => item.id === state.currentProjectId);
+  if (!selectedProject) saveState();
+  if (selectedProject && !cloudIsReady()) throw new Error("账号连接已断开，请重新登录后再迁移。");
+  const migrationUserId = selectedProject ? cloudState.user.id : "";
+  const project = selectedProject || state.projects.find((item) => item.id === state.currentProjectId);
   if (!project || isBuiltInProject(project)) throw new Error("请先新建并编辑自己的稿件，再保存原稿。");
   if (!window.JSZip) throw new Error("ZIP 组件未加载，请刷新页面后重试。");
   const folderName = projectFolderName(project);
@@ -5256,7 +5056,9 @@ async function exportPortableProject() {
   els.status.textContent = "正在整理原稿与素材…";
   for (const [index, [id, image]] of Object.entries(project.data?.images || {}).entries()) {
     if (!image || typeof image !== "object") continue;
-    const cover = await portableCoverBlob(image);
+    const cover = selectedProject && image.storagePath
+      ? await portableCloudBlob(image.storagePath, `图片/GIF ${image.name || id}`)
+      : await portableCoverBlob(image);
     const stem = String(index + 1).padStart(3, "0");
     const coverPath = `media/${stem}.${portableMediaExtension(cover, image.name)}`;
     folder.file(coverPath, cover);
@@ -5268,7 +5070,9 @@ async function exportPortableProject() {
     delete saved.storagePath;
     saved.portableSrcPath = coverPath;
     if (image.kind === "live") {
-      const video = await portableVideoBlob(image, id);
+      const video = selectedProject && image.videoStoragePath
+        ? await portableCloudBlob(image.videoStoragePath, `实况原视频 ${image.videoName || id}`)
+        : await portableVideoBlob(image, id);
       const videoPath = `media/${stem}-video.${portableMediaExtension(video, image.videoName, true)}`;
       folder.file(videoPath, video);
       media.push({ path: videoPath, size: video.size, type: video.type || "application/octet-stream" });
@@ -5284,6 +5088,7 @@ async function exportPortableProject() {
   folder.file("content.md", markdown);
   folder.file("project.json", JSON.stringify(copy));
   folder.file("manifest.json", JSON.stringify({ format: "write-then-publish", version: 1, media }));
+  if (selectedProject && cloudState.user?.id !== migrationUserId) throw new Error("账号已切换，请重新选择旧稿。");
   // ponytail: JSZip builds one draft in browser memory; stream to a picked folder if real drafts outgrow it.
   const blob = await zip.generateAsync({ type: "blob", compression: "STORE", streamFiles: true });
   await saveBlob(blob, `${folderName}.zip`);
@@ -5408,6 +5213,74 @@ async function runPortableAction(button, action) {
   } finally {
     if (button) button.disabled = false;
   }
+}
+
+function renderCloudMigrationList() {
+  if (!els.cloudMigrationList) return;
+  els.cloudMigrationList.replaceChildren();
+  if (!cloudState.legacyProjects.length) {
+    const empty = document.createElement("p");
+    empty.textContent = "没有查到这个账号的云端旧稿。";
+    els.cloudMigrationList.append(empty);
+    return;
+  }
+  for (const project of cloudState.legacyProjects) {
+    const row = document.createElement("article");
+    row.className = "cloud-migration-row";
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = project.title || "未命名图文";
+    const detail = document.createElement("small");
+    const createdAt = projectCreatedAt(project);
+    const imageCount = Object.keys(project.data?.images || {}).length;
+    const liveCount = Object.values(project.data?.images || {}).filter((image) => image?.kind === "live").length;
+    detail.textContent = `${createdAt ? new Date(createdAt).toLocaleString("zh-CN", { hour12: false }) : "创建时间未知"} · ${imageCount} 个图片/GIF${liveCount ? ` · ${liveCount} 项实况` : ""}`;
+    copy.append(title, detail);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button";
+    button.textContent = "保存原稿包";
+    button.disabled = cloudState.migrationBusy;
+    button.dataset.cloudProjectId = project.id;
+    row.append(copy, button);
+    els.cloudMigrationList.append(row);
+  }
+}
+
+async function refreshCloudMigrationList() {
+  if (cloudState.migrationBusy) return;
+  if (!cloudIsReady()) {
+    els.cloudMigrationStatus.textContent = "账号尚未连接，请登录旧账号后重试。";
+    return;
+  }
+  const userId = cloudState.user.id;
+  els.cloudMigrationRefresh.disabled = true;
+  els.cloudMigrationStatus.textContent = "正在读取旧稿清单…";
+  try {
+    const rows = await cloudApi().listProjects();
+    if (cloudState.user?.id !== userId) return;
+    cloudState.legacyProjects = rows.map(cloudProjectFromRow).filter(Boolean);
+    renderCloudMigrationList();
+    els.cloudMigrationStatus.textContent = `共 ${cloudState.legacyProjects.length} 篇旧稿，请逐篇保存。`;
+  } catch (error) {
+    els.cloudMigrationStatus.textContent = error?.message || "旧稿清单读取失败，请稍后重试。";
+  } finally {
+    els.cloudMigrationRefresh.disabled = false;
+  }
+}
+
+function openCloudMigrationModal() {
+  closeAccountMenu();
+  if (!cloudIsReady()) return;
+  els.cloudMigrationModal.classList.remove("hidden");
+  renderCloudMigrationList();
+  els.cloudMigrationStatus.textContent = `共 ${cloudState.legacyProjects.length} 篇旧稿，请逐篇保存。`;
+  if (!cloudState.legacyProjects.length) void refreshCloudMigrationList();
+  els.cloudMigrationClose.focus();
+}
+
+function closeCloudMigrationModal() {
+  els.cloudMigrationModal.classList.add("hidden");
 }
 
 function finiteNumber(value, fallback) {
@@ -12483,6 +12356,37 @@ function bindEvents() {
     event.target.value = "";
     if (files.length) void runPortableAction(els.portableImportFolder, () => importPortableFolder(files));
   });
+  els.cloudMigration?.addEventListener("click", openCloudMigrationModal);
+  els.cloudMigrationClose?.addEventListener("click", closeCloudMigrationModal);
+  els.cloudMigrationRefresh?.addEventListener("click", () => void refreshCloudMigrationList());
+  els.cloudMigrationModal?.addEventListener("click", (event) => {
+    if (event.target === els.cloudMigrationModal) closeCloudMigrationModal();
+  });
+  els.cloudMigrationList?.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-cloud-project-id]");
+    if (!button || cloudState.migrationBusy) return;
+    const project = cloudState.legacyProjects.find((item) => item.id === button.dataset.cloudProjectId);
+    if (!project) return;
+    cloudState.migrationBusy = true;
+    els.cloudMigrationList.querySelectorAll("button[data-cloud-project-id]").forEach((item) => { item.disabled = true; });
+    els.cloudMigrationRefresh.disabled = true;
+    try {
+      await runPortableAction(button, async () => {
+        els.cloudMigrationStatus.textContent = `正在整理：${project.title}`;
+        try {
+          await exportPortableProject(project);
+          els.cloudMigrationStatus.textContent = `${projectFolderName(project)}.zip 已交给浏览器下载；请在下载目录核对。`;
+        } catch (error) {
+          els.cloudMigrationStatus.textContent = error?.message || "旧稿下载失败。";
+          throw error;
+        }
+      });
+    } finally {
+      cloudState.migrationBusy = false;
+      els.cloudMigrationList.querySelectorAll("button[data-cloud-project-id]").forEach((item) => { item.disabled = false; });
+      els.cloudMigrationRefresh.disabled = false;
+    }
+  });
   els.chooseGuest?.addEventListener("click", () => void chooseGuestMode());
   els.chooseLogin?.addEventListener("click", chooseLoginMode);
   els.accountClose.addEventListener("click", closeAccountModal);
@@ -12566,6 +12470,7 @@ function bindEvents() {
     if (event.key === "Escape" && !els.livePhotoModal.classList.contains("hidden")) closeLivePhotoModal();
     if (event.key === "Escape" && !els.livePhotoHandoffModal.classList.contains("hidden")) closeLivePhotoHandoff();
     if (event.key === "Escape" && !els.accountModal.classList.contains("hidden")) closeAccountModal();
+    if (event.key === "Escape" && !els.cloudMigrationModal.classList.contains("hidden")) closeCloudMigrationModal();
     if (event.key === "Escape" && welcomeBackIsOpen()) closeWelcomeBack();
     if (event.key === "Escape" && accountMenuIsOpen()) closeAccountMenu();
     if (event.key === "Escape") {

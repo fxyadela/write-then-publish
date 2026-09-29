@@ -3049,6 +3049,59 @@ body.export-busy {
   font-weight: 600;
 }
 
+.cloud-migration-card {
+  width: min(760px, 100%);
+  border-radius: 18px;
+}
+
+.cloud-migration-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 20px 22px;
+}
+
+.cloud-migration-toolbar,
+.cloud-migration-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cloud-migration-toolbar {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cloud-migration-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.cloud-migration-row {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.cloud-migration-row strong,
+.cloud-migration-row small {
+  display: block;
+}
+
+.cloud-migration-row small,
+.cloud-migration-footnote {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .cloud-migration-row { align-items: stretch; flex-direction: column; }
+}
+
 #feedbackModal {
   z-index: 10040;
   background: color-mix(in srgb, var(--modal-overlay) 90%, rgba(226, 232, 240, 0.08));
