@@ -2815,23 +2815,23 @@ async function resendAccountConfirmation() {
 async function refreshGoogleSignInVisibility() {
   if (!els.accountOauth) return;
   const api = cloudApi();
-  if (REGISTRATION_PAUSED || !api?.configured || (cloudState.user && !accountAuthAddMode) || accountAuthMode === "reset") {
+  if (ACCOUNT_MAINTENANCE || !api?.configured || (cloudState.user && !accountAuthAddMode) || accountAuthMode === "reset") {
     els.accountOauth.hidden = true;
     return;
   }
-  els.accountOauth.hidden = !(await api.googleSignInAvailable());
+  els.accountOauth.hidden = !(await api.googleSignInAvailable(REGISTRATION_PAUSED));
   if (api.isServiceRestricted?.()) setAccountNotice(CLOUD_RESTRICTED_NOTICE);
 }
 
 async function signInWithGoogleAccount() {
-  if (REGISTRATION_PAUSED) return;
+  if (ACCOUNT_MAINTENANCE) return;
   markAccountAddPending();
   markGoogleOAuthPending();
   setAccountBusy(true);
   setAccountNotice("正在跳转到 Google…");
   try {
     // 成功的话浏览器会直接跳走，下面这行不会执行到。
-    await cloudApi().signInWithGoogle();
+    await cloudApi().signInWithGoogle(REGISTRATION_PAUSED);
     // 若 SDK 没有发起浏览器跳转，不能让界面永久停在“正在跳转”。
     takeGoogleOAuthPending();
     clearAccountAddPending();
@@ -2840,7 +2840,7 @@ async function signInWithGoogleAccount() {
   } catch (error) {
     takeGoogleOAuthPending();
     clearAccountAddPending();
-    setAccountNotice(error?.message || "跳转 Google 登录失败，请改用邮箱注册。", "error");
+    setAccountNotice(error?.message || "跳转 Google 登录失败，请稍后再试。", "error");
     setAccountBusy(false);
   }
 }

@@ -47,7 +47,10 @@
     return data;
   }
 
-  async function signInWithGoogle() {
+  async function signInWithGoogle(migrationOnly = false) {
+    if (migrationOnly && (!(await googleProviderIsEnabled(true)) || !signupsDisabled)) {
+      throw new Error("Google 旧账号迁移暂未开放，请稍后再试。");
+    }
     const { error } = await requireClient().auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: redirectUrl() },
@@ -64,13 +67,14 @@
    * 只检查第 2 点会让用户看到一个必定返回 400 的按钮。
    */
   let googleProviderEnabled = null;
+  let signupsDisabled = null;
   let googleReachable = null;
   // 项目超出免费额度被限流时，所有接口都返回 402；记下来好让界面提前说明。
   let serviceRestricted = false;
 
-  async function googleProviderIsEnabled() {
+  async function googleProviderIsEnabled(refresh = false) {
     if (!configured) return false;
-    if (googleProviderEnabled !== null) return googleProviderEnabled;
+    if (!refresh && googleProviderEnabled !== null) return googleProviderEnabled;
     let timer;
     try {
       const controller = new AbortController();
@@ -84,17 +88,19 @@
       if (!response.ok) throw new Error(`settings request failed: ${response.status}`);
       const settings = await response.json();
       googleProviderEnabled = settings?.external?.google === true;
+      signupsDisabled = settings?.disable_signup === true;
     } catch {
       // 无法确认配置时不展示入口，避免让用户点进一个不可用的登录方式。
       googleProviderEnabled = false;
+      signupsDisabled = false;
     } finally {
       clearTimeout(timer);
     }
     return googleProviderEnabled;
   }
 
-  async function googleSignInAvailable() {
-    if (!(await googleProviderIsEnabled())) return false;
+  async function googleSignInAvailable(migrationOnly = false) {
+    if (!(await googleProviderIsEnabled()) || (migrationOnly && !signupsDisabled)) return false;
     if (googleReachable !== null) return googleReachable;
     try {
       const controller = new AbortController();

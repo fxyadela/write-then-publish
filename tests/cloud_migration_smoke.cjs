@@ -4,7 +4,12 @@ const vm = require("node:vm");
 
 const rows = Array.from({ length: 227 }, (_, index) => ({ id: `old-${index}` }));
 const ranges = [];
+let signupsDisabled = false;
+let oauthCalls = 0;
 const client = {
+  auth: {
+    async signInWithOAuth() { oauthCalls += 1; return { error: null }; },
+  },
   from(table) {
     assert.equal(table, "projects");
     return {
@@ -20,10 +25,29 @@ const client = {
 const window = {
   WRITE_THEN_PUBLISH_SUPABASE: { url: "https://example.supabase.co", publishableKey: "x".repeat(30) },
   supabase: { createClient: () => client },
+  location: { protocol: "https:", hostname: "fawen.fun", origin: "https://fawen.fun", pathname: "/" },
 };
-vm.runInNewContext(fs.readFileSync("src/supabase.js", "utf8"), { window });
-window.WriteThenPublishCloud.listProjects().then((result) => {
+async function fetch(url) {
+  if (url.includes("/auth/v1/settings")) {
+    return { ok: true, status: 200, json: async () => ({ external: { google: true }, disable_signup: signupsDisabled }) };
+  }
+  assert.equal(url, "https://accounts.google.com/generate_204");
+  return {};
+}
+vm.runInNewContext(fs.readFileSync("src/supabase.js", "utf8"), { window, fetch, AbortController, setTimeout, clearTimeout });
+(async () => {
+  const result = await window.WriteThenPublishCloud.listProjects();
   assert.equal(result.length, 227);
   assert.deepEqual(ranges, [[0, 199], [200, 399]]);
-  console.log("OK: cloud list includes all 227 drafts without downloading media");
-}).catch((error) => { console.error(error); process.exitCode = 1; });
+  assert.equal(await window.WriteThenPublishCloud.googleSignInAvailable(true), false);
+  await assert.rejects(window.WriteThenPublishCloud.signInWithGoogle(true), /迁移暂未开放/);
+  assert.equal(oauthCalls, 0);
+  signupsDisabled = true;
+  await window.WriteThenPublishCloud.signInWithGoogle(true);
+  assert.equal(oauthCalls, 1);
+  assert.equal(await window.WriteThenPublishCloud.googleSignInAvailable(true), true);
+  signupsDisabled = false;
+  await assert.rejects(window.WriteThenPublishCloud.signInWithGoogle(true), /迁移暂未开放/);
+  assert.equal(oauthCalls, 1);
+  console.log("OK: all 227 drafts listed; Google migration requires server-side signup lock");
+})().catch((error) => { console.error(error); process.exitCode = 1; });
