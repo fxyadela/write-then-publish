@@ -169,7 +169,7 @@
   async function getProfile() {
     const { data, error } = await requireClient()
       .from("profiles")
-      .select("user_id,display_name,handle,avatar_url,avatar_crop,updated_at")
+      .select("user_id,display_name,avatar_url,updated_at")
       .maybeSingle();
     throwIfError(error);
     return data || null;
@@ -181,15 +181,13 @@
     const payload = {
       user_id: user.id,
       display_name: profile.displayName,
-      handle: profile.handle,
-      avatar_crop: profile.avatarCrop || null,
       updated_at: new Date().toISOString(),
     };
     if (profile.avatarUrl !== undefined) payload.avatar_url = profile.avatarUrl || null;
     const { data, error } = await requireClient()
       .from("profiles")
-      .upsert(payload, { onConflict: "user_id" })
-      .select("user_id,display_name,handle,avatar_url,avatar_crop,updated_at")
+      .upsert(payload, { onConflict: "user_id", defaultToNull: false })
+      .select("user_id,display_name,avatar_url,updated_at")
       .single();
     throwIfError(error);
     return data;
