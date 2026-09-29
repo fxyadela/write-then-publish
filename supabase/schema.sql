@@ -24,7 +24,8 @@ alter table public.profiles enable row level security;
 alter table public.projects enable row level security;
 
 grant select, insert, update, delete on public.profiles to authenticated;
-grant select, insert, update, delete on public.projects to authenticated;
+grant select on public.projects to authenticated;
+revoke insert, update, delete on public.projects from authenticated;
 
 drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own"
@@ -53,20 +54,10 @@ create policy "projects_select_own"
   using ((select auth.uid()) = user_id);
 
 drop policy if exists "projects_insert_own" on public.projects;
-create policy "projects_insert_own"
-  on public.projects for insert to authenticated
-  with check ((select auth.uid()) = user_id);
 
 drop policy if exists "projects_update_own" on public.projects;
-create policy "projects_update_own"
-  on public.projects for update to authenticated
-  using ((select auth.uid()) = user_id)
-  with check ((select auth.uid()) = user_id);
 
 drop policy if exists "projects_delete_own" on public.projects;
-create policy "projects_delete_own"
-  on public.projects for delete to authenticated
-  using ((select auth.uid()) = user_id);
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -134,12 +125,6 @@ create policy "avatar_delete_own_folder"
   );
 
 drop policy if exists "project_assets_insert_own_folder" on storage.objects;
-create policy "project_assets_insert_own_folder"
-  on storage.objects for insert to authenticated
-  with check (
-    bucket_id = 'project-assets'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  );
 
 drop policy if exists "project_assets_select_own_folder" on storage.objects;
 create policy "project_assets_select_own_folder"
@@ -150,21 +135,5 @@ create policy "project_assets_select_own_folder"
   );
 
 drop policy if exists "project_assets_update_own_folder" on storage.objects;
-create policy "project_assets_update_own_folder"
-  on storage.objects for update to authenticated
-  using (
-    bucket_id = 'project-assets'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  )
-  with check (
-    bucket_id = 'project-assets'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  );
 
 drop policy if exists "project_assets_delete_own_folder" on storage.objects;
-create policy "project_assets_delete_own_folder"
-  on storage.objects for delete to authenticated
-  using (
-    bucket_id = 'project-assets'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  );

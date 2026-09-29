@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260929-portable-v1" />
+    <link rel="stylesheet" href="src/styles.css?v=20260930-cloud-migration-prep" />
   </head>
   <body class="entry-choice-pending history-disabled">
     <main class="workspace">
@@ -474,6 +474,9 @@
             <button id="portableImportFolderBtn" class="account-menu-text-button" type="button">
               <i data-lucide="folder-open"></i>导入日期文件夹
             </button>
+            <button id="cloudMigrationBtn" class="account-menu-text-button" type="button" hidden>
+              <i data-lucide="cloud-download"></i>迁移云端旧稿
+            </button>
             <button id="accountMenuWhatsNewBtn" class="account-menu-text-button" type="button">
               <i data-lucide="sparkles"></i>本次更新
               <span class="account-menu-new-dot" data-feature-badge="updates" aria-label="有新功能"></span>
@@ -728,6 +731,26 @@
         </section>
       </div>
     </div>
+
+    <section id="cloudMigrationModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cloudMigrationTitle">
+      <div class="modal-card cloud-migration-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="cloudMigrationTitle">迁移云端旧稿</h3>
+            <p>一次保存一篇原稿。只下载选中的素材，不会删除云端原件。</p>
+          </div>
+          <button id="cloudMigrationCloseBtn" class="icon-button ghost" type="button" aria-label="关闭迁移面板"><i data-lucide="x"></i></button>
+        </div>
+        <div class="cloud-migration-body">
+          <div class="cloud-migration-toolbar">
+            <span id="cloudMigrationStatus" role="status">正在读取旧稿清单…</span>
+            <button id="cloudMigrationRefreshBtn" class="secondary-button" type="button">刷新清单</button>
+          </div>
+          <div id="cloudMigrationList" class="cloud-migration-list"></div>
+          <p class="cloud-migration-footnote">保存后请检查下载目录，并用右下角「导入原稿 ZIP」试着打开。创建时间无法确认的稿件会明确标为未知。</p>
+        </div>
+      </div>
+    </section>
 
     <div id="feedbackModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="feedbackModalTitle" tabindex="-1">
       <div class="modal-card feedback-modal-card">
@@ -1252,9 +1275,9 @@
       } else {
         document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
         document.write('<script src="src/supabase-config.js?v=20260729-auth"><\/script>');
-        document.write('<script src="src/supabase.js?v=20260930-profile-minimal"><\/script>');
+        document.write('<script src="src/supabase.js?v=20260930-cloud-migration-prep"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260929-portable-v1"></script>
+    <script src="src/app.js?v=20260930-cloud-migration-prep"></script>
   </body>
 </html>
