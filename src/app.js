@@ -129,6 +129,11 @@ const els = {
   accountMenuSwitch: $("#accountMenuSwitchBtn"),
   accountMenuSignOut: $("#accountMenuSignOutBtn"),
   accountMenuWhatsNew: $("#accountMenuWhatsNewBtn"),
+  portableExport: $("#portableExportBtn"),
+  portableImportZip: $("#portableImportZipBtn"),
+  portableImportFolder: $("#portableImportFolderBtn"),
+  portableImportZipInput: $("#portableImportZipInput"),
+  portableImportFolderInput: $("#portableImportFolderInput"),
   accountMenuSwitchSection: $("#accountMenuSwitchSection"),
   accountMenuAccountList: $("#accountMenuAccountList"),
   accountMenuAdd: $("#accountMenuAddBtn"),
@@ -1241,7 +1246,7 @@ function loadProjectStoreForScope(scope) {
 
 // 云端超出免费额度时 Supabase 直接返回一段英文的 402 说明，用户看不懂也无从下手。
 // 所有账号相关提示都经过 setAccountNotice，在这里统一换成中文并给出游客入口。
-const CLOUD_RESTRICTED_NOTICE = "登录和注册暂不可用。预计 10 月 2 日检查迁移入口，开放时间以实际通知为准。游客草稿仅留在当前标签页；关闭前请下载成品，目前还不能从成品恢复编辑。";
+const CLOUD_RESTRICTED_NOTICE = "登录和注册暂不可用。预计 10 月 2 日检查迁移入口，开放时间以实际通知为准。游客草稿仅留在当前标签页；关闭前请从右下角保存原稿，日后可重新导入。";
 
 function isCloudRestrictedMessage(message) {
   const text = String(message || "");
@@ -2523,11 +2528,12 @@ async function activateWorkspaceScope(scope, projects = null, profile = null) {
   buildSelectionSwatches("bg");
   try {
     if (profile) {
+      const localProfile = loadStoredAuthorProfile();
       const normalizedProfile = normalizeAuthorProfile({
         displayName: profile.display_name,
-        handle: profile.handle,
-        avatar: profile.avatar_url || sampleAvatar,
-        avatarCrop: profile.avatar_crop,
+        handle: localProfile?.handle,
+        avatar: profile.avatar_url || localProfile?.avatar || sampleAvatar,
+        avatarCrop: localProfile?.avatarCrop,
       });
       cloudState.profileAvatarUrl = profile.avatar_url || "";
       authorProfileStorage().setItem(scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY), JSON.stringify(normalizedProfile));
@@ -3139,9 +3145,7 @@ async function flushCloudProfileSync() {
     }
     const profile = await cloudApi().upsertProfile({
       displayName: els.displayName.value.trim() || "未命名作者",
-      handle: normalizeHandle(els.handle.value),
       avatarUrl: avatarUrl || undefined,
-      avatarCrop: avatarUrl ? null : state.avatarCrop,
     });
     cloudState.profileAvatarUrl = profile.avatar_url || avatarUrl || "";
     updateAccountUi();
@@ -3233,9 +3237,29 @@ function createProject(data = defaultFormState()) {
   return {
     id: `project_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
     title: projectTitleFromData(normalized),
+    createdAt: now,
     updatedAt: now,
     data: normalized,
   };
+}
+
+function projectCreatedAt(project) {
+  if (project?.createdAtUnknown === true) return null;
+  const explicit = typeof project?.createdAt === "string" ? Date.parse(project.createdAt) : Number(project?.createdAt);
+  if (Number.isFinite(explicit) && explicit >= Date.UTC(2020, 0, 1) && explicit <= Date.now() + 86400000) return explicit;
+  const match = /^project_([0-9a-z]+)_[0-9a-z]{5}$/.exec(String(project?.id || ""));
+  if (!match) return null;
+  const inferred = Number.parseInt(match[1], 36);
+  return Number.isFinite(inferred) && inferred >= Date.UTC(2020, 0, 1) && inferred <= Date.now() + 86400000
+    ? inferred : null;
+}
+
+function projectFolderName(project) {
+  const createdAt = projectCreatedAt(project);
+  if (!createdAt) return `unknown-created_${String(project.id || "project").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40)}`;
+  const date = new Date(createdAt);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
 }
 
 function loadProjectStore() {
@@ -3273,6 +3297,8 @@ function normalizeProject(project) {
   return {
     id: project.id || `project_${updatedAt.toString(36)}`,
     title: project.title || projectTitleFromData(data),
+    createdAt: projectCreatedAt(project),
+    createdAtUnknown: project.createdAtUnknown === true,
     updatedAt,
     data,
   };
@@ -3467,7 +3493,7 @@ async function deleteProject(projectId) {
 
 async function createNewProject() {
   if (ACCOUNT_MAINTENANCE && activeStorageScope === "guest" && !isBuiltInProjectId(state.currentProjectId)
-    && !window.confirm("游客模式没有历史入口。新建后，当前稿将无法从页面找回；请先下载成品或复制正文。确定新建吗？")) return;
+    && !window.confirm("游客模式没有历史入口。新建后，当前稿将无法从页面找回；请先从右下角保存当前原稿。确定新建吗？")) return;
   saveState();
   const project = createProject(blankFormState());
   state.projects = [project, ...state.projects.filter((item) => item.id !== project.id)].slice(0, MAX_PROJECTS);
@@ -5178,6 +5204,210 @@ async function hydrateLiveMediaForState() {
       }
     }),
   );
+}
+
+function portableMediaExtension(blob, name, video = false) {
+  const byType = {
+    "image/gif": "gif", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
+    "image/avif": "avif", "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm",
+  };
+  return byType[blob.type] || String(name || "").match(video ? /\.(mov|mp4|m4v|webm)$/i : /\.(gif|png|jpe?g|webp|avif)$/i)?.[1]?.toLowerCase() || "bin";
+}
+
+async function portableCoverBlob(image) {
+  const src = image.src || (image.srcKey ? await readImageSource(image.srcKey) : "");
+  if (src) {
+    try {
+      const response = await fetch(src);
+      if (response.ok) return await response.blob();
+    } catch {
+      // An expired blob URL may still have a cloud backup.
+    }
+  }
+  if (image.storagePath && cloudApi()?.downloadProjectAsset) {
+    return cloudApi().downloadProjectAsset(image.storagePath);
+  }
+  throw new Error(`图片或 GIF 原件缺失：${image.name || "未命名素材"}`);
+}
+
+async function portableVideoBlob(image, id) {
+  const key = String(image.videoKey || id);
+  const local = liveMediaFiles.get(key)?.blob || await readLiveMediaBlob(key).catch(() => null);
+  if (local) return local;
+  if (image.videoStoragePath && cloudApi()?.downloadProjectAsset) {
+    return cloudApi().downloadProjectAsset(image.videoStoragePath);
+  }
+  throw new Error(`实况原视频缺失：${image.videoName || image.name || id}`);
+}
+
+async function exportPortableProject() {
+  closeAccountMenu();
+  saveState();
+  const project = state.projects.find((item) => item.id === state.currentProjectId);
+  if (!project || isBuiltInProject(project)) throw new Error("请先新建并编辑自己的稿件，再保存原稿。");
+  if (!window.JSZip) throw new Error("ZIP 组件未加载，请刷新页面后重试。");
+  const folderName = projectFolderName(project);
+  const zip = new window.JSZip();
+  const folder = zip.folder(folderName);
+  const copy = JSON.parse(JSON.stringify(project));
+  copy.createdAt = projectCreatedAt(project);
+  const media = [];
+  const readablePaths = new Map();
+  els.status.textContent = "正在整理原稿与素材…";
+  for (const [index, [id, image]] of Object.entries(project.data?.images || {}).entries()) {
+    if (!image || typeof image !== "object") continue;
+    const cover = await portableCoverBlob(image);
+    const stem = String(index + 1).padStart(3, "0");
+    const coverPath = `media/${stem}.${portableMediaExtension(cover, image.name)}`;
+    folder.file(coverPath, cover);
+    media.push({ path: coverPath, size: cover.size, type: cover.type || "application/octet-stream" });
+    readablePaths.set(id, coverPath);
+    const saved = copy.data.images[id];
+    saved.src = "";
+    delete saved.srcKey;
+    delete saved.storagePath;
+    saved.portableSrcPath = coverPath;
+    if (image.kind === "live") {
+      const video = await portableVideoBlob(image, id);
+      const videoPath = `media/${stem}-video.${portableMediaExtension(video, image.videoName, true)}`;
+      folder.file(videoPath, video);
+      media.push({ path: videoPath, size: video.size, type: video.type || "application/octet-stream" });
+      delete saved.videoStoragePath;
+      delete saved.previewVideoSrc;
+      saved.portableVideoPath = videoPath;
+    }
+  }
+  const markdown = String(project.data.content || "").replace(/\[\[image:([^\]]+)\]\]/g, (marker, id) => {
+    const path = readablePaths.get(id);
+    return path ? `![${project.data.images[id]?.name || "图片"}](${path})` : marker;
+  });
+  folder.file("content.md", markdown);
+  folder.file("project.json", JSON.stringify(copy));
+  folder.file("manifest.json", JSON.stringify({ format: "write-then-publish", version: 1, media }));
+  // ponytail: JSZip builds one draft in browser memory; stream to a picked folder if real drafts outgrow it.
+  const blob = await zip.generateAsync({ type: "blob", compression: "STORE", streamFiles: true });
+  await saveBlob(blob, `${folderName}.zip`);
+  els.status.textContent = `已交给浏览器下载 ${folderName}.zip；请检查下载目录并保留原稿。`;
+}
+
+async function importPortableProject(read, paths) {
+  const manifest = JSON.parse(await (await read("manifest.json")).text());
+  if (manifest?.format !== "write-then-publish" || manifest.version !== 1 || !Array.isArray(manifest.media)) {
+    throw new Error("这不是受支持的写了就发原稿文件夹。");
+  }
+  const source = JSON.parse(await (await read("project.json")).text());
+  if (!source?.data || typeof source.data.content !== "string" || !source.data.images
+    || typeof source.data.images !== "object" || Array.isArray(source.data.images)) {
+    throw new Error("原稿编辑数据不完整。");
+  }
+  const listed = new Map();
+  for (const item of manifest.media) {
+    if (!/^media\/[a-zA-Z0-9_.-]+$/.test(item?.path) || !Number.isSafeInteger(item.size) || item.size < 1 || listed.has(item.path)) {
+      throw new Error("原稿素材清单无效。");
+    }
+    listed.set(item.path, item);
+  }
+  if (listed.size > 500 || paths.length > 510) throw new Error("原稿文件数量异常，请检查文件夹。");
+  for (const path of listed.keys()) {
+    if (!paths.includes(path)) throw new Error(`文件缺失：${path}`);
+  }
+  for (const [id, image] of Object.entries(source.data.images)) {
+    if (["__proto__", "constructor", "prototype"].includes(id) || !image || typeof image !== "object") {
+      throw new Error("原稿图片数据无效。");
+    }
+    if (!listed.has(image.portableSrcPath)) throw new Error(`素材缺失：${image.name || id}`);
+    if (image.kind === "live" && !listed.has(image.portableVideoPath)) {
+      throw new Error(`实况原视频缺失：${image.videoName || id}`);
+    }
+  }
+  if (activeStorageScope === "guest" && !isBuiltInProjectId(state.currentProjectId)
+    && !window.confirm("导入会替换当前游客工作稿。请先保存当前原稿；确定继续吗？")) return;
+  if (activeStorageScope !== "guest" && state.projects.length >= MAX_PROJECTS) {
+    throw new Error(`这台设备已有 ${MAX_PROJECTS} 篇稿件，请先备份并整理旧稿，再导入。`);
+  }
+  const imported = createProject(source.data);
+  imported.title = String(source.title || imported.title).slice(0, 200);
+  imported.createdAtUnknown = projectCreatedAt(source) === null;
+  imported.createdAt = projectCreatedAt(source);
+  for (const [id, image] of Object.entries(source.data.images)) {
+    const coverInfo = listed.get(image.portableSrcPath);
+    const cover = await read(coverInfo.path);
+    if (cover.size !== coverInfo.size) throw new Error(`素材大小不符：${image.name || id}`);
+    const coverBlob = new Blob([cover], { type: coverInfo.type || cover.type });
+    const src = await readFileAsDataURL(coverBlob);
+    const key = imageSourceKey(imported.id, id);
+    await writeImageSource(key, src);
+    const restored = { ...imported.data.images[id], src, srcKey: key };
+    delete restored.portableSrcPath;
+    delete restored.storagePath;
+    if (image.kind === "live") {
+      const videoInfo = listed.get(image.portableVideoPath);
+      const video = await read(videoInfo.path);
+      if (video.size !== videoInfo.size) throw new Error(`原视频大小不符：${image.videoName || id}`);
+      const videoBlob = new Blob([video], { type: videoInfo.type || video.type });
+      const videoKey = `${imported.id}::${id}::video`;
+      await writeLiveMediaBlob(videoKey, videoBlob);
+      replaceLiveMediaCache(videoKey, videoBlob, image.videoName || "video.mov");
+      restored.videoKey = videoKey;
+      delete restored.portableVideoPath;
+      delete restored.videoStoragePath;
+      delete restored.previewVideoSrc;
+    }
+    imported.data.images[id] = restored;
+  }
+  saveState();
+  state.projects = activeStorageScope === "guest"
+    ? [imported]
+    : [imported, ...state.projects.filter((item) => !isBuiltInProject(item))];
+  state.currentProjectId = imported.id;
+  applyForm(imported.data);
+  syncGuideReadOnlyMode();
+  resetTextHistory();
+  saveProjectStore();
+  updateProjectHistory();
+  await render();
+  els.status.textContent = `已导入原稿：${imported.title}`;
+}
+
+async function importPortableZip(file) {
+  if (!window.JSZip || !file) return;
+  if (file.size > 1024 * 1024 * 1024) throw new Error("ZIP 超过 1 GB，请改选解压后的日期文件夹导入。");
+  const zip = await window.JSZip.loadAsync(file, { checkCRC32: true });
+  const paths = Object.keys(zip.files).filter((path) => !zip.files[path].dir);
+  const manifests = paths.filter((path) => /^(?:[^/]+\/)manifest\.json$/.test(path));
+  if (manifests.length !== 1) throw new Error("请一次只导入一篇原稿的 ZIP。");
+  const root = manifests[0].slice(0, -"manifest.json".length);
+  await importPortableProject(async (path) => {
+    const entry = zip.file(root + path);
+    if (!entry) throw new Error(`文件缺失：${path}`);
+    return entry.async("blob");
+  }, paths.filter((path) => path.startsWith(root)).map((path) => path.slice(root.length)));
+}
+
+async function importPortableFolder(files) {
+  const selected = Array.from(files || []);
+  const manifests = selected.filter((file) => /(?:^|\/)manifest\.json$/.test(file.webkitRelativePath));
+  if (manifests.length !== 1) throw new Error("请一次只选择一个日期文件夹。");
+  const root = manifests[0].webkitRelativePath.slice(0, -"manifest.json".length);
+  const entries = new Map(selected.map((file) => [file.webkitRelativePath.slice(root.length), file]));
+  await importPortableProject(async (path) => {
+    const file = entries.get(path);
+    if (!file) throw new Error(`文件缺失：${path}`);
+    return file;
+  }, selected.map((file) => file.webkitRelativePath.slice(root.length)));
+}
+
+async function runPortableAction(button, action) {
+  if (button) button.disabled = true;
+  try {
+    await action();
+  } catch (error) {
+    const message = error?.message || "原稿处理失败，请重试。";
+    els.status.textContent = message;
+    window.alert(message);
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function finiteNumber(value, fallback) {
@@ -12232,6 +12462,26 @@ function bindEvents() {
     event.stopPropagation();
     closeAccountMenu();
     startWhatsNewTour();
+  });
+  els.portableExport?.addEventListener("click", () => void runPortableAction(els.portableExport, exportPortableProject));
+  els.portableImportZip?.addEventListener("click", () => {
+    closeAccountMenu();
+    els.portableImportZipInput.click();
+  });
+  els.portableImportZipInput?.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) void runPortableAction(els.portableImportZip, () => importPortableZip(file));
+  });
+  if (!("webkitdirectory" in els.portableImportFolderInput)) els.portableImportFolder.hidden = true;
+  els.portableImportFolder?.addEventListener("click", () => {
+    closeAccountMenu();
+    els.portableImportFolderInput.click();
+  });
+  els.portableImportFolderInput?.addEventListener("change", (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (files.length) void runPortableAction(els.portableImportFolder, () => importPortableFolder(files));
   });
   els.chooseGuest?.addEventListener("click", () => void chooseGuestMode());
   els.chooseLogin?.addEventListener("click", chooseLoginMode);

@@ -4,9 +4,7 @@
 create table if not exists public.profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
   display_name text not null default '未命名作者',
-  handle text not null default '@profile',
   avatar_url text,
-  avatar_crop jsonb,
   updated_at timestamptz not null default now()
 );
 

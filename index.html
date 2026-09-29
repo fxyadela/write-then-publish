@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260929-account-maintenance-v2" />
+    <link rel="stylesheet" href="src/styles.css?v=20260929-portable-v1" />
   </head>
   <body class="entry-choice-pending history-disabled">
     <main class="workspace">
@@ -465,6 +465,15 @@
             <button id="accountMenuSwitchBtn" class="secondary-button" type="button" hidden>
               <i data-lucide="arrow-left-right"></i>切换账号
             </button>
+            <button id="portableExportBtn" class="account-menu-text-button" type="button">
+              <i data-lucide="folder-down"></i>保存当前原稿
+            </button>
+            <button id="portableImportZipBtn" class="account-menu-text-button" type="button">
+              <i data-lucide="folder-up"></i>导入原稿 ZIP
+            </button>
+            <button id="portableImportFolderBtn" class="account-menu-text-button" type="button">
+              <i data-lucide="folder-open"></i>导入日期文件夹
+            </button>
             <button id="accountMenuWhatsNewBtn" class="account-menu-text-button" type="button">
               <i data-lucide="sparkles"></i>本次更新
               <span class="account-menu-new-dot" data-feature-badge="updates" aria-label="有新功能"></span>
@@ -475,6 +484,8 @@
           </div>
           <p id="accountMenuHint" class="account-menu-hint">继续使用游客模式无需操作，点击菜单外即可关闭。</p>
         </div>
+        <input id="portableImportZipInput" type="file" accept=".zip,application/zip" hidden />
+        <input id="portableImportFolderInput" type="file" webkitdirectory multiple hidden />
         <button class="account-dock-button feature-anchor" id="accountBtn" type="button" title="账号与登录" aria-label="打开账号菜单" aria-controls="accountMenu" aria-expanded="false">
           <span class="account-status-dot" aria-hidden="true"></span>
           <i data-lucide="circle-user-round"></i>
@@ -602,7 +613,7 @@
         <aside class="account-value-pane">
           <span class="account-value-brand">写了就发</span>
           <h3 id="accountModalTitle">登录后，<br />继续上次的创作</h3>
-          <p class="account-maintenance-message">现在可以直接以游客身份排版、下载成品。云端旧稿待服务恢复后迁移；请勿清除浏览器数据。</p>
+          <p class="account-maintenance-message">现在可以直接以游客身份排版。关闭前请从右下角保存原稿，日后可以重新导入；云端旧稿待服务恢复后迁移。</p>
           <div class="account-benefits" aria-label="登录后可用功能">
             <div class="account-benefit-row">
               <span class="account-benefit-icon"><i data-lucide="user-round"></i></span>
@@ -1241,9 +1252,9 @@
       } else {
         document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
         document.write('<script src="src/supabase-config.js?v=20260729-auth"><\/script>');
-        document.write('<script src="src/supabase.js?v=20260929-quote-block"><\/script>');
+        document.write('<script src="src/supabase.js?v=20260930-profile-minimal"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260929-account-maintenance-v2"></script>
+    <script src="src/app.js?v=20260929-portable-v1"></script>
   </body>
 </html>
