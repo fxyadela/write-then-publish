@@ -3958,6 +3958,25 @@ body.account-maintenance .account-oauth {
   opacity: 0.48;
 }
 
+body.account-maintenance .account-modal-body {
+  align-content: start;
+  gap: 14px;
+  padding-top: 56px;
+  padding-bottom: 24px;
+}
+
+body.account-maintenance .account-auth-form {
+  gap: 18px;
+}
+
+body.account-maintenance .account-guest-fallback {
+  margin: 0;
+}
+
+body.account-maintenance .account-resend-confirmation {
+  display: none;
+}
+
 .account-maintenance-message {
   display: none;
 }

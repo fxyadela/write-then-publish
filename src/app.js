@@ -1241,7 +1241,7 @@ function loadProjectStoreForScope(scope) {
 
 // 云端超出免费额度时 Supabase 直接返回一段英文的 402 说明，用户看不懂也无从下手。
 // 所有账号相关提示都经过 setAccountNotice，在这里统一换成中文并给出游客入口。
-const CLOUD_RESTRICTED_NOTICE = "账号服务维护中，登录和注册暂不可用。预计 10 月 2 日检查是否能开放旧稿迁移，实际时间以页面通知为准。游客草稿只留在当前标签页；目前只能导出成品，尚不能导出后重新导入编辑。";
+const CLOUD_RESTRICTED_NOTICE = "登录和注册暂不可用。预计 10 月 2 日检查迁移入口，开放时间以实际通知为准。游客草稿仅留在当前标签页；关闭前请下载成品，目前还不能从成品恢复编辑。";
 
 function isCloudRestrictedMessage(message) {
   const text = String(message || "");
