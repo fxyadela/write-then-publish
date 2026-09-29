@@ -182,7 +182,7 @@ ZIP 解压后是按页码统一编号的平铺结构，实况包与普通图片�
 
 账号服务恢复并验证后，可开放旧账号登录迁移：右下角账号菜单 → **迁移云端旧稿** → 逐篇保存原稿包 → 从 ZIP 试导入。清单可超过本机历史记录的 24 篇上限；读取清单时不会自动下载全部素材，也不会删除云端原件。新注册在迁移期继续暂停。当前账号服务仍返回 HTTP 402，迁移入口尚未开放。
 
-开放迁移前先在 Supabase 执行 [`20260930_legacy_projects_read_only.sql`](supabase/migrations/20260930_legacy_projects_read_only.sql)，只保留旧稿及其素材的读取权限；同时在 Auth 设置中暂停新用户注册。前端隐藏注册不等于服务端禁止注册，这份仓库文件也不会自行修改线上数据库。
+开放迁移前先在 Supabase 执行 [`20260930_legacy_projects_read_only.sql`](supabase/migrations/20260930_legacy_projects_read_only.sql)，只保留旧稿及其素材的读取权限；同时在 Auth 设置中暂停新用户注册。前端隐藏注册不等于服务端禁止注册，这份仓库文件也不会自行修改线上数据库。服务端确认暂停新注册后，前端才展示 Google 迁移登录；开放前还需用真实旧 Google 账号验证。
 
 自行部署账号功能时，运行 [`supabase/schema.sql`](supabase/schema.sql)，再填写 [`src/supabase-config.js`](src/supabase-config.js) 中的 Project URL 与 publishable key。
 
