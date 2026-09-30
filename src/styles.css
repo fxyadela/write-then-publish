@@ -274,6 +274,21 @@ body.history-disabled .workspace.history-open {
   position: relative;
 }
 
+.account-maintenance-status {
+  display: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+body.account-maintenance #accountDock {
+  display: none;
+}
+
+body.account-maintenance:not(.local-deployment) .account-maintenance-status {
+  display: inline-flex;
+}
+
 .account-dock-button {
   display: inline-flex;
   min-height: 30px;
@@ -749,7 +764,7 @@ body.cloud-session-checking::before {
 }
 
 body[data-guide-readonly="true"] .mode-switch,
-body[data-guide-readonly="true"] .brand-actions button:not(#newProjectBtn),
+body[data-guide-readonly="true"] .brand-actions button:not(#newProjectBtn):not(#portableImportOpenBtn),
 body[data-guide-readonly="true"] .editor-controls {
   pointer-events: none;
   opacity: 0.52;
@@ -824,6 +839,19 @@ body[data-guide-readonly="true"] .editor-textarea:focus {
 .convert-mode-button {
   height: 42px;
   padding-inline: 11px;
+}
+
+.new-project-button,
+.portable-import-open {
+  height: 42px;
+  padding-inline: 11px;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.portable-import-open {
+  color: var(--accent);
+  border-color: var(--active-border);
 }
 
 .brand-row h1,
@@ -2043,6 +2071,77 @@ body[data-app-mode="article"] .profile-inline {
   gap: 10px;
 }
 
+.download-menu {
+  position: relative;
+}
+
+.download-menu > summary {
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.download-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.download-menu > summary svg:last-child {
+  width: 14px;
+  height: 14px;
+}
+
+.download-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 110;
+  width: min(290px, calc(100vw - 36px));
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  background: var(--popover-bg);
+  box-shadow: var(--shadow-popover);
+}
+
+.download-popover > strong {
+  display: block;
+  padding: 8px 10px 10px;
+  font-size: 13px;
+}
+
+.download-popover > button {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  color: var(--ink);
+  text-align: left;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.download-popover > button:hover,
+.download-popover > button:focus-visible {
+  background: var(--soft);
+}
+
+.download-popover > button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.download-popover > button small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.download-popover > button[hidden] {
+  display: none;
+}
+
 .export-progress {
   position: fixed;
   inset: 0;
@@ -3052,6 +3151,96 @@ body.export-busy {
 .cloud-migration-card {
   width: min(760px, 100%);
   border-radius: 18px;
+}
+
+.portable-import-card {
+  width: min(680px, 100%);
+  border-radius: 18px;
+}
+
+.portable-import-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+}
+
+.portable-import-dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 28px 16px;
+  border: 2px dashed var(--active-border);
+  border-radius: 14px;
+  background: var(--soft);
+  text-align: center;
+}
+
+.portable-import-dropzone.is-dragging {
+  background: color-mix(in srgb, var(--accent) 11%, var(--soft));
+}
+
+.portable-import-dropzone > svg {
+  width: 36px;
+  height: 36px;
+  color: var(--accent);
+}
+
+.portable-import-folder {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portable-import-status {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.portable-import-status.is-error {
+  color: #b91c1c;
+}
+
+.portable-import-preview {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.portable-import-preview[hidden] {
+  display: none;
+}
+
+.portable-import-preview span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.portable-import-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.portable-import-actions p {
+  max-width: 340px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .portable-import-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .cloud-migration-body {

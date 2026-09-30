@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20260930-cloud-migration-prep" />
+    <link rel="stylesheet" href="src/styles.css?v=20260930-portable-controls" />
   </head>
   <body class="entry-choice-pending history-disabled">
     <main class="workspace">
@@ -73,8 +73,12 @@
             <button type="button" data-app-mode="article">长文</button>
           </div>
           <div class="brand-actions">
-            <button class="icon-button" id="newProjectBtn" type="button" title="新建图文" aria-label="新建图文">
+            <button class="secondary-button new-project-button" id="newProjectBtn" type="button" title="新建图文" aria-label="新建图文">
               <i data-lucide="plus"></i>
+              <span>新建</span>
+            </button>
+            <button class="secondary-button portable-import-open" id="portableImportOpenBtn" type="button" aria-haspopup="dialog" aria-controls="portableImportModal">
+              <i data-lucide="folder-up"></i>导入原稿
             </button>
             <button class="secondary-button convert-mode-button" id="convertModeBtn" type="button">
               <i data-lucide="repeat-2"></i>
@@ -368,14 +372,23 @@
             <span id="statusText">自动分页已开启</span>
           </div>
           <div class="topbar-actions">
-            <button id="downloadZipBtn" class="primary-button" type="button">
-              <i data-lucide="download"></i>
-              批量下载
-            </button>
-            <button id="downloadArticleBtn" class="primary-button" type="button" hidden>
-              <i data-lucide="download"></i>
-              下载长图
-            </button>
+            <details id="downloadMenu" class="download-menu">
+              <summary class="primary-button" aria-label="下载当前笔记">
+                <i data-lucide="download"></i>下载<i data-lucide="chevron-down"></i>
+              </summary>
+              <div class="download-popover">
+                <strong>下载当前笔记</strong>
+                <button id="downloadZipBtn" type="button">
+                  下载发布图片<small>用于发布 · PNG / 实况包</small>
+                </button>
+                <button id="downloadArticleBtn" type="button" hidden>
+                  下载发布长图<small>用于发布 · PNG</small>
+                </button>
+                <button id="portableExportBtn" type="button">
+                  保存可编辑原稿<small>日期命名 ZIP · 保留 GIF 与视频原件</small>
+                </button>
+              </div>
+            </details>
             <button id="copyWechatBtn" class="secondary-button" type="button" hidden>
               <i data-lucide="copy"></i>
               复制公众号格式
@@ -436,6 +449,7 @@
           <i data-lucide="message-square-warning"></i>
           <span>问题反馈</span>
         </button>
+        <span class="account-maintenance-status" title="开放时间以实际通知为准">游客模式 · 预计 10 月 2 日检查迁移入口</span>
         <div id="accountDock" class="account-dock">
         <div id="accountMenu" class="account-menu hidden" role="dialog" aria-label="账号菜单">
           <div class="account-menu-summary">
@@ -465,15 +479,6 @@
             <button id="accountMenuSwitchBtn" class="secondary-button" type="button" hidden>
               <i data-lucide="arrow-left-right"></i>切换账号
             </button>
-            <button id="portableExportBtn" class="account-menu-text-button" type="button">
-              <i data-lucide="folder-down"></i>保存当前原稿
-            </button>
-            <button id="portableImportZipBtn" class="account-menu-text-button" type="button">
-              <i data-lucide="folder-up"></i>导入原稿 ZIP
-            </button>
-            <button id="portableImportFolderBtn" class="account-menu-text-button" type="button">
-              <i data-lucide="folder-open"></i>导入日期文件夹
-            </button>
             <button id="cloudMigrationBtn" class="account-menu-text-button" type="button" hidden>
               <i data-lucide="cloud-download"></i>迁移云端旧稿
             </button>
@@ -487,8 +492,6 @@
           </div>
           <p id="accountMenuHint" class="account-menu-hint">继续使用游客模式无需操作，点击菜单外即可关闭。</p>
         </div>
-        <input id="portableImportZipInput" type="file" accept=".zip,application/zip" hidden />
-        <input id="portableImportFolderInput" type="file" webkitdirectory multiple hidden />
         <button class="account-dock-button feature-anchor" id="accountBtn" type="button" title="账号与登录" aria-label="打开账号菜单" aria-controls="accountMenu" aria-expanded="false">
           <span class="account-status-dot" aria-hidden="true"></span>
           <i data-lucide="circle-user-round"></i>
@@ -616,7 +619,7 @@
         <aside class="account-value-pane">
           <span class="account-value-brand">写了就发</span>
           <h3 id="accountModalTitle">登录后，<br />继续上次的创作</h3>
-          <p class="account-maintenance-message">现在可以直接以游客身份排版。关闭前请从右下角保存原稿，日后可以重新导入；云端旧稿待服务恢复后迁移。</p>
+          <p class="account-maintenance-message">现在可以直接以游客身份排版。关闭前请从右侧下载菜单保存可编辑原稿，日后可以重新导入；云端旧稿待服务恢复后迁移。</p>
           <div class="account-benefits" aria-label="登录后可用功能">
             <div class="account-benefit-row">
               <span class="account-benefit-icon"><i data-lucide="user-round"></i></span>
@@ -732,6 +735,37 @@
       </div>
     </div>
 
+    <section id="portableImportModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="portableImportTitle">
+      <div class="modal-card portable-import-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="portableImportTitle">导入原稿</h3>
+            <p>打开之前保存的可编辑笔记</p>
+          </div>
+          <button id="portableImportCloseBtn" class="icon-button ghost" type="button" aria-label="关闭导入原稿"><i data-lucide="x"></i></button>
+        </div>
+        <div class="portable-import-body">
+          <div id="portableImportDropzone" class="portable-import-dropzone">
+            <i data-lucide="file-archive"></i>
+            <strong>拖入原稿 ZIP 或日期文件夹</strong>
+            <button id="portableImportZipBtn" class="primary-button" type="button">选择原稿 ZIP</button>
+            <button id="portableImportFolderBtn" class="portable-import-folder" type="button">选择已解压的日期文件夹</button>
+          </div>
+          <input id="portableImportZipInput" type="file" accept=".zip,application/zip" hidden />
+          <input id="portableImportFolderInput" type="file" webkitdirectory multiple hidden />
+          <p id="portableImportStatus" class="portable-import-status" role="status">请选择一篇原稿。</p>
+          <div id="portableImportPreview" class="portable-import-preview" hidden>
+            <strong id="portableImportName"></strong>
+            <span id="portableImportDetails"></span>
+          </div>
+          <div class="portable-import-actions">
+            <p id="portableImportWarning">导入会替换当前游客稿；未保存的内容请先下载原稿。</p>
+            <button id="portableImportConfirmBtn" class="primary-button" type="button" disabled>打开并继续编辑</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="cloudMigrationModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cloudMigrationTitle">
       <div class="modal-card cloud-migration-card">
         <div class="modal-head">
@@ -747,7 +781,7 @@
             <button id="cloudMigrationRefreshBtn" class="secondary-button" type="button">刷新清单</button>
           </div>
           <div id="cloudMigrationList" class="cloud-migration-list"></div>
-          <p class="cloud-migration-footnote">保存后请检查下载目录，并用右下角「导入原稿 ZIP」试着打开。创建时间无法确认的稿件会明确标为未知。</p>
+          <p class="cloud-migration-footnote">保存后请检查下载目录，并用左上角「导入原稿」试着打开。创建时间无法确认的稿件会明确标为未知。</p>
         </div>
       </div>
     </section>
@@ -1278,6 +1312,6 @@
         document.write('<script src="src/supabase.js?v=20260930-google-legacy-auth"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20260930-google-legacy-auth"></script>
+    <script src="src/app.js?v=20260930-portable-controls"></script>
   </body>
 </html>
