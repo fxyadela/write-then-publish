@@ -107,6 +107,7 @@ const els = {
   historyToggle: $("#historyToggleBtn"),
   historyClose: $("#historyCloseBtn"),
   newProject: $("#newProjectBtn"),
+  portableImportOpen: $("#portableImportOpenBtn"),
   projectHistory: $("#projectHistory"),
   historyFilterButtons: document.querySelectorAll("[data-history-filter]"),
   panelResizers: document.querySelectorAll("[data-panel-resize]"),
@@ -126,6 +127,15 @@ const els = {
   accountMenuSignOut: $("#accountMenuSignOutBtn"),
   accountMenuWhatsNew: $("#accountMenuWhatsNewBtn"),
   portableExport: $("#portableExportBtn"),
+  portableImportModal: $("#portableImportModal"),
+  portableImportClose: $("#portableImportCloseBtn"),
+  portableImportDropzone: $("#portableImportDropzone"),
+  portableImportStatus: $("#portableImportStatus"),
+  portableImportPreview: $("#portableImportPreview"),
+  portableImportName: $("#portableImportName"),
+  portableImportDetails: $("#portableImportDetails"),
+  portableImportWarning: $("#portableImportWarning"),
+  portableImportConfirm: $("#portableImportConfirmBtn"),
   portableImportZip: $("#portableImportZipBtn"),
   portableImportFolder: $("#portableImportFolderBtn"),
   portableImportZipInput: $("#portableImportZipInput"),
@@ -195,6 +205,7 @@ const els = {
   feedbackSubmit: $("#feedbackSubmitBtn"),
   downloadZip: $("#downloadZipBtn"),
   downloadArticle: $("#downloadArticleBtn"),
+  downloadMenu: $("#downloadMenu"),
   copyWechat: $("#copyWechatBtn"),
   syncWechat: $("#syncWechatBtn"),
   articleSettings: $("#articleSettings"),
@@ -514,6 +525,10 @@ let feedbackSending = false;
 let feedbackAbortController = null;
 let feedbackSubmissionAccepted = false;
 let feedbackCurrentId = "";
+let portableImportCandidate = null;
+let portableImportSelectionId = 0;
+let portableImportReturnFocus = null;
+let portableImportApplying = false;
 const livePhotoState = {
   file: null,
   objectUrl: "",
@@ -1246,7 +1261,7 @@ function loadProjectStoreForScope(scope) {
 
 // 云端超出免费额度时 Supabase 直接返回一段英文的 402 说明，用户看不懂也无从下手。
 // 所有账号相关提示都经过 setAccountNotice，在这里统一换成中文并给出游客入口。
-const CLOUD_RESTRICTED_NOTICE = "登录和注册暂不可用。预计 10 月 2 日检查迁移入口，开放时间以实际通知为准。游客草稿仅留在当前标签页；关闭前请从右下角保存原稿，日后可重新导入。";
+const CLOUD_RESTRICTED_NOTICE = "登录和注册暂不可用。预计 10 月 2 日检查迁移入口，开放时间以实际通知为准。游客草稿仅留在当前标签页；关闭前请从右侧下载菜单保存可编辑原稿，日后可重新导入。";
 
 function isCloudRestrictedMessage(message) {
   const text = String(message || "");
@@ -1847,20 +1862,20 @@ function feedbackModalIsOpen() {
   return Boolean(els.feedbackModal && !els.feedbackModal.classList.contains("hidden"));
 }
 
-function setFeedbackBackgroundInert(inert) {
+function setDialogBackgroundInert(inert) {
   [els.workspace, document.querySelector(".site-footer")].filter(Boolean).forEach((element) => {
     element.inert = inert;
   });
 }
 
-function trapFeedbackFocus(event) {
-  if (!feedbackModalIsOpen() || event.key !== "Tab") return false;
-  const focusable = Array.from(els.feedbackModal.querySelectorAll(
+function trapModalFocus(event, modal) {
+  if (modal?.classList.contains("hidden") || event.key !== "Tab") return false;
+  const focusable = Array.from(modal.querySelectorAll(
     'button:not([disabled]), input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
   )).filter((element) => element.getClientRects().length > 0);
   if (!focusable.length) {
     event.preventDefault();
-    els.feedbackModal.focus();
+    modal.focus();
     return true;
   }
   const first = focusable[0];
@@ -1879,7 +1894,7 @@ function openFeedbackModal() {
   if (LOCAL_DEPLOYMENT_MODE || !els.feedbackModal) return;
   closeAccountMenu();
   feedbackReturnFocus = document.activeElement;
-  setFeedbackBackgroundInert(true);
+  setDialogBackgroundInert(true);
   els.feedbackModal.classList.remove("hidden");
   updateFeedbackMessageCount();
   requestAnimationFrame(() => els.feedbackMessage?.focus());
@@ -1889,7 +1904,7 @@ function closeFeedbackModal() {
   if (!els.feedbackModal) return;
   if (feedbackSending) feedbackAbortController?.abort();
   els.feedbackModal.classList.add("hidden");
-  setFeedbackBackgroundInert(false);
+  setDialogBackgroundInert(false);
   els.feedbackUploadDropzone?.classList.remove("is-dragging");
   const returnFocus = feedbackReturnFocus;
   feedbackReturnFocus = null;
@@ -3283,7 +3298,7 @@ async function deleteProject(projectId) {
 
 async function createNewProject() {
   if (ACCOUNT_MAINTENANCE && activeStorageScope === "guest" && !isBuiltInProjectId(state.currentProjectId)
-    && !window.confirm("游客模式没有历史入口。新建后，当前稿将无法从页面找回；请先从右下角保存当前原稿。确定新建吗？")) return;
+    && !window.confirm("游客模式没有历史入口。新建后，当前稿将无法从页面找回；请先从右侧下载菜单保存可编辑原稿。确定新建吗？")) return;
   saveState();
   const project = createProject(blankFormState());
   state.projects = [project, ...state.projects.filter((item) => item.id !== project.id)].slice(0, MAX_PROJECTS);
@@ -5040,6 +5055,7 @@ async function portableVideoBlob(image, id) {
 
 async function exportPortableProject(selectedProject = null) {
   closeAccountMenu();
+  if (els.downloadMenu) els.downloadMenu.open = false;
   if (!selectedProject) saveState();
   if (selectedProject && !cloudIsReady()) throw new Error("账号连接已断开，请重新登录后再迁移。");
   const migrationUserId = selectedProject ? cloudState.user.id : "";
@@ -5095,7 +5111,7 @@ async function exportPortableProject(selectedProject = null) {
   els.status.textContent = `已交给浏览器下载 ${folderName}.zip；请检查下载目录并保留原稿。`;
 }
 
-async function importPortableProject(read, paths) {
+async function inspectPortableProject(read, paths) {
   const manifest = JSON.parse(await (await read("manifest.json")).text());
   if (manifest?.format !== "write-then-publish" || manifest.version !== 1 || !Array.isArray(manifest.media)) {
     throw new Error("这不是受支持的写了就发原稿文件夹。");
@@ -5125,8 +5141,14 @@ async function importPortableProject(read, paths) {
       throw new Error(`实况原视频缺失：${image.videoName || id}`);
     }
   }
-  if (activeStorageScope === "guest" && !isBuiltInProjectId(state.currentProjectId)
-    && !window.confirm("导入会替换当前游客工作稿。请先保存当前原稿；确定继续吗？")) return;
+  for (const item of listed.values()) {
+    const file = await read(item.path);
+    if (file.size !== item.size) throw new Error(`素材大小不符：${item.path}`);
+  }
+  return { read, source, listed };
+}
+
+async function importPortableProject({ read, source, listed }) {
   if (activeStorageScope !== "guest" && state.projects.length >= MAX_PROJECTS) {
     throw new Error(`这台设备已有 ${MAX_PROJECTS} 篇稿件，请先备份并整理旧稿，再导入。`);
   }
@@ -5174,32 +5196,140 @@ async function importPortableProject(read, paths) {
   els.status.textContent = `已导入原稿：${imported.title}`;
 }
 
-async function importPortableZip(file) {
-  if (!window.JSZip || !file) return;
+async function inspectPortableZip(file) {
+  if (!window.JSZip || !file) throw new Error("ZIP 组件未加载，请刷新页面后重试。");
   if (file.size > 1024 * 1024 * 1024) throw new Error("ZIP 超过 1 GB，请改选解压后的日期文件夹导入。");
   const zip = await window.JSZip.loadAsync(file, { checkCRC32: true });
   const paths = Object.keys(zip.files).filter((path) => !zip.files[path].dir);
   const manifests = paths.filter((path) => /^(?:[^/]+\/)manifest\.json$/.test(path));
   if (manifests.length !== 1) throw new Error("请一次只导入一篇原稿的 ZIP。");
   const root = manifests[0].slice(0, -"manifest.json".length);
-  await importPortableProject(async (path) => {
+  return inspectPortableProject(async (path) => {
     const entry = zip.file(root + path);
     if (!entry) throw new Error(`文件缺失：${path}`);
     return entry.async("blob");
   }, paths.filter((path) => path.startsWith(root)).map((path) => path.slice(root.length)));
 }
 
-async function importPortableFolder(files) {
-  const selected = Array.from(files || []);
-  const manifests = selected.filter((file) => /(?:^|\/)manifest\.json$/.test(file.webkitRelativePath));
+async function inspectPortableFolder(files) {
+  const selected = Array.from(files || [], (entry) => entry.file ? entry : { file: entry, path: entry.webkitRelativePath });
+  const manifests = selected.filter((entry) => /(?:^|\/)manifest\.json$/.test(entry.path));
   if (manifests.length !== 1) throw new Error("请一次只选择一个日期文件夹。");
-  const root = manifests[0].webkitRelativePath.slice(0, -"manifest.json".length);
-  const entries = new Map(selected.map((file) => [file.webkitRelativePath.slice(root.length), file]));
-  await importPortableProject(async (path) => {
+  const root = manifests[0].path.slice(0, -"manifest.json".length);
+  const entries = new Map(selected.map((entry) => [entry.path.slice(root.length), entry.file]));
+  return inspectPortableProject(async (path) => {
     const file = entries.get(path);
     if (!file) throw new Error(`文件缺失：${path}`);
     return file;
-  }, selected.map((file) => file.webkitRelativePath.slice(root.length)));
+  }, selected.map((entry) => entry.path.slice(root.length)));
+}
+
+function setPortableImportStatus(message, error = false) {
+  els.portableImportStatus.textContent = message;
+  els.portableImportStatus.classList.toggle("is-error", error);
+}
+
+function openPortableImportModal() {
+  closeAccountMenu();
+  if (els.downloadMenu) els.downloadMenu.open = false;
+  portableImportReturnFocus = document.activeElement;
+  portableImportCandidate = null;
+  portableImportSelectionId += 1;
+  els.portableImportPreview.hidden = true;
+  els.portableImportConfirm.disabled = true;
+  els.portableImportWarning.textContent = activeStorageScope === "guest"
+    ? "导入会替换当前游客稿；未保存的内容请先下载原稿。"
+    : "导入后会新增一篇稿件，不会覆盖当前稿。";
+  setPortableImportStatus("请选择一篇原稿。");
+  els.portableImportModal.classList.remove("hidden");
+  setDialogBackgroundInert(true);
+  requestAnimationFrame(() => els.portableImportZip.focus());
+}
+
+function closePortableImportModal() {
+  if (portableImportApplying) return;
+  portableImportSelectionId += 1;
+  portableImportCandidate = null;
+  els.portableImportModal.classList.add("hidden");
+  els.portableImportDropzone.classList.remove("is-dragging");
+  setDialogBackgroundInert(false);
+  const returnFocus = portableImportReturnFocus;
+  portableImportReturnFocus = null;
+  if (returnFocus instanceof HTMLElement) requestAnimationFrame(() => returnFocus.focus());
+}
+
+async function previewPortableImport(load, name) {
+  const selectionId = ++portableImportSelectionId;
+  portableImportCandidate = null;
+  els.portableImportPreview.hidden = true;
+  els.portableImportConfirm.disabled = true;
+  setPortableImportStatus("正在检查原稿和素材…");
+  try {
+    const candidate = await load();
+    if (selectionId !== portableImportSelectionId) return;
+    portableImportCandidate = candidate;
+    const images = Object.values(candidate.source.data.images);
+    const gifs = Array.from(candidate.listed.values()).filter((item) => item.type === "image/gif" || /\.gif$/i.test(item.path)).length;
+    const videos = images.filter((image) => image.kind === "live").length;
+    els.portableImportName.textContent = name || candidate.source.title || "未命名原稿";
+    els.portableImportDetails.textContent = `正文与编辑数据 ✓ · 图片 ${images.length} · GIF 原文件 ${gifs} · 实况原视频 ${videos}`;
+    els.portableImportPreview.hidden = false;
+    els.portableImportConfirm.disabled = false;
+    setPortableImportStatus("文件结构和素材大小已检查，可以打开编辑。");
+  } catch (error) {
+    if (selectionId !== portableImportSelectionId) return;
+    setPortableImportStatus(error?.message || "原稿检查失败。", true);
+  }
+}
+
+async function filesFromDroppedEntry(entry, prefix = "", files = []) {
+  if (files.length > 510) throw new Error("原稿文件数量异常，请改用日期文件夹选择器。");
+  const path = `${prefix}${entry.name}`;
+  if (entry.isFile) {
+    const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+    files.push({ path, file });
+    return files;
+  }
+  const reader = entry.createReader();
+  for (;;) {
+    const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+    if (!batch.length) break;
+    for (const child of batch) await filesFromDroppedEntry(child, `${path}/`, files);
+  }
+  return files;
+}
+
+async function handlePortableImportDrop(event) {
+  event.preventDefault();
+  els.portableImportDropzone.classList.remove("is-dragging");
+  const entries = Array.from(event.dataTransfer?.items || [], (item) => item.webkitGetAsEntry?.()).filter(Boolean);
+  if (entries.length === 1 && entries[0].isDirectory) {
+    await previewPortableImport(async () => inspectPortableFolder(await filesFromDroppedEntry(entries[0])), entries[0].name);
+    return;
+  }
+  const files = Array.from(event.dataTransfer?.files || []);
+  if (files.length === 1 && /\.zip$/i.test(files[0].name)) {
+    await previewPortableImport(() => inspectPortableZip(files[0]), files[0].name);
+    return;
+  }
+  setPortableImportStatus("请一次拖入一篇原稿的 ZIP 或日期文件夹。", true);
+}
+
+async function confirmPortableImport() {
+  if (!portableImportCandidate || portableImportApplying) return;
+  portableImportApplying = true;
+  els.portableImportConfirm.disabled = true;
+  setPortableImportStatus("正在导入原稿，请不要关闭页面…");
+  try {
+    await importPortableProject(portableImportCandidate);
+    portableImportApplying = false;
+    closePortableImportModal();
+  } catch (error) {
+    setPortableImportStatus(error?.message || "导入失败，当前稿未替换。", true);
+    els.portableImportConfirm.disabled = false;
+  } finally {
+    portableImportApplying = false;
+  }
 }
 
 async function runPortableAction(button, action) {
@@ -10541,7 +10671,7 @@ function syncExportBusyState() {
   const handoffBusy = exportProgressState.handoff.active;
   const guideLocked = isBuiltInProjectId(state.currentProjectId);
   document.body.classList.toggle("export-busy", mainBusy || handoffBusy);
-  [els.downloadZip, els.downloadArticle].filter(Boolean).forEach((button) => {
+  [els.downloadZip, els.downloadArticle, els.portableExport].filter(Boolean).forEach((button) => {
     button.disabled = mainBusy || guideLocked;
     button.setAttribute("aria-disabled", button.disabled ? "true" : "false");
     button.title = guideLocked ? GUIDE_DOWNLOAD_MESSAGE : "";
@@ -12337,25 +12467,31 @@ function bindEvents() {
     startWhatsNewTour();
   });
   els.portableExport?.addEventListener("click", () => void runPortableAction(els.portableExport, exportPortableProject));
-  els.portableImportZip?.addEventListener("click", () => {
-    closeAccountMenu();
-    els.portableImportZipInput.click();
+  els.portableImportOpen?.addEventListener("click", openPortableImportModal);
+  els.portableImportClose?.addEventListener("click", closePortableImportModal);
+  els.portableImportModal?.addEventListener("click", (event) => {
+    if (event.target === els.portableImportModal) closePortableImportModal();
   });
+  els.portableImportZip?.addEventListener("click", () => els.portableImportZipInput.click());
   els.portableImportZipInput?.addEventListener("change", (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) void runPortableAction(els.portableImportZip, () => importPortableZip(file));
+    if (file) void previewPortableImport(() => inspectPortableZip(file), file.name);
   });
   if (!("webkitdirectory" in els.portableImportFolderInput)) els.portableImportFolder.hidden = true;
-  els.portableImportFolder?.addEventListener("click", () => {
-    closeAccountMenu();
-    els.portableImportFolderInput.click();
-  });
+  els.portableImportFolder?.addEventListener("click", () => els.portableImportFolderInput.click());
   els.portableImportFolderInput?.addEventListener("change", (event) => {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
-    if (files.length) void runPortableAction(els.portableImportFolder, () => importPortableFolder(files));
+    if (files.length) void previewPortableImport(() => inspectPortableFolder(files), files[0].webkitRelativePath.split("/")[0]);
   });
+  els.portableImportDropzone?.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    els.portableImportDropzone.classList.add("is-dragging");
+  });
+  els.portableImportDropzone?.addEventListener("dragleave", () => els.portableImportDropzone.classList.remove("is-dragging"));
+  els.portableImportDropzone?.addEventListener("drop", (event) => void handlePortableImportDrop(event));
+  els.portableImportConfirm?.addEventListener("click", () => void confirmPortableImport());
   els.cloudMigration?.addEventListener("click", openCloudMigrationModal);
   els.cloudMigrationClose?.addEventListener("click", closeCloudMigrationModal);
   els.cloudMigrationRefresh?.addEventListener("click", () => void refreshCloudMigrationList());
@@ -12410,6 +12546,7 @@ function bindEvents() {
   els.accountImportLocal.addEventListener("click", importLocalProjectsToAccount);
   document.addEventListener("pointerdown", (event) => {
     if (accountMenuIsOpen() && !els.accountDock?.contains(event.target)) closeAccountMenu();
+    if (els.downloadMenu?.open && !els.downloadMenu.contains(event.target)) els.downloadMenu.open = false;
   });
   window.addEventListener("pageshow", (event) => {
     // 从 Google 页面点返回时，Safari/Chrome 可能恢复原页而不重新执行初始化。
@@ -12461,7 +12598,12 @@ function bindEvents() {
   window.addEventListener("keydown", (event) => {
     if (feedbackModalIsOpen()) {
       if (event.key === "Escape") closeFeedbackModal();
-      else if (event.key === "Tab") trapFeedbackFocus(event);
+      else if (event.key === "Tab") trapModalFocus(event, els.feedbackModal);
+      return;
+    }
+    if (!els.portableImportModal.classList.contains("hidden")) {
+      if (event.key === "Escape") closePortableImportModal();
+      else if (event.key === "Tab") trapModalFocus(event, els.portableImportModal);
       return;
     }
     if (event.key === "Escape" && !els.cropModal.classList.contains("hidden")) closeCropper();
@@ -12534,8 +12676,14 @@ function bindEvents() {
   els.convertMode.addEventListener("click", convertCurrentMode);
   els.headerModeToggle.addEventListener("click", toggleHeaderMode);
   els.themeToggle.addEventListener("click", toggleUiTheme);
-  els.downloadZip.addEventListener("click", downloadAll);
-  els.downloadArticle.addEventListener("click", downloadArticleImage);
+  els.downloadZip.addEventListener("click", () => {
+    els.downloadMenu.open = false;
+    void downloadAll();
+  });
+  els.downloadArticle.addEventListener("click", () => {
+    els.downloadMenu.open = false;
+    void downloadArticleImage();
+  });
   els.copyWechat.addEventListener("click", copyArticleToWechat);
   els.syncWechat.addEventListener("click", openWechatModal);
 }
