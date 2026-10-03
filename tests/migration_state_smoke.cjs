@@ -68,13 +68,16 @@ vm.runInContext([
   assert.match(els.migrationTestOpen.innerHTML, /17 篇/);
 
   context.recordMigrationReceipt(projects[0], "2026-10-03_旧稿1");
+  context.recordMigrationFailure(projects[1], "图片 sample 读取失败");
   context.updateMigrationTestUi();
   assert.match(els.migrationTestOpen.innerHTML, /已保存 1\/17 篇/);
+  assert.equal(context.incompleteMigrationCount(), 1);
   assert.equal(context.loadMigrationReceipts("test-user")[projects[0].id].folderName, "2026-10-03_旧稿1");
 
   listProjects = async () => projects;
   await context.refreshCloudMigrationList();
   assert.match(els.migrationTestOpen.innerHTML, /已保存 1\/17 篇/, "refresh keeps saved state");
+  assert.equal(context.incompleteMigrationCount(), 1, "refresh keeps failed state");
 
   listProjects = async () => { throw new Error("network error"); };
   await context.refreshCloudMigrationList();
@@ -88,5 +91,5 @@ vm.runInContext([
   context.updateMigrationTestUi();
   assert.equal(cloudState.legacyProjectsStatus, "ready", "profile failure does not hide a successful project list");
   assert.match(els.migrationTestOpen.innerHTML, /已保存 1\/17 篇/);
-  console.log("OK: loading/error never show false zero; successful reads and save receipts survive refresh");
+  console.log("OK: loading/error never show false zero; saved and incomplete states survive refresh");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

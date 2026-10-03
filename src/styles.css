@@ -3580,6 +3580,10 @@ body.export-busy {
   color: #15803d;
 }
 
+.cloud-migration-row.is-incomplete .cloud-migration-result {
+  color: #b91c1c;
+}
+
 .cloud-migration-row small,
 .cloud-migration-footnote {
   margin-top: 5px;

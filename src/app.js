@@ -1740,8 +1740,9 @@ function updateMigrationTestUi() {
   els.migrationTestControls.hidden = false;
   const count = cloudState.legacyProjects.length;
   const saved = savedMigrationCount();
+  const incomplete = incompleteMigrationCount();
   const detail = cloudState.legacyProjectsStatus === "ready"
-    ? (saved ? `已保存 ${saved}/${count} 篇` : `${count} 篇`)
+    ? (saved ? `已保存 ${saved}/${count} 篇` : incomplete ? `未完成 ${incomplete}/${count} 篇` : `${count} 篇`)
     : cloudState.legacyProjectsStatus === "error" ? "读取失败" : "读取中";
   els.migrationTestOpen.innerHTML = signedIn
     ? `<i data-lucide="folder-down"></i>迁移旧稿 <small>${detail}</small>`
@@ -1769,21 +1770,44 @@ function migrationReceiptFor(project) {
 }
 
 function savedMigrationCount() {
-  return cloudState.legacyProjects.filter((project) => migrationReceiptFor(project)).length;
+  return cloudState.legacyProjects.filter((project) => {
+    const receipt = migrationReceiptFor(project);
+    return receipt && receipt.state !== "incomplete";
+  }).length;
 }
 
-function recordMigrationReceipt(project, folderName) {
-  cloudState.migrationReceipts[project.id] = {
-    updatedAt: project.updatedAt,
-    folderName,
-    savedAt: new Date().toISOString(),
-  };
+function incompleteMigrationCount() {
+  return cloudState.legacyProjects.filter((project) => migrationReceiptFor(project)?.state === "incomplete").length;
+}
+
+function persistMigrationReceipts() {
   try {
     localStorage.setItem(migrationReceiptsStorageKey(cloudState.user?.id), JSON.stringify(cloudState.migrationReceipts));
     return true;
   } catch {
     return false;
   }
+}
+
+function recordMigrationReceipt(project, folderName) {
+  cloudState.migrationReceipts[project.id] = {
+    state: "saved",
+    updatedAt: project.updatedAt,
+    folderName,
+    savedAt: new Date().toISOString(),
+  };
+  return persistMigrationReceipts();
+}
+
+function recordMigrationFailure(project, message) {
+  if (migrationReceiptFor(project)?.state !== "incomplete" && migrationReceiptFor(project)) return true;
+  cloudState.migrationReceipts[project.id] = {
+    state: "incomplete",
+    updatedAt: project.updatedAt,
+    error: String(message || "保存未完成").slice(0, 300),
+    attemptedAt: new Date().toISOString(),
+  };
+  return persistMigrationReceipts();
 }
 
 function openAccountModal() {
@@ -5672,9 +5696,15 @@ function renderCloudMigrationList() {
     row.dataset.cloudProjectId = project.id;
     const result = document.createElement("span");
     result.className = "cloud-migration-result";
-    const saved = migrationReceiptFor(project);
-    result.textContent = saved ? "已保存 · 待抽查" : "未确认";
+    const receipt = migrationReceiptFor(project);
+    const incomplete = receipt?.state === "incomplete";
+    const saved = receipt && !incomplete;
+    result.textContent = incomplete
+      ? (/object not found/i.test(receipt.error || "") ? "未完成 · 素材缺失" : "未完成")
+      : saved ? "已保存 · 待抽查" : "未确认";
+    if (incomplete) result.title = receipt.error || "请重新迁移这一篇";
     row.classList.toggle("is-saved", Boolean(saved));
+    row.classList.toggle("is-incomplete", incomplete);
     row.append(copy, result);
     if (typeof window.showDirectoryPicker !== "function") {
       const button = document.createElement("button");
@@ -5701,13 +5731,15 @@ function updateCloudMigrationStatus() {
   }
   const total = cloudState.legacyProjects.length;
   const saved = savedMigrationCount();
+  const incomplete = incompleteMigrationCount();
+  const unknown = total - saved - incomplete;
   const unsupported = typeof window.showDirectoryPicker !== "function";
   if (!total) {
     els.cloudMigrationStatus.textContent = "已读取清单：这个账号没有查到云端旧稿。";
   } else if (saved === total) {
     els.cloudMigrationStatus.textContent = `云端仍有 ${total} 篇；这台浏览器记录已保存 ${saved} 篇。请抽查文件夹并导入一篇，云端原件仍保留。`;
-  } else if (saved) {
-    els.cloudMigrationStatus.textContent = `云端 ${total} 篇；这台浏览器记录已保存 ${saved} 篇，其余 ${total - saved} 篇状态未确认。`;
+  } else if (saved || incomplete) {
+    els.cloudMigrationStatus.textContent = `云端 ${total} 篇；已保存 ${saved} 篇${incomplete ? `，未完成 ${incomplete} 篇` : ""}${unknown ? `，另有 ${unknown} 篇未确认` : ""}。云端原件仍保留。`;
   } else {
     els.cloudMigrationStatus.textContent = `云端 ${total} 篇；这台浏览器还没有保存记录。以前下载的文件夹可直接导入检查。`;
   }
@@ -5781,6 +5813,23 @@ async function inspectPortableDirectory(directory) {
   return inspectPortableProject(read, ["manifest.json", "project.json", "content.md", ...manifest.media.map((item) => item.path)]);
 }
 
+async function migrationFailuresFromSummary(files) {
+  const entries = Array.from(files || [], (entry) => entry.file ? entry : { file: entry, path: entry.webkitRelativePath });
+  const summary = entries.find((entry) => /^[^/]+\/迁移说明\.txt$/.test(entry.path));
+  if (!summary) return [];
+  const report = await summary.file.text();
+  const failureSection = report.split(/\r?\n未完成：\r?\n/)[1];
+  if (!failureSection) return [];
+  const projects = [...cloudState.legacyProjects].sort((a, b) => b.title.length - a.title.length);
+  const failures = [];
+  for (const line of failureSection.split(/\r?\n/)) {
+    const project = projects.find((item) => line.startsWith(`${item.title}：`)
+      && projects.filter((other) => other.title === item.title).length === 1);
+    if (project) failures.push({ project, reason: line.slice(project.title.length + 1) });
+  }
+  return failures;
+}
+
 async function verifySavedMigrationFolder(files) {
   if (cloudState.migrationBusy || !cloudIsReady() || cloudState.legacyProjectsStatus !== "ready") return;
   const userId = cloudState.user.id;
@@ -5801,11 +5850,14 @@ async function verifySavedMigrationFolder(files) {
       if (!recordMigrationReceipt(project, option.name)) unremembered += 1;
       matched += 1;
     }
+    const failures = await migrationFailuresFromSummary(files);
+    for (const { project, reason } of failures) recordMigrationFailure(project, reason);
     renderCloudMigrationList();
     updateMigrationAllButton();
     updateMigrationTestUi();
-    els.cloudMigrationStatus.textContent = matched
-      ? `已核对 ${matched} 篇完整原稿；当前共记录已保存 ${savedMigrationCount()}/${cloudState.legacyProjects.length} 篇。请再从左上角导入一篇试用。${unremembered ? "浏览器未能记住部分状态，请保留文件夹。" : ""}`
+    const incomplete = incompleteMigrationCount();
+    els.cloudMigrationStatus.textContent = matched || incomplete
+      ? `已核对 ${matched} 篇完整原稿${incomplete ? `，另有 ${incomplete} 篇未完成` : ""}；当前共记录已保存 ${savedMigrationCount()}/${cloudState.legacyProjects.length} 篇。请再从左上角导入一篇试用。${unremembered ? "浏览器未能记住部分状态，请保留文件夹。" : ""}`
       : "所选文件夹与当前账号的云端旧稿不匹配，保存状态没有更改。";
   } catch (error) {
     els.cloudMigrationStatus.textContent = `核对未完成：${error?.message || "请重新选择迁移文件夹。"}`;
@@ -5879,8 +5931,12 @@ async function migrateAllCloudProjects() {
       } catch (error) {
         processed += projectUnits - writtenUnits;
         attempted += 1;
-        failed.push(`${project.title || folderName}：${error?.message || "保存失败"}`);
-        if (result) result.textContent = "未完成";
+        const reason = error?.message || "保存失败";
+        failed.push(`${project.title || folderName}：${reason}`);
+        recordMigrationFailure(project, reason);
+        const earlierSave = migrationReceiptFor(project)?.state !== "incomplete" && migrationReceiptFor(project);
+        if (result) result.textContent = earlierSave ? "本次未完成 · 上次已保存" : "未完成";
+        row?.classList?.toggle("is-incomplete", !earlierSave);
       }
       updateMigrationProgress(processed, totalUnits, currentLabel,
         `已处理 ${attempted}/${projects.length} 篇 · 成功 ${completed} 篇 · 未完成 ${failed.length} 篇`);
