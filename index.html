@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20261003-migration-progress" />
+    <link rel="stylesheet" href="src/styles.css?v=20261003-migration-state" />
   </head>
   <body class="entry-choice-pending history-disabled">
     <main class="workspace">
@@ -529,6 +529,7 @@
           <strong>原稿不再上传云端</strong>
           <p>新稿暂存在当前标签页。请保存「可编辑原稿」；以后点左上角「导入原稿」，即可继续修改。</p>
           <p>旧账号可从右下角迁移旧稿并保存原素材；目前仅测试账号开放。</p>
+          <p>建议在 10 月 10 日前完成迁移。其他旧账号的开放时间将另行通知。</p>
         </div>
         <div class="maintenance-welcome-main">
           <span class="entry-choice-brand">写了就发</span>
@@ -771,14 +772,17 @@
         </div>
         <div class="portable-import-body">
           <div id="portableImportDropzone" class="portable-import-dropzone">
-            <i data-lucide="file-archive"></i>
-            <strong>拖入原稿 ZIP 或日期文件夹</strong>
-            <button id="portableImportZipBtn" class="primary-button" type="button">选择原稿 ZIP</button>
-            <button id="portableImportFolderBtn" class="portable-import-folder" type="button">选择已解压的日期文件夹</button>
+            <i data-lucide="folder-open"></i>
+            <strong>直接选择迁移文件夹，无需压缩</strong>
+            <button id="portableImportFolderBtn" class="primary-button" type="button">选择迁移文件夹</button>
+            <button id="portableImportZipBtn" class="portable-import-folder" type="button">或选择单篇原稿 ZIP</button>
           </div>
           <input id="portableImportZipInput" type="file" accept=".zip,application/zip" hidden />
           <input id="portableImportFolderInput" type="file" webkitdirectory multiple hidden />
           <p id="portableImportStatus" class="portable-import-status" role="status">请选择一篇原稿。</p>
+          <label id="portableImportChoice" class="portable-import-choice" hidden>选择要继续编辑的原稿
+            <select id="portableImportChoiceSelect"></select>
+          </label>
           <div id="portableImportPreview" class="portable-import-preview" hidden>
             <strong id="portableImportName"></strong>
             <span id="portableImportDetails"></span>
@@ -796,7 +800,7 @@
         <button id="migrationTestCloseBtn" class="icon-button ghost migration-test-close" type="button" aria-label="关闭登录窗口"><i data-lucide="x"></i></button>
         <span class="migration-test-kicker">旧稿迁移测试</span>
         <h3 id="migrationTestTitle">登录后，保存以前的原稿</h3>
-        <p>目前仅开放 heyfxyadela@gmail.com 测试。旧稿只供读取；登录后可一次保存全部原稿与原素材，之后从左上角「导入原稿」继续编辑。</p>
+        <p>目前仅开放 heyfxyadela@gmail.com 测试。建议在 10 月 10 日前完成迁移；其他账号开放时间另行通知。登录后可一次保存全部原稿与原素材，再从左上角「导入原稿」继续编辑。</p>
         <a id="migrationPilotLink" class="primary-button migration-pilot-link" href="?migration-test=1" hidden>测试账号进入迁移<i data-lucide="arrow-right"></i></a>
         <p id="migrationTestNotice" class="migration-test-notice" role="status" hidden></p>
         <button id="migrationTestGoogleBtn" class="primary-button migration-test-google" type="button" hidden>用 Google 登录旧账号</button>
@@ -814,12 +818,14 @@
         <div class="modal-head">
           <div>
             <h3 id="cloudMigrationTitle">迁移云端旧稿</h3>
-            <p>一次保存全部旧稿和原素材到电脑文件夹。迁移不会删除云端原件。</p>
+            <p>一次保存全部旧稿和原素材到电脑文件夹。建议在 10 月 10 日前完成；云端原件不会自动删除。</p>
           </div>
           <button id="cloudMigrationCloseBtn" class="icon-button ghost" type="button" aria-label="关闭迁移面板"><i data-lucide="x"></i></button>
         </div>
         <div class="cloud-migration-body">
-          <button id="cloudMigrationAllBtn" class="primary-button cloud-migration-all" type="button" disabled><i data-lucide="folder-down"></i>一键迁移全部旧稿</button>
+          <button id="cloudMigrationAllBtn" class="primary-button cloud-migration-all" type="button" disabled><i data-lucide="folder-down"></i><span id="cloudMigrationAllLabel">一键迁移全部旧稿</span></button>
+          <button id="cloudMigrationVerifyBtn" class="cloud-migration-verify" type="button">已经迁移过？核对已保存文件夹</button>
+          <input id="cloudMigrationVerifyInput" type="file" webkitdirectory multiple hidden />
           <p class="cloud-migration-instruction">选择电脑上的保存位置后，会按创建日期建立原稿文件夹。请保持页面打开直到完成。</p>
           <div id="cloudMigrationProgress" class="cloud-migration-progress" hidden>
             <div class="cloud-migration-progress-head">
@@ -837,7 +843,7 @@
             <button id="cloudMigrationRefreshBtn" class="secondary-button" type="button">刷新清单</button>
           </div>
           <div id="cloudMigrationList" class="cloud-migration-list"></div>
-          <p class="cloud-migration-footnote">完成后请检查保存位置，选其中一个日期文件夹，用左上角「导入原稿」试着打开。动图和实况原视频会保留为原文件；创建时间无法确认时会标为未知。当前一键保存需使用支持文件夹选择的桌面浏览器。</p>
+          <p class="cloud-migration-footnote">完成后请检查保存位置。左上角「导入原稿」可直接选择整个迁移文件夹，再挑一篇继续编辑；无需压缩。动图和实况原视频会保留为原文件。当前一键保存需使用支持文件夹选择的桌面浏览器。</p>
         </div>
       </div>
     </section>
@@ -1368,6 +1374,6 @@
         document.write('<script src="src/supabase.js?v=20260930-google-legacy-auth"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20261003-migration-progress"></script>
+    <script src="src/app.js?v=20261003-migration-state"></script>
   </body>
 </html>

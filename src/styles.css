@@ -3344,6 +3344,30 @@ body.export-busy {
   color: #b91c1c;
 }
 
+.portable-import-choice {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portable-import-choice[hidden] {
+  display: none;
+}
+
+.portable-import-choice select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--control-text);
+  background: var(--control-bg);
+  font: inherit;
+}
+
 .portable-import-preview {
   display: grid;
   gap: 6px;
@@ -3402,6 +3426,23 @@ body.export-busy {
 .cloud-migration-all svg {
   width: 18px;
   height: 18px;
+}
+
+.cloud-migration-verify {
+  display: block;
+  margin: 8px auto 0;
+  border: 0;
+  color: var(--accent);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cloud-migration-verify:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .cloud-migration-instruction {
@@ -3533,6 +3574,10 @@ body.export-busy {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.cloud-migration-row.is-saved .cloud-migration-result {
+  color: #15803d;
 }
 
 .cloud-migration-row small,

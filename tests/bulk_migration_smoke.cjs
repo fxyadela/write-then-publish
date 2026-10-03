@@ -50,7 +50,8 @@ const rows = projects.map((project) => {
   return { dataset: { cloudProjectId: project.id }, querySelector: () => result, result };
 });
 const destination = new Directory();
-const cloudState = { user: { id: "test-user" }, legacyProjects: projects, migrationBusy: false };
+const cloudState = { user: { id: "test-user" }, legacyProjects: projects, legacyProjectsStatus: "ready", migrationBusy: false };
+const receipts = new Map();
 const percentages = [];
 const progressDetails = [];
 const progressPercent = {
@@ -81,6 +82,8 @@ const context = {
   portableCoverBlob: async () => { throw new Error("should fetch cloud original"); },
   portableVideoBlob: async () => { throw new Error("should fetch cloud original"); },
   setMigrationBusy: (busy) => { cloudState.migrationBusy = busy; },
+  recordMigrationReceipt: (project, folderName) => { receipts.set(project.id, folderName); return true; },
+  updateMigrationTestUi: () => {},
 };
 vm.createContext(context);
 vm.runInContext([
@@ -105,6 +108,7 @@ vm.runInContext([
   assert.equal(destination.directories.size, 1);
   const batch = [...destination.directories.values()][0];
   assert.equal(batch.directories.size, 2);
+  assert.equal(receipts.size, 2, "completed drafts receive persistent save records");
   assert.ok(batch.files.has("迁移说明.txt"));
   for (const folder of batch.directories.values()) {
     const media = folder.directories.get("media");
