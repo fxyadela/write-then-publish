@@ -1261,7 +1261,7 @@ function loadProjectStoreForScope(scope) {
 
 // 云端超出免费额度时 Supabase 直接返回一段英文的 402 说明，用户看不懂也无从下手。
 // 所有账号相关提示都经过 setAccountNotice，在这里统一换成中文并给出游客入口。
-const CLOUD_RESTRICTED_NOTICE = "登录和注册暂不可用。预计 10 月 2 日检查迁移入口，开放时间以实际通知为准。游客草稿仅留在当前标签页；关闭前请从右侧下载菜单保存可编辑原稿，日后可重新导入。";
+const CLOUD_RESTRICTED_NOTICE = "登录和注册暂不可用。云端旧稿迁移入口正在核验，开放时间以实际通知为准。游客草稿仅留在当前标签页；关闭前请从右侧下载菜单保存可编辑原稿，日后可重新导入。";
 
 function isCloudRestrictedMessage(message) {
   const text = String(message || "");
@@ -2569,11 +2569,11 @@ async function initializeCloudAccount() {
         await activateWorkspaceScope(scope);
         finishEntryChoice("account", { returning: true });
         els.accountSyncStatus.textContent = localCount
-          ? `这台设备有 ${localCount} 篇旧稿；云端旧稿待服务恢复后迁移`
-          : "这台设备暂无旧稿；云端旧稿待服务恢复后迁移";
+          ? `这台设备有 ${localCount} 篇旧稿；云端旧稿待入口核验后迁移`
+          : "这台设备暂无旧稿；云端旧稿待入口核验后迁移";
         els.status.textContent = localCount
           ? "账号维护中，正在使用这台设备上的旧稿"
-          : "账号维护中，云端旧稿待服务恢复后迁移";
+          : "账号维护中，云端旧稿待入口核验后迁移";
         setAccountNotice(CLOUD_RESTRICTED_NOTICE);
         return;
       }
