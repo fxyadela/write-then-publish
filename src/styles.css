@@ -3411,6 +3411,89 @@ body.export-busy {
   line-height: 1.6;
 }
 
+.cloud-migration-progress {
+  position: sticky;
+  top: -18px;
+  z-index: 2;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--active-border);
+  border-radius: 12px;
+  background: var(--popover-bg);
+  box-shadow: var(--shadow-soft);
+}
+
+.cloud-migration-progress-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.cloud-migration-progress-head strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-migration-progress-head span {
+  flex: none;
+  font-weight: 800;
+}
+
+.cloud-migration-progress-track {
+  position: relative;
+  overflow: hidden;
+  height: 9px;
+  margin: 12px 0 9px;
+  border-radius: 999px;
+  background: var(--soft);
+}
+
+.cloud-migration-progress-track > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--active-bg);
+  transition: width 180ms ease;
+}
+
+.cloud-migration-progress.is-running .cloud-migration-progress-track::after {
+  position: absolute;
+  inset: 0 auto 0 -35%;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--active-bg) 22%, transparent), transparent);
+  animation: cloud-migration-scan 1.8s linear infinite;
+  content: "";
+}
+
+@keyframes cloud-migration-scan {
+  to { left: 100%; }
+}
+
+.cloud-migration-progress p,
+.cloud-migration-progress small {
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.cloud-migration-progress small {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cloud-migration-progress.is-running .cloud-migration-progress-track::after { animation: none; }
+  .cloud-migration-progress-track > span { transition: none; }
+}
+
 .cloud-migration-toolbar,
 .cloud-migration-row {
   display: flex;

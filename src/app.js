@@ -163,6 +163,12 @@ const els = {
   cloudMigrationClose: $("#cloudMigrationCloseBtn"),
   cloudMigrationRefresh: $("#cloudMigrationRefreshBtn"),
   cloudMigrationAll: $("#cloudMigrationAllBtn"),
+  cloudMigrationProgress: $("#cloudMigrationProgress"),
+  cloudMigrationProgressLabel: $("#cloudMigrationProgressLabel"),
+  cloudMigrationProgressPercent: $("#cloudMigrationProgressPercent"),
+  cloudMigrationProgressTrack: $("#cloudMigrationProgressTrack"),
+  cloudMigrationProgressFill: $("#cloudMigrationProgressFill"),
+  cloudMigrationProgressDetail: $("#cloudMigrationProgressDetail"),
   cloudMigrationStatus: $("#cloudMigrationStatus"),
   cloudMigrationList: $("#cloudMigrationList"),
   migrationTestModal: $("#migrationTestModal"),
@@ -5219,7 +5225,14 @@ async function portableVideoBlob(image, id) {
   throw new Error(`实况原视频缺失：${image.videoName || image.name || id}`);
 }
 
-async function writePortableProject(project, writeFile, fromCloud = false) {
+function portableProjectMigrationUnits(project) {
+  return 1 + Object.values(project.data?.images || {}).reduce((count, image) => {
+    if (!image || typeof image !== "object") return count;
+    return count + (image.kind === "live" ? 2 : 1);
+  }, 0);
+}
+
+async function writePortableProject(project, writeFile, fromCloud = false, onProgress = null) {
   if (fromCloud && !cloudIsReady()) throw new Error("账号连接已断开，请重新登录后再迁移。");
   const migrationUserId = fromCloud ? cloudState.user.id : "";
   if (!project || isBuiltInProject(project)) throw new Error("请先新建并编辑自己的稿件，再保存原稿。");
@@ -5230,12 +5243,14 @@ async function writePortableProject(project, writeFile, fromCloud = false) {
   for (const [index, [id, image]] of Object.entries(project.data?.images || {}).entries()) {
     if (!image || typeof image !== "object") continue;
     if (fromCloud && cloudState.user?.id !== migrationUserId) throw new Error("账号已切换，请重新选择旧稿。");
+    onProgress?.({ type: "reading", label: `图片/GIF「${image.name || id}」` });
     const cover = fromCloud && image.storagePath
       ? await portableCloudBlob(image.storagePath, `图片/GIF ${image.name || id}`)
       : await portableCoverBlob(image);
     const stem = String(index + 1).padStart(3, "0");
     const coverPath = `media/${stem}.${portableMediaExtension(cover, image.name)}`;
     await writeFile(coverPath, cover);
+    onProgress?.({ type: "written", label: `图片/GIF「${image.name || id}」` });
     media.push({ path: coverPath, size: cover.size, type: cover.type || "application/octet-stream" });
     readablePaths.set(id, coverPath);
     const saved = copy.data.images[id];
@@ -5244,11 +5259,13 @@ async function writePortableProject(project, writeFile, fromCloud = false) {
     delete saved.storagePath;
     saved.portableSrcPath = coverPath;
     if (image.kind === "live") {
+      onProgress?.({ type: "reading", label: `实况原视频「${image.videoName || id}」` });
       const video = fromCloud && image.videoStoragePath
         ? await portableCloudBlob(image.videoStoragePath, `实况原视频 ${image.videoName || id}`)
         : await portableVideoBlob(image, id);
       const videoPath = `media/${stem}-video.${portableMediaExtension(video, image.videoName, true)}`;
       await writeFile(videoPath, video);
+      onProgress?.({ type: "written", label: `实况原视频「${image.videoName || id}」` });
       media.push({ path: videoPath, size: video.size, type: video.type || "application/octet-stream" });
       delete saved.videoStoragePath;
       delete saved.previewVideoSrc;
@@ -5262,8 +5279,10 @@ async function writePortableProject(project, writeFile, fromCloud = false) {
   await writeFile("content.md", markdown);
   await writeFile("project.json", JSON.stringify(copy));
   if (fromCloud && cloudState.user?.id !== migrationUserId) throw new Error("账号已切换，请重新选择旧稿。");
+  onProgress?.({ type: "reading", label: "原稿内容与清单" });
   // 清单最后写入；缺少清单的文件夹不会被识别成完整原稿。
   await writeFile("manifest.json", JSON.stringify({ format: "write-then-publish", version: 1, media }));
+  onProgress?.({ type: "written", label: "原稿内容与清单" });
 }
 
 async function exportPortableProject(selectedProject = null) {
@@ -5573,6 +5592,17 @@ function setMigrationBusy(busy) {
   if (window.lucide) window.lucide.createIcons();
 }
 
+function updateMigrationProgress(processed, total, label, detail, running = true) {
+  const percent = processed >= total ? 100 : Math.floor((processed / total) * 100);
+  els.cloudMigrationProgress.hidden = false;
+  els.cloudMigrationProgress.classList.toggle("is-running", running);
+  els.cloudMigrationProgressLabel.textContent = label;
+  els.cloudMigrationProgressPercent.textContent = `${percent}%`;
+  els.cloudMigrationProgressTrack.setAttribute("aria-valuenow", String(percent));
+  els.cloudMigrationProgressFill.style.width = `${percent}%`;
+  els.cloudMigrationProgressDetail.textContent = detail;
+}
+
 async function writePortableFileToDirectory(directory, path, content) {
   const segments = path.split("/");
   const name = segments.pop();
@@ -5598,6 +5628,7 @@ async function migrateAllCloudProjects() {
     els.cloudMigrationStatus.textContent = "当前浏览器不支持一键保存文件夹，请改用桌面 Chrome 或 Edge。";
     return;
   }
+  els.cloudMigrationProgress.hidden = true;
   let chosenDirectory;
   try {
     // 文件夹选择必须直接由点击触发，不能先等待网络请求。
@@ -5610,10 +5641,14 @@ async function migrateAllCloudProjects() {
   const migrationUserId = cloudState.user.id;
   const startedAt = new Date();
   const batchName = `写了就发旧稿-${startedAt.getFullYear()}-${String(startedAt.getMonth() + 1).padStart(2, "0")}-${String(startedAt.getDate()).padStart(2, "0")}_${String(startedAt.getHours()).padStart(2, "0")}-${String(startedAt.getMinutes()).padStart(2, "0")}-${String(startedAt.getSeconds()).padStart(2, "0")}-${Math.random().toString(36).slice(2, 6)}`;
+  const totalUnits = projects.reduce((count, project) => count + portableProjectMigrationUnits(project), 0);
   const nameCounts = new Map();
   const failed = [];
   let completed = 0;
+  let processed = 0;
+  let attempted = 0;
   setMigrationBusy(true);
+  updateMigrationProgress(0, totalUnits, "准备迁移…", `已处理 0/${projects.length} 篇 · 成功 0 篇`);
   try {
     const batchDirectory = await chosenDirectory.getDirectoryHandle(batchName, { create: true });
     for (const [index, project] of projects.entries()) {
@@ -5627,24 +5662,44 @@ async function migrateAllCloudProjects() {
       const result = row?.querySelector(".cloud-migration-result");
       if (result) result.textContent = "保存中…";
       els.cloudMigrationStatus.textContent = `正在保存 ${index + 1}/${projects.length}：${project.title || "未命名图文"}`;
+      const currentLabel = `第 ${index + 1}/${projects.length} 篇：${project.title || "未命名图文"}`;
+      const projectUnits = portableProjectMigrationUnits(project);
+      let writtenUnits = 0;
+      updateMigrationProgress(processed, totalUnits, currentLabel, `正在准备 · 已处理 ${attempted}/${projects.length} 篇`);
       try {
         const directory = await batchDirectory.getDirectoryHandle(folderName, { create: true });
-        await writePortableProject(project, (path, content) => writePortableFileToDirectory(directory, path, content), true);
+        await writePortableProject(project, (path, content) => writePortableFileToDirectory(directory, path, content), true, ({ type, label }) => {
+          if (type === "written") {
+            writtenUnits += 1;
+            processed += 1;
+          }
+          updateMigrationProgress(processed, totalUnits, currentLabel,
+            `${type === "reading" ? "正在读取" : "已保存"}${label} · 已处理 ${attempted}/${projects.length} 篇`);
+        });
         completed += 1;
+        attempted += 1;
         if (result) result.textContent = "已保存";
       } catch (error) {
+        processed += projectUnits - writtenUnits;
+        attempted += 1;
         failed.push(`${project.title || folderName}：${error?.message || "保存失败"}`);
         if (result) result.textContent = "未完成";
       }
+      updateMigrationProgress(processed, totalUnits, currentLabel,
+        `已处理 ${attempted}/${projects.length} 篇 · 成功 ${completed} 篇 · 未完成 ${failed.length} 篇`);
     }
     const summary = `写了就发旧稿迁移\n已保存 ${completed}/${projects.length} 篇。\n每个日期文件夹是一篇可编辑原稿；在网站左上角点击「导入原稿」，选择其中一个日期文件夹即可继续修改。\n${failed.length ? `\n未完成：\n${failed.join("\n")}\n请回到迁移页面重试。` : "\n请先抽查一个日期文件夹能否重新导入。"}\n`;
     await writePortableFileToDirectory(batchDirectory, "迁移说明.txt", summary);
     els.cloudMigrationStatus.textContent = failed.length
       ? `已保存 ${completed}/${projects.length} 篇，${failed.length} 篇未完成。详情已写入「迁移说明.txt」，请重试。`
       : `已写入 ${completed} 篇到「${batchName}」。请检查文件夹，并试着导入一篇。`;
+    updateMigrationProgress(processed, totalUnits, failed.length ? "处理结束：部分原稿未完成" : "迁移完成",
+      `已处理 ${attempted}/${projects.length} 篇 · 成功 ${completed} 篇 · 未完成 ${failed.length} 篇`, false);
     els.status.textContent = els.cloudMigrationStatus.textContent;
   } catch (error) {
     els.cloudMigrationStatus.textContent = `迁移中断：${error?.message || "无法写入选中的位置。"} 已保存 ${completed} 篇，请检查文件夹。`;
+    updateMigrationProgress(processed, totalUnits, "迁移中断",
+      `已处理 ${attempted}/${projects.length} 篇 · 成功 ${completed} 篇，请检查文件夹。`, false);
   } finally {
     setMigrationBusy(false);
   }
@@ -5679,6 +5734,7 @@ function openCloudMigrationModal() {
   closeAccountMenu();
   if (!cloudIsReady()) return;
   els.cloudMigrationModal.classList.remove("hidden");
+  els.cloudMigrationProgress.hidden = true;
   renderCloudMigrationList();
   updateMigrationAllButton();
   els.cloudMigrationStatus.textContent = typeof window.showDirectoryPicker === "function"

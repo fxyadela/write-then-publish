@@ -51,9 +51,23 @@ const rows = projects.map((project) => {
 });
 const destination = new Directory();
 const cloudState = { user: { id: "test-user" }, legacyProjects: projects, migrationBusy: false };
+const percentages = [];
+const progressDetails = [];
+const progressPercent = {
+  set textContent(value) { percentages.push(Number.parseInt(value, 10)); },
+};
+const progressDetail = {
+  set textContent(value) { progressDetails.push(value); },
+};
 const els = {
   cloudMigrationList: { querySelectorAll: () => rows },
   cloudMigrationStatus: { textContent: "" },
+  cloudMigrationProgress: { hidden: true, classList: { toggle: () => {} } },
+  cloudMigrationProgressLabel: { textContent: "" },
+  cloudMigrationProgressPercent: progressPercent,
+  cloudMigrationProgressTrack: { setAttribute: () => {} },
+  cloudMigrationProgressFill: { style: { width: "" } },
+  cloudMigrationProgressDetail: progressDetail,
   status: { textContent: "" },
 };
 let pickerCalls = 0;
@@ -72,15 +86,22 @@ vm.createContext(context);
 vm.runInContext([
   section("function projectCreatedAt(", "function loadProjectStore("),
   section("function portableMediaExtension(", "async function portableCloudBlob("),
-  section("async function writePortableProject(", "async function exportPortableProject("),
+  section("function portableProjectMigrationUnits(", "async function exportPortableProject("),
   section("async function inspectPortableProject(", "async function importPortableProject("),
-  section("async function writePortableFileToDirectory(", "async function refreshCloudMigrationList("),
+  section("function updateMigrationProgress(", "async function refreshCloudMigrationList("),
 ].join("\n"), context);
 
 (async () => {
   await context.migrateAllCloudProjects();
   assert.equal(pickerCalls, 1, "one folder choice saves the whole account");
   assert.match(els.cloudMigrationStatus.textContent, /已写入 2 篇/);
+  assert.equal(els.cloudMigrationProgress.hidden, false);
+  assert.equal(percentages[0], 0);
+  assert.ok(percentages.some((value) => value > 0 && value < 100), "progress advances during migration");
+  assert.ok(percentages.every((value, index) => index === 0 || value >= percentages[index - 1]));
+  assert.equal(percentages.at(-1), 100);
+  assert.ok(progressDetails.some((value) => value.includes("正在读取图片/GIF")));
+  assert.match(progressDetails.at(-1), /成功 2 篇 · 未完成 0 篇/);
   assert.equal(destination.directories.size, 1);
   const batch = [...destination.directories.values()][0];
   assert.equal(batch.directories.size, 2);
@@ -107,6 +128,9 @@ vm.runInContext([
   };
   await context.migrateAllCloudProjects();
   assert.match(els.cloudMigrationStatus.textContent, /已保存 1\/2 篇，1 篇未完成/);
+  assert.equal(percentages.at(-1), 100, "all attempted work reaches 100% even when a draft fails");
+  assert.match(els.cloudMigrationProgressLabel.textContent, /部分原稿未完成/);
+  assert.match(progressDetails.at(-1), /成功 1 篇 · 未完成 1 篇/);
   const partialBatch = [...partialDestination.directories.values()][0];
   const folders = [...partialBatch.directories.values()];
   assert.equal(folders.filter((folder) => folder.files.has("manifest.json")).length, 1,
