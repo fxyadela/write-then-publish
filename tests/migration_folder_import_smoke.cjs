@@ -11,11 +11,13 @@ function section(start, end) {
 }
 
 const receipts = new Map();
+const failures = new Map();
 const cloudState = {
   user: { id: "test-user" }, legacyProjectsStatus: "ready", migrationBusy: false,
   legacyProjects: [
-    { id: "2026-10-01_第一篇", updatedAt: 1000 },
-    { id: "2026-10-02_第二篇", updatedAt: 1000 },
+    { id: "2026-10-01_第一篇", title: "第一篇", updatedAt: 1000 },
+    { id: "2026-10-02_第二篇", title: "第二篇", updatedAt: 1000 },
+    { id: "2026-10-03_第三篇", title: "第三篇", updatedAt: 1000 },
   ],
 };
 const els = { cloudMigrationStatus: { textContent: "" } };
@@ -24,14 +26,16 @@ const context = {
   cloudIsReady: () => true,
   setMigrationBusy: (busy) => { cloudState.migrationBusy = busy; },
   recordMigrationReceipt: (project, name) => { receipts.set(project.id, name); return true; },
+  recordMigrationFailure: (project, reason) => { failures.set(project.id, reason); return true; },
   renderCloudMigrationList: () => {}, updateMigrationAllButton: () => {}, updateMigrationTestUi: () => {},
   savedMigrationCount: () => receipts.size,
+  incompleteMigrationCount: () => failures.size,
 };
 vm.createContext(context);
 vm.runInContext([
   section("async function inspectPortableProject(", "async function importPortableProject("),
   section("async function inspectPortableFolder(", "function setPortableImportStatus("),
-  section("async function verifySavedMigrationFolder(", "async function migrateAllCloudProjects("),
+  section("async function migrationFailuresFromSummary(", "async function migrateAllCloudProjects("),
 ].join("\n"), context);
 
 function original(folder, title) {
@@ -62,8 +66,12 @@ function original(folder, title) {
   assert.equal(batch[0].candidate.listed.get("media/001.gif").type, "image/gif");
   const single = await context.inspectPortableFolder(first);
   assert.equal(single.source.title, "第一篇");
-  await context.verifySavedMigrationFolder([...first, ...second]);
+  const summary = { path: "写了就发旧稿-2026-10-03/迁移说明.txt", file: new Blob([
+    "写了就发旧稿迁移\n已保存 2/3 篇。\n\n未完成：\n第三篇：图片 sample 读取失败：Object not found\n请回到迁移页面重试。\n",
+  ]) };
+  await context.verifySavedMigrationFolder([...first, ...second, summary]);
   assert.equal(receipts.size, 2, "an earlier migration folder can restore completed states");
-  assert.match(els.cloudMigrationStatus.textContent, /已核对 2 篇完整原稿/);
+  assert.match(failures.get("2026-10-03_第三篇"), /Object not found/);
+  assert.match(els.cloudMigrationStatus.textContent, /已核对 2 篇完整原稿，另有 1 篇未完成/);
   console.log("OK: the downloaded migration folder and a date folder import directly with GIF intact");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

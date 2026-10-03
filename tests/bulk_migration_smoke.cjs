@@ -52,6 +52,7 @@ const rows = projects.map((project) => {
 const destination = new Directory();
 const cloudState = { user: { id: "test-user" }, legacyProjects: projects, legacyProjectsStatus: "ready", migrationBusy: false };
 const receipts = new Map();
+const failures = new Map();
 const percentages = [];
 const progressDetails = [];
 const progressPercent = {
@@ -83,6 +84,8 @@ const context = {
   portableVideoBlob: async () => { throw new Error("should fetch cloud original"); },
   setMigrationBusy: (busy) => { cloudState.migrationBusy = busy; },
   recordMigrationReceipt: (project, folderName) => { receipts.set(project.id, folderName); return true; },
+  recordMigrationFailure: (project, reason) => { failures.set(project.id, reason); return true; },
+  migrationReceiptFor: () => null,
   updateMigrationTestUi: () => {},
 };
 vm.createContext(context);
@@ -140,5 +143,6 @@ vm.runInContext([
   assert.equal(folders.filter((folder) => folder.files.has("manifest.json")).length, 1,
     "a failed draft never receives a complete manifest");
   assert.match(await partialBatch.files.get("迁移说明.txt").text(), /simulated asset failure/);
+  assert.match(failures.get(projects[1].id), /simulated asset failure/);
   console.log("OK: one folder choice saves all drafts; GIF and video re-import; failures stay incomplete");
 })().catch((error) => { console.error(error); process.exitCode = 1; });
