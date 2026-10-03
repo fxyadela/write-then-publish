@@ -50,7 +50,24 @@ const FEEDBACK_ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/
 const LOCAL_DEPLOYMENT_MODE = document.documentElement.dataset.writeThenPublishLocalMode === "true";
 const ACCOUNT_MAINTENANCE = true;
 const REGISTRATION_PAUSED = true;
+const MIGRATION_TEST_USER_ID = "d1f516ce-099d-4615-a6e6-f78de883bad4";
+const MIGRATION_TEST_EMAIL = "heyfxyadela@gmail.com";
+const MIGRATION_TEST_PENDING_KEY = "writeThenPublishMigrationTestPending.v1";
+const MIGRATION_TEST_MODE = !LOCAL_DEPLOYMENT_MODE && (() => {
+  try {
+    return new URLSearchParams(window.location.search).get("migration-test") === "1"
+      || sessionStorage.getItem(MIGRATION_TEST_PENDING_KEY) === "1";
+  } catch {
+    return false;
+  }
+})();
 let activeStorageScope = "guest";
+
+function isMigrationTestUser(user) {
+  return MIGRATION_TEST_MODE
+    && user?.id === MIGRATION_TEST_USER_ID
+    && String(user.email || "").toLowerCase() === MIGRATION_TEST_EMAIL;
+}
 
 function scopedStorageKey(baseKey, scope = activeStorageScope) {
   return scope === "local" ? baseKey : `${baseKey}.${scope}`;
@@ -146,6 +163,16 @@ const els = {
   cloudMigrationRefresh: $("#cloudMigrationRefreshBtn"),
   cloudMigrationStatus: $("#cloudMigrationStatus"),
   cloudMigrationList: $("#cloudMigrationList"),
+  migrationTestModal: $("#migrationTestModal"),
+  migrationTestClose: $("#migrationTestCloseBtn"),
+  migrationTestGoogle: $("#migrationTestGoogleBtn"),
+  migrationTestEmailForm: $("#migrationTestEmailForm"),
+  migrationTestPassword: $("#migrationTestPassword"),
+  migrationTestEmailSignIn: $("#migrationTestEmailSignInBtn"),
+  migrationTestNotice: $("#migrationTestNotice"),
+  migrationTestControls: $("#migrationTestControls"),
+  migrationTestOpen: $("#migrationTestOpenBtn"),
+  migrationTestSignOut: $("#migrationTestSignOutBtn"),
   accountMenuSwitchSection: $("#accountMenuSwitchSection"),
   accountMenuAccountList: $("#accountMenuAccountList"),
   accountMenuAdd: $("#accountMenuAddBtn"),
@@ -1244,7 +1271,8 @@ function cloudApi() {
 }
 
 function cloudIsReady() {
-  return !ACCOUNT_MAINTENANCE && Boolean(cloudApi()?.configured && cloudState.user);
+  return Boolean(cloudApi()?.configured && cloudState.user)
+    && (!ACCOUNT_MAINTENANCE || isMigrationTestUser(cloudState.user));
 }
 
 function accountScope(userId) {
@@ -1681,7 +1709,16 @@ function updateAccountUi() {
     if (!signedIn) setAccountNotice(CLOUD_RESTRICTED_NOTICE);
   }
   updateFeatureBadges();
+  updateMigrationTestUi();
   if (window.lucide) window.lucide.createIcons();
+}
+
+function updateMigrationTestUi() {
+  if (!MIGRATION_TEST_MODE || !els.migrationTestControls) return;
+  const signedIn = isMigrationTestUser(cloudState.user);
+  els.migrationTestControls.hidden = false;
+  els.migrationTestOpen.textContent = signedIn ? `迁移云端旧稿 (${cloudState.legacyProjects.length})` : "登录旧账号";
+  els.migrationTestSignOut.hidden = !signedIn;
 }
 
 function openAccountModal() {
@@ -2276,6 +2313,7 @@ async function showGuideProjectForDemo() {
 
 async function presentPostEntryExperience() {
   if (!entryState.resolved) return;
+  if (MIGRATION_TEST_MODE) return;
   const previewMode = experiencePreviewMode();
   updateFeatureBadges();
   if (firstRunTourIsForced()) {
@@ -2340,6 +2378,91 @@ async function chooseGuestMode() {
   els.status.textContent = ACCOUNT_MAINTENANCE
     ? "游客模式 · 账号维护中，草稿仅临时保存在当前标签页"
     : "游客模式：内容仅临时保存在当前标签页";
+}
+
+function setMigrationTestNotice(message = "", error = false) {
+  if (!els.migrationTestNotice) return;
+  els.migrationTestNotice.hidden = !message;
+  els.migrationTestNotice.textContent = message;
+  els.migrationTestNotice.classList.toggle("is-error", error);
+}
+
+async function refreshMigrationTestGoogle() {
+  if (!MIGRATION_TEST_MODE || !els.migrationTestGoogle) return;
+  els.migrationTestGoogle.hidden = !(await cloudApi()?.googleSignInAvailable(true));
+}
+
+function openMigrationTestLogin() {
+  if (!MIGRATION_TEST_MODE) return;
+  if (isMigrationTestUser(cloudState.user)) {
+    openCloudMigrationModal();
+    return;
+  }
+  setMigrationTestNotice("");
+  els.migrationTestModal.classList.remove("hidden");
+  void refreshMigrationTestGoogle();
+}
+
+function closeMigrationTestLogin() {
+  els.migrationTestModal?.classList.add("hidden");
+}
+
+function setMigrationTestBusy(busy) {
+  [els.migrationTestGoogle, els.migrationTestPassword, els.migrationTestEmailSignIn]
+    .filter(Boolean).forEach((element) => { element.disabled = busy; });
+}
+
+async function finishMigrationTestLogin(session) {
+  if (!isMigrationTestUser(session?.user)) throw new Error(`请使用 ${MIGRATION_TEST_EMAIL} 对应的旧账号。`);
+  await loadCloudWorkspace(session);
+  finishEntryChoice("account", { returning: true });
+  closeMigrationTestLogin();
+  openCloudMigrationModal();
+  await refreshCloudMigrationList();
+  updateMigrationTestUi();
+}
+
+async function signInMigrationTestWithEmail(event) {
+  event.preventDefault();
+  const password = els.migrationTestPassword.value;
+  if (!password) return;
+  setMigrationTestBusy(true);
+  setMigrationTestNotice("正在登录旧账号…");
+  try {
+    const result = await cloudApi().signIn(MIGRATION_TEST_EMAIL, password);
+    await finishMigrationTestLogin(result.session);
+    els.migrationTestPassword.value = "";
+  } catch (error) {
+    setMigrationTestNotice(error?.message || "登录失败，请检查原密码。", true);
+  } finally {
+    setMigrationTestBusy(false);
+  }
+}
+
+async function signInMigrationTestWithGoogle() {
+  setMigrationTestBusy(true);
+  setMigrationTestNotice("正在跳转到 Google…");
+  try {
+    sessionStorage.setItem(MIGRATION_TEST_PENDING_KEY, "1");
+    await cloudApi().signInWithGoogle(true);
+    setMigrationTestNotice("没有打开 Google 登录页，请重新尝试。", true);
+    setMigrationTestBusy(false);
+  } catch (error) {
+    setMigrationTestNotice(error?.message || "Google 登录暂时不可用。", true);
+    setMigrationTestBusy(false);
+  }
+}
+
+async function signOutMigrationTest() {
+  if (!isMigrationTestUser(cloudState.user)) return;
+  try {
+    await cloudApi().signOut();
+    await handleCloudSession(null);
+    await chooseGuestMode();
+    openMigrationTestLogin();
+  } catch (error) {
+    els.status.textContent = error?.message || "退出账号失败，请稍后重试。";
+  }
 }
 
 function chooseLoginMode() {
@@ -2559,6 +2682,31 @@ async function initializeCloudAccount() {
   if (ACCOUNT_MAINTENANCE) {
     document.body.classList.add("account-maintenance");
     cloudState.initialized = true;
+    if (MIGRATION_TEST_MODE) {
+      document.body.classList.add("migration-test-mode");
+      try {
+        const session = await cloudApi()?.getSession();
+        if (isMigrationTestUser(session?.user)) {
+          await finishMigrationTestLogin(session);
+          return;
+        }
+        await chooseGuestMode();
+        openMigrationTestLogin();
+        const redirectStatus = authRedirectStatus();
+        if (session?.user) {
+          setMigrationTestNotice(`当前登录的不是 ${MIGRATION_TEST_EMAIL}，请切换 Google 账号后重试。`, true);
+        } else if (redirectStatus) {
+          setMigrationTestNotice(redirectStatus.message, redirectStatus.tone === "error");
+        } else if (!cloudApi()?.configured) {
+          setMigrationTestNotice("云端账号服务暂时不可用，请稍后重试。", true);
+        }
+      } catch (error) {
+        await chooseGuestMode();
+        openMigrationTestLogin();
+        setMigrationTestNotice(error?.message || "云端账号连接失败，请稍后重试。", true);
+      }
+      return;
+    }
     try {
       const session = await cloudApi()?.getSession();
       if (session?.user) {
@@ -12493,6 +12641,14 @@ function bindEvents() {
   els.portableImportDropzone?.addEventListener("drop", (event) => void handlePortableImportDrop(event));
   els.portableImportConfirm?.addEventListener("click", () => void confirmPortableImport());
   els.cloudMigration?.addEventListener("click", openCloudMigrationModal);
+  els.migrationTestOpen?.addEventListener("click", openMigrationTestLogin);
+  els.migrationTestSignOut?.addEventListener("click", () => void signOutMigrationTest());
+  els.migrationTestClose?.addEventListener("click", closeMigrationTestLogin);
+  els.migrationTestModal?.addEventListener("click", (event) => {
+    if (event.target === els.migrationTestModal) closeMigrationTestLogin();
+  });
+  els.migrationTestEmailForm?.addEventListener("submit", (event) => void signInMigrationTestWithEmail(event));
+  els.migrationTestGoogle?.addEventListener("click", () => void signInMigrationTestWithGoogle());
   els.cloudMigrationClose?.addEventListener("click", closeCloudMigrationModal);
   els.cloudMigrationRefresh?.addEventListener("click", () => void refreshCloudMigrationList());
   els.cloudMigrationModal?.addEventListener("click", (event) => {
@@ -12612,6 +12768,7 @@ function bindEvents() {
     if (event.key === "Escape" && !els.livePhotoModal.classList.contains("hidden")) closeLivePhotoModal();
     if (event.key === "Escape" && !els.livePhotoHandoffModal.classList.contains("hidden")) closeLivePhotoHandoff();
     if (event.key === "Escape" && !els.accountModal.classList.contains("hidden")) closeAccountModal();
+    if (event.key === "Escape" && !els.migrationTestModal.classList.contains("hidden")) closeMigrationTestLogin();
     if (event.key === "Escape" && !els.cloudMigrationModal.classList.contains("hidden")) closeCloudMigrationModal();
     if (event.key === "Escape" && welcomeBackIsOpen()) closeWelcomeBack();
     if (event.key === "Escape" && accountMenuIsOpen()) closeAccountMenu();

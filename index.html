@@ -450,6 +450,10 @@
           <span>问题反馈</span>
         </button>
         <span class="account-maintenance-status">游客模式 · 云端旧稿迁移暂未开放</span>
+        <div id="migrationTestControls" class="migration-test-controls" hidden>
+          <button id="migrationTestOpenBtn" type="button">登录旧账号</button>
+          <button id="migrationTestSignOutBtn" type="button" hidden>退出账号</button>
+        </div>
         <div id="accountDock" class="account-dock">
         <div id="accountMenu" class="account-menu hidden" role="dialog" aria-label="账号菜单">
           <div class="account-menu-summary">
@@ -763,6 +767,23 @@
             <button id="portableImportConfirmBtn" class="primary-button" type="button" disabled>打开并继续编辑</button>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section id="migrationTestModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="migrationTestTitle">
+      <div class="modal-card migration-test-card">
+        <button id="migrationTestCloseBtn" class="icon-button ghost migration-test-close" type="button" aria-label="关闭登录窗口"><i data-lucide="x"></i></button>
+        <span class="migration-test-kicker">旧稿迁移测试</span>
+        <h3 id="migrationTestTitle">登录后，保存以前的原稿</h3>
+        <p>仅开放 heyfxyadela@gmail.com。云端旧稿只供读取；每篇可保存成带原素材的可编辑 ZIP，之后从左上角「导入原稿」打开。</p>
+        <p id="migrationTestNotice" class="migration-test-notice" role="status" hidden></p>
+        <button id="migrationTestGoogleBtn" class="primary-button migration-test-google" type="button" hidden>用 Google 登录旧账号</button>
+        <form id="migrationTestEmailForm" class="migration-test-email-form">
+          <span>也可使用这个账号的原密码</span>
+          <input type="email" value="heyfxyadela@gmail.com" autocomplete="username" readonly aria-label="测试账号邮箱" />
+          <input id="migrationTestPassword" type="password" autocomplete="current-password" placeholder="原密码" required />
+          <button id="migrationTestEmailSignInBtn" class="secondary-button" type="submit">用邮箱密码登录</button>
+        </form>
       </div>
     </section>
 

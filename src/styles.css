@@ -289,6 +289,111 @@ body.account-maintenance:not(.local-deployment) .account-maintenance-status {
   display: inline-flex;
 }
 
+body.account-maintenance.migration-test-mode .account-maintenance-status {
+  display: none;
+}
+
+.migration-test-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.migration-test-controls[hidden],
+.migration-test-controls button[hidden] {
+  display: none;
+}
+
+.migration-test-controls button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.migration-test-controls button:first-child {
+  color: var(--ink);
+}
+
+.modal-card.migration-test-card {
+  position: relative;
+  display: grid;
+  width: min(440px, calc(100vw - 32px));
+  grid-template-rows: none;
+  gap: 18px;
+  padding: 38px;
+  overflow: auto;
+}
+
+.migration-test-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+.migration-test-kicker {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.migration-test-card h3,
+.migration-test-card p {
+  margin: 0;
+}
+
+.migration-test-card h3 {
+  font-size: 22px;
+}
+
+.migration-test-card > p:not(.migration-test-notice) {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.migration-test-notice {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.migration-test-notice.is-error {
+  color: var(--coral);
+}
+
+.migration-test-google {
+  width: 100%;
+}
+
+.migration-test-email-form {
+  display: grid;
+  gap: 10px;
+}
+
+.migration-test-email-form span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.migration-test-email-form input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+
+.migration-test-email-form input[readonly] {
+  background: var(--soft);
+}
+
 .account-dock-button {
   display: inline-flex;
   min-height: 30px;
