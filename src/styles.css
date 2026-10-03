@@ -294,9 +294,13 @@ body.account-maintenance.migration-test-mode .account-maintenance-status {
 }
 
 .migration-test-controls {
-  display: inline-flex;
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right, 0px));
+  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  z-index: 250;
+  display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .migration-test-controls[hidden],
@@ -305,17 +309,51 @@ body.account-maintenance.migration-test-mode .account-maintenance-status {
 }
 
 .migration-test-controls button {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--popover-bg);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
   font: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
 }
 
 .migration-test-controls button:first-child {
-  color: var(--ink);
+  border-color: var(--active-border);
+}
+
+.migration-test-controls button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.migration-test-controls button small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.migration-test-controls button:hover,
+.migration-test-controls button:focus-visible {
+  border-color: var(--active-bg);
+  outline: none;
+}
+
+.migration-pilot-link {
+  justify-content: center;
+  text-decoration: none;
+}
+
+.migration-pilot-link[hidden],
+.migration-test-email-form[hidden] {
+  display: none;
 }
 
 .modal-card.migration-test-card {
@@ -3354,12 +3392,35 @@ body.export-busy {
   padding: 18px 20px 22px;
 }
 
+.cloud-migration-all {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+  gap: 10px;
+}
+
+.cloud-migration-all svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cloud-migration-instruction {
+  margin: 10px 0 22px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .cloud-migration-toolbar,
 .cloud-migration-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.cloud-migration-row button {
+  white-space: nowrap;
 }
 
 .cloud-migration-toolbar {
@@ -3382,6 +3443,13 @@ body.export-busy {
 .cloud-migration-row strong,
 .cloud-migration-row small {
   display: block;
+}
+
+.cloud-migration-result {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .cloud-migration-row small,
@@ -4021,6 +4089,115 @@ body.export-busy {
   color: var(--muted);
   font-size: 11px;
   text-align: center;
+}
+
+.maintenance-welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 10030;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 28px;
+  background: var(--paper);
+}
+
+.maintenance-welcome.hidden,
+body.local-deployment .maintenance-welcome {
+  display: none;
+}
+
+.maintenance-welcome-card {
+  width: min(740px, 100%);
+}
+
+.maintenance-announcement {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 54px;
+  padding: 20px 24px;
+  border: 1px solid var(--active-border);
+  border-radius: 14px;
+  background: var(--soft);
+}
+
+.maintenance-announcement-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--active-bg);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.maintenance-announcement-label svg {
+  width: 15px;
+  height: 15px;
+}
+
+.maintenance-announcement strong {
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.maintenance-announcement p,
+.maintenance-welcome-main p,
+.maintenance-welcome-guide {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.maintenance-welcome-main h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(32px, 5vw, 50px);
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+}
+
+.maintenance-welcome-main p {
+  margin-top: 15px;
+  font-size: 15px;
+}
+
+.maintenance-welcome-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.maintenance-welcome-actions button {
+  min-height: 46px;
+  padding: 0 20px;
+}
+
+.maintenance-welcome-actions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.maintenance-welcome-guide {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 66px;
+  text-align: right;
+}
+
+.maintenance-welcome-guide svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 600px) {
+  .maintenance-welcome { padding: 20px; }
+  .maintenance-announcement { margin-bottom: 38px; padding: 18px; }
+  .maintenance-welcome-actions { flex-direction: column; }
+  .maintenance-welcome-guide { margin-top: 40px; }
+  .migration-test-controls { right: 14px; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
 }
 
 .welcome-back-modal {
