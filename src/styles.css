@@ -111,8 +111,7 @@ button:disabled {
   min-height: 0;
 }
 
-/* 历史记录暂时下线（等云端迁移完成再开）。元素保留在网格里、轨道压成 0，
-   直接 display:none 会让编辑区和预览在自动排布里错位。 */
+/* 游客及迁移期结束后的在线账号不显示历史栏。保留网格轨道避免编辑区错位。 */
 body.history-disabled .history-sidebar,
 body.history-disabled .panel-resizer[data-panel-resize="history"] {
   visibility: hidden;
@@ -3274,6 +3273,20 @@ body.export-busy {
   border-radius: 18px;
 }
 
+.cloud-migration-card .modal-head {
+  align-items: flex-start;
+  padding: 28px 28px 10px;
+  border-bottom: 0;
+}
+
+.cloud-migration-card .modal-head h3 { font-size: 25px; }
+
+.cloud-migration-card .modal-head p {
+  margin-top: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
 .portable-import-card {
   width: min(680px, 100%);
   border-radius: 18px;
@@ -3391,12 +3404,12 @@ body.export-busy {
 .cloud-migration-body {
   min-height: 0;
   overflow: auto;
-  padding: 18px 20px 22px;
+  padding: 20px 28px 28px;
 }
 
 .cloud-migration-all {
   width: 100%;
-  min-height: 48px;
+  min-height: 56px;
   justify-content: center;
   gap: 10px;
 }
@@ -3406,40 +3419,8 @@ body.export-busy {
   height: 18px;
 }
 
-.cloud-migration-verify {
-  display: block;
-  margin: 8px auto 0;
-  border: 0;
-  color: var(--accent);
-  background: transparent;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.cloud-migration-verify:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.cloud-migration-instruction {
-  margin: 10px 0 22px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
 .cloud-migration-progress {
-  position: sticky;
-  top: -18px;
-  z-index: 2;
-  margin: 0 0 18px;
-  padding: 14px 16px;
-  border: 1px solid var(--active-border);
-  border-radius: 12px;
-  background: var(--popover-bg);
-  box-shadow: var(--shadow-soft);
+  margin-top: 18px;
 }
 
 .cloud-migration-progress-head {
@@ -3494,8 +3475,7 @@ body.export-busy {
   to { left: 100%; }
 }
 
-.cloud-migration-progress p,
-.cloud-migration-progress small {
+.cloud-migration-progress p {
   display: block;
   margin: 0;
   color: var(--muted);
@@ -3503,17 +3483,12 @@ body.export-busy {
   line-height: 1.55;
 }
 
-.cloud-migration-progress small {
-  margin-top: 3px;
-  font-size: 11px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .cloud-migration-progress.is-running .cloud-migration-progress-track::after { animation: none; }
   .cloud-migration-progress-track > span { transition: none; }
 }
 
-.cloud-migration-toolbar,
+.cloud-migration-list-heading,
 .cloud-migration-row {
   display: flex;
   align-items: center;
@@ -3525,21 +3500,29 @@ body.export-busy {
   white-space: nowrap;
 }
 
-.cloud-migration-toolbar {
+.cloud-migration-list-heading {
+  margin-top: 30px;
+  padding-top: 25px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.cloud-migration-status {
+  margin: 10px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .cloud-migration-list {
   display: grid;
-  gap: 10px;
-  margin-top: 18px;
+  margin-top: 8px;
 }
 
 .cloud-migration-row {
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .cloud-migration-row strong,
@@ -3552,6 +3535,7 @@ body.export-busy {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+  text-align: right;
 }
 
 .cloud-migration-row.is-saved .cloud-migration-result {
@@ -3562,8 +3546,7 @@ body.export-busy {
   color: #b91c1c;
 }
 
-.cloud-migration-row small,
-.cloud-migration-footnote {
+.cloud-migration-row small {
   margin-top: 5px;
   color: var(--muted);
   font-size: 12px;
@@ -3571,7 +3554,11 @@ body.export-busy {
 }
 
 @media (max-width: 600px) {
+  .cloud-migration-card .modal-head { padding: 22px 18px 8px; }
+  .cloud-migration-card .modal-head h3 { font-size: 21px; }
+  .cloud-migration-body { padding: 18px 18px 22px; }
   .cloud-migration-row { align-items: stretch; flex-direction: column; }
+  .cloud-migration-result { text-align: left; }
 }
 
 #feedbackModal {
@@ -4281,13 +4268,6 @@ body.local-deployment .maintenance-welcome {
 .entry-choice-migration svg { width: 16px; height: 16px; }
 
 .entry-choice-migration { margin-bottom: 20px; }
-
-.cloud-migration-details summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 13px;
-  padding: 8px 0;
-}
 
 .maintenance-welcome-main p {
   margin-top: 15px;

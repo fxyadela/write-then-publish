@@ -11,6 +11,7 @@ const cutoff = Date.parse('2026-11-01T00:00:00+08:00');
 const timers = new Map(), storage = new Map([
   ['sessions', 'saved credentials'], ['last-email', 'old@example.com'],
 ]);
+const bodyClasses = new Set();
 let policy = { migration_open: true, server_time: '2026-10-31T23:59:30+08:00' };
 let signouts = 0, guestActivations = 0, nextTimer = 0;
 const ctx = {
@@ -24,7 +25,9 @@ const ctx = {
     clearTimeout(id) { timers.delete(id); },
   },
   localStorage: { removeItem: key => storage.delete(key) },
+  document: { body: { classList: { toggle: (name, enabled) => enabled ? bodyClasses.add(name) : bodyClasses.delete(name) } } },
   sessionStorage: { setItem: (key, value) => storage.set(key, value) },
+  setHistoryOpen() {}, activeStorageScope: 'user_owner',
   handleCloudSession: async () => { ctx.cloudState.user = null; },
   activateGuestWorkspace: async () => { guestActivations++; },
   finishEntryChoice: mode => { ctx.entryMode = mode; }, els: { status: {} }, saveState() {},
@@ -32,16 +35,26 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext([
   section('async function resolveAccountPolicy()', 'function scopedStorageKey('),
+  section('function syncHistoryAvailability()', 'async function activateWorkspaceScope('),
   section('async function chooseGuestMode()', 'function showMaintenanceWelcomeOnce('),
 ].join('\n'), ctx);
 (async () => {
   await ctx.resolveAccountPolicy();
   assert.equal(ctx.ACCOUNT_MAINTENANCE, true, 'server time overrides client date and production ignores preview overrides');
+  ctx.syncHistoryAvailability();
+  assert.equal(bodyClasses.has('history-disabled'), false, 'signed-in history remains available during migration');
   assert.ok([...timers.values()].some(timer => timer.delay === 31000), 'cutover timer follows server time');
   timers.clear();
   policy = { migration_open: false, server_time: '2026-11-01T00:00:00+08:00' };
   await ctx.resolveAccountPolicy();
   assert.equal(ctx.ACCOUNT_MAINTENANCE, false);
+  ctx.syncHistoryAvailability();
+  assert.equal(bodyClasses.has('history-disabled'), true, 'signed-in history sidebar closes after cutoff');
+  ctx.LOCAL_DEPLOYMENT_MODE = true;
+  ctx.activeStorageScope = 'local';
+  ctx.syncHistoryAvailability();
+  assert.equal(bodyClasses.has('history-disabled'), false, 'standalone local edition keeps its existing history');
+  ctx.LOCAL_DEPLOYMENT_MODE = false;
   assert.equal(timers.size, 0);
   await ctx.chooseGuestMode();
   assert.equal(signouts, 1);
@@ -51,5 +64,5 @@ vm.runInContext([
   assert.equal(storage.get('entry'), 'guest');
   assert.equal(guestActivations, 1);
   assert.equal(ctx.entryMode, 'guest');
-  console.log('OK: server-driven cutoff; guest mode signs out and removes remembered account credentials without creating an account');
+  console.log('OK: server cutoff hides online history; guest signs out and removes remembered account credentials');
 })().catch(error => { console.error(error); process.exitCode=1; });

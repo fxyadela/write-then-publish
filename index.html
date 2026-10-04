@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20261005-migration-zip" />
+    <link rel="stylesheet" href="src/styles.css?v=20261005-migration-panel" />
   </head>
   <body class="entry-choice-pending history-disabled">
     <main class="workspace">
@@ -816,15 +816,12 @@
         <div class="modal-head">
           <div>
             <h3 id="cloudMigrationTitle">一键迁移旧稿</h3>
-            <p>一键保存正文、图片、GIF 和原视频。请在 10 月 31 日结束前完成，并妥善保留 ZIP。</p>
+            <p>请在 10 月 31 日前下载并保留 ZIP 原稿，正文和素材会一起保存。</p>
           </div>
           <button id="cloudMigrationCloseBtn" class="icon-button ghost" type="button" aria-label="关闭迁移面板"><i data-lucide="x"></i></button>
         </div>
         <div class="cloud-migration-body">
           <button id="cloudMigrationAllBtn" class="primary-button cloud-migration-all" type="button" disabled><i data-lucide="folder-down"></i><span id="cloudMigrationAllLabel">一键迁移为 ZIP</span></button>
-          <button id="cloudMigrationVerifyBtn" class="cloud-migration-verify" type="button">已经迁移过？核对 ZIP</button>
-          <input id="cloudMigrationVerifyInput" type="file" accept=".zip,application/zip" multiple hidden />
-          <p class="cloud-migration-instruction">点击后自动生成 ZIP，包内按创建日期整理原稿。请保持页面打开直到进度完成。</p>
           <div id="cloudMigrationProgress" class="cloud-migration-progress" hidden>
             <div class="cloud-migration-progress-head">
               <strong id="cloudMigrationProgressLabel">准备迁移…</strong>
@@ -834,14 +831,13 @@
               <span id="cloudMigrationProgressFill"></span>
             </div>
             <p id="cloudMigrationProgressDetail" role="status">已处理 0 篇</p>
-            <small>按已处理的原稿和素材计数；读取大文件时进度可能暂时停留。</small>
           </div>
-          <div class="cloud-migration-toolbar">
-            <span id="cloudMigrationStatus" role="status">正在读取旧稿清单…</span>
+          <div class="cloud-migration-list-heading">
+            <strong>旧稿与保存状态</strong>
             <button id="cloudMigrationRefreshBtn" class="account-menu-text-button" type="button">刷新清单</button>
           </div>
-          <details class="cloud-migration-details"><summary>查看旧稿和保存状态</summary><div id="cloudMigrationList" class="cloud-migration-list"></div></details>
-          <p class="cloud-migration-footnote">完成后请核对并保留 ZIP。左上角「导入原稿」直接选择 ZIP，再挑一篇继续编辑；无需先解压。GIF 和实况原视频保留为原文件。素材较多时会生成多个可独立导入的 ZIP。</p>
+          <p id="cloudMigrationStatus" class="cloud-migration-status" role="status">正在读取旧稿清单…</p>
+          <div id="cloudMigrationList" class="cloud-migration-list"></div>
         </div>
       </div>
     </section>
@@ -1372,6 +1368,6 @@
         document.write('<script src="src/supabase.js?v=20261005-migration-zip"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20261005-migration-zip"></script>
+    <script src="src/app.js?v=20261005-migration-panel"></script>
   </body>
 </html>
