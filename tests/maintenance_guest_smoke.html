@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
 <meta charset="utf-8" />
-<title>账号维护入口检查</title>
+<title>账号迁移入口检查</title>
 <p id="result">检查中…</p>
 <iframe src="/" title="写了就发" hidden></iframe>
 <script>
@@ -11,20 +11,27 @@
   const check = () => {
     try {
       const page = frame.contentDocument;
-      if (!page || page.body.classList.contains("entry-choice-pending")) {
+      if (page && !page.body.classList.contains("cloud-session-checking") && !page.querySelector("#maintenanceWelcomeModal").classList.contains("hidden")) page.querySelector("#maintenanceWelcomeStartBtn").click();
+      if (!page || page.body.classList.contains("cloud-session-checking") || page.body.classList.contains("entry-choice-pending")) {
         if (Date.now() - started < 10000) return setTimeout(check, 50);
         throw new Error("10 秒内未进入工作区");
       }
       const expect = (condition, message) => { if (!condition) throw new Error(message); };
-      expect(page.querySelector("#accountButtonLabel")?.textContent === "游客模式", "没有直接进入游客模式");
-      page.querySelector("#accountBtn").click();
-      page.querySelector("#accountMenuLoginBtn").click();
-      expect(!page.querySelector("#accountModal").classList.contains("hidden"), "账号说明页未打开");
-      for (const id of ["accountSignInModeBtn", "accountSignUpBtn", "accountEmailInput", "accountPasswordInput", "accountSignInBtn", "accountGoogleBtn", "accountForgotPasswordBtn"]) {
-        expect(page.getElementById(id).disabled, `${id} 未禁用`);
+      expect(page.querySelector("#accountButtonLabel")?.textContent === "登录 / 注册", "游客不应创建登录账号");
+      if (page.body.classList.contains("migration-period")) {
+        if (!page.querySelector("#maintenanceWelcomeModal").classList.contains("hidden")) page.querySelector("#maintenanceWelcomeStartBtn").click();
+        page.querySelector("#migrationTestOpenBtn").click();
+        expect(!page.querySelector("#migrationTestModal").classList.contains("hidden"), "迁移登录页未打开");
+        expect(page.querySelector("#migrationTestEmail").value === "", "登录邮箱不应预填");
+        expect(page.querySelector("#migrationTestModal").textContent.includes("10 月 31 日"), "缺少迁移截止时间");
+        expect(!page.querySelector("#migrationTestModal .account-auth-mode"), "迁移入口不应再放登录注册切换按钮");
+        result.textContent = "PASS：游客无账号，迁移独立入口，月底截止日期明确";
+      } else {
+        page.querySelector("#accountBtn").click();
+        expect(page.querySelector("#accountEmailInput").value === "", "登录邮箱不应预填");
+        expect(page.querySelector("#accountModal").textContent.includes("同步头像与昵称"), "资料同步范围未说明");
+        result.textContent = "PASS：截止后提供登录注册，账号仅同步头像昵称";
       }
-      expect(page.querySelector("#accountConfigNotice")?.textContent.includes("10 月 2 日"), "缺少迁移时间提示");
-      result.textContent = "PASS：游客直达，账号操作已置灰，迁移提示可见";
     } catch (error) {
       result.textContent = `FAIL：${error.message}`;
     }

@@ -281,23 +281,7 @@ body.history-disabled .workspace.history-open {
   font-weight: 700;
 }
 
-body.account-maintenance #accountDock {
-  display: none;
-}
-
-body.account-maintenance:not(.local-deployment) .account-maintenance-status {
-  display: inline-flex;
-}
-
-body.account-maintenance.migration-test-mode .account-maintenance-status {
-  display: none;
-}
-
 .migration-test-controls {
-  position: fixed;
-  right: max(20px, env(safe-area-inset-right, 0px));
-  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
-  z-index: 250;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -316,9 +300,8 @@ body.account-maintenance.migration-test-mode .account-maintenance-status {
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--popover-bg);
+  background: transparent;
   color: var(--ink);
-  box-shadow: var(--shadow-soft);
   font: inherit;
   font-size: 12px;
   font-weight: 800;
@@ -4248,6 +4231,9 @@ body.local-deployment .maintenance-welcome {
   background: var(--soft);
 }
 
+.maintenance-announcement[hidden],
+.maintenance-welcome-guide[hidden] { display: none; }
+
 .maintenance-announcement-label {
   display: inline-flex;
   align-items: center;
@@ -4284,6 +4270,25 @@ body.local-deployment .maintenance-welcome {
   line-height: 1.15;
 }
 
+.maintenance-migrate-button {
+  justify-self: start;
+  min-height: 40px;
+  margin-top: 10px;
+  padding: 9px 14px;
+}
+
+.maintenance-migrate-button svg,
+.entry-choice-migration svg { width: 16px; height: 16px; }
+
+.entry-choice-migration { margin-bottom: 20px; }
+
+.cloud-migration-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 0;
+}
+
 .maintenance-welcome-main p {
   margin-top: 15px;
   font-size: 15px;
@@ -4293,6 +4298,11 @@ body.local-deployment .maintenance-welcome {
   display: flex;
   gap: 12px;
   margin-top: 32px;
+}
+
+.maintenance-welcome-main .maintenance-account-hint {
+  max-width: 480px;
+  font-size: 12px;
 }
 
 .maintenance-welcome-actions button {
@@ -4324,7 +4334,7 @@ body.local-deployment .maintenance-welcome {
   .maintenance-announcement { margin-bottom: 38px; padding: 18px; }
   .maintenance-welcome-actions { flex-direction: column; }
   .maintenance-welcome-guide { margin-top: 40px; }
-  .migration-test-controls { right: 14px; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+  .migration-test-controls button small { display: none; }
 }
 
 .welcome-back-modal {
