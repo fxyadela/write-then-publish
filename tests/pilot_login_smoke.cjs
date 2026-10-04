@@ -23,9 +23,7 @@ const els = {
 };
 const context = {
   MIGRATION_TEST_MODE: true,
-  MIGRATION_TEST_USER_ID: "owner-id",
-  MIGRATION_TEST_EMAIL: "heyfxyadela@gmail.com",
-  PILOT_ONLY_NOTICE: "暂时不能测试",
+  ACCOUNT_MAINTENANCE: true,
   migrationTestAuthMode: "signin",
   els,
   setMigrationTestBusy: () => {},
@@ -47,23 +45,27 @@ vm.runInContext([
 
 (async () => {
   assert.equal(context.isMigrationTestUser({ id: "owner-id", email: "heyfxyadela@gmail.com" }), true);
-  assert.equal(context.isMigrationTestUser({ id: "someone-else", email: "heyfxyadela@gmail.com" }), false);
-  assert.equal(context.isMigrationTestUser({ id: "owner-id", email: "other@example.com" }), false);
+  assert.equal(context.isMigrationTestUser({ id: "someone-else", email: "other@example.com" }), true);
+  assert.equal(context.isMigrationTestUser({ id: "anonymous", is_anonymous: true }), false);
+  context.ACCOUNT_MAINTENANCE = false;
+  assert.equal(context.isMigrationTestUser({ id: "owner-id" }), false);
+  context.ACCOUNT_MAINTENANCE = true;
 
   const event = { preventDefault() {} };
   els.migrationTestEmail.value = "other@example.com";
   await context.signInMigrationTestWithEmail(event);
-  assert.equal(notices.at(-1), "暂时不能测试");
-  assert.equal(signIns.length, 0, "non-test emails must not reach Auth");
+  assert.equal(signIns.length, 1, "every old account can attempt login");
+  signIns.length = 0;
 
   els.migrationTestEmail.value = "heyfxyadela@gmail.com";
   context.migrationTestAuthMode = "signup";
   await context.signInMigrationTestWithEmail(event);
-  assert.match(notices.at(-1), /已有账号/);
+  assert.match(notices.at(-1), /新用户请通过/);
   assert.equal(signIns.length, 0, "the existing account must not be signed up again");
 
   context.migrationTestAuthMode = "signin";
+  els.migrationTestPassword.value = "example-password";
   await context.signInMigrationTestWithEmail(event);
   assert.deepEqual(signIns, [{ email: "heyfxyadela@gmail.com", password: "example-password" }]);
-  console.log("OK: blank email field, exact pilot notice, allowlisted login only");
+  console.log("OK: blank email field; all legacy accounts can log in; migration login is separate from normal registration");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

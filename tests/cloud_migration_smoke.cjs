@@ -6,7 +6,9 @@ const rows = Array.from({ length: 227 }, (_, index) => ({ id: `old-${index}` }))
 const ranges = [];
 let signupsDisabled = false;
 let oauthCalls = 0;
+let hookPolicy = null;
 const client = {
+  async rpc() { return { data: hookPolicy, error: null }; },
   auth: {
     async signInWithOAuth() { oauthCalls += 1; return { error: null }; },
   },
@@ -42,12 +44,14 @@ vm.runInNewContext(fs.readFileSync("src/supabase.js", "utf8"), { window, fetch, 
   assert.equal(await window.WriteThenPublishCloud.googleSignInAvailable(true), false);
   await assert.rejects(window.WriteThenPublishCloud.signInWithGoogle(true), /迁移暂未开放/);
   assert.equal(oauthCalls, 0);
-  signupsDisabled = true;
+  hookPolicy = { migration_open: true, registration_open: true };
   await window.WriteThenPublishCloud.signInWithGoogle(true);
   assert.equal(oauthCalls, 1);
   assert.equal(await window.WriteThenPublishCloud.googleSignInAvailable(true), true);
-  signupsDisabled = false;
+  hookPolicy = { migration_open: false, registration_open: true };
   await assert.rejects(window.WriteThenPublishCloud.signInWithGoogle(true), /迁移暂未开放/);
   assert.equal(oauthCalls, 1);
-  console.log("OK: all 227 drafts listed; Google migration requires server-side signup lock");
+  await window.WriteThenPublishCloud.signInWithGoogle();
+  assert.equal(oauthCalls, 2, "normal login and registration keep working after migration closes");
+  console.log("OK: 227 drafts; migration OAuth follows the server deadline while normal registration stays open");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

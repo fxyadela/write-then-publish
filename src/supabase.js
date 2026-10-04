@@ -48,7 +48,7 @@
   }
 
   async function signInWithGoogle(migrationOnly = false) {
-    if (migrationOnly && (!(await googleProviderIsEnabled(true)) || !signupsDisabled)) {
+    if (migrationOnly && (!(await googleProviderIsEnabled(true)) || !(await migrationWindowOpen()))) {
       throw new Error("Google 旧账号迁移暂未开放，请稍后再试。");
     }
     const { error } = await requireClient().auth.signInWithOAuth({
@@ -100,7 +100,7 @@
   }
 
   async function googleSignInAvailable(migrationOnly = false) {
-    if (!(await googleProviderIsEnabled()) || (migrationOnly && !signupsDisabled)) return false;
+    if (!(await googleProviderIsEnabled()) || (migrationOnly && !(await migrationWindowOpen()))) return false;
     if (googleReachable !== null) return googleReachable;
     try {
       const controller = new AbortController();
@@ -117,6 +117,13 @@
       googleReachable = false;
     }
     return googleReachable;
+  }
+
+  async function migrationWindowOpen() {
+    try {
+      const policy = await getAccountPolicy();
+      return policy?.migration_open === true;
+    } catch { return false; }
   }
 
   async function resendSignUp(email) {
@@ -184,6 +191,12 @@
       .maybeSingle();
     throwIfError(error);
     return data || null;
+  }
+
+  async function getAccountPolicy() {
+    const { data, error } = await requireClient().rpc("account_runtime_policy");
+    throwIfError(error);
+    return data;
   }
 
   async function upsertProfile(profile) {
@@ -382,6 +395,7 @@
     setSession,
     onAuthStateChange,
     getProfile,
+    getAccountPolicy,
     upsertProfile,
     listProjects,
     uploadAvatar,
