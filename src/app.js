@@ -183,8 +183,6 @@ const els = {
   cloudMigrationRefresh: $("#cloudMigrationRefreshBtn"),
   cloudMigrationAll: $("#cloudMigrationAllBtn"),
   cloudMigrationAllLabel: $("#cloudMigrationAllLabel"),
-  cloudMigrationVerify: $("#cloudMigrationVerifyBtn"),
-  cloudMigrationVerifyInput: $("#cloudMigrationVerifyInput"),
   cloudMigrationProgress: $("#cloudMigrationProgress"),
   cloudMigrationProgressLabel: $("#cloudMigrationProgressLabel"),
   cloudMigrationProgressPercent: $("#cloudMigrationProgressPercent"),
@@ -1678,7 +1676,7 @@ function updateAccountUi() {
   }
   if (els.accountMenuDescription) {
     els.accountMenuDescription.textContent = signedIn
-      ? "只同步头像昵称；稿件仅存本机"
+      ? "只同步头像昵称；请下载 ZIP 保留原稿"
       : "草稿仅临时保存在当前标签页";
   }
   if (els.accountMenuLogin) els.accountMenuLogin.hidden = signedIn;
@@ -1721,7 +1719,7 @@ function updateAccountUi() {
     els.accountDisplayName.textContent = els.displayName.value.trim() || "未命名作者";
     els.accountEmailLabel.textContent = cloudState.user.email || "";
     const localCount = cloudState.localImportProjects.length;
-    els.accountImportLocal.hidden = localCount < 1;
+    els.accountImportLocal.hidden = localCount < 1 || !ACCOUNT_MAINTENANCE;
     if (localCount) els.accountImportLocal.innerHTML = `<i data-lucide="folder-input"></i>导入 ${localCount} 条游客 / 旧本机草稿到此账号`;
   }
   if (!ACCOUNT_MAINTENANCE) els.accountSignedIn?.querySelector(".account-sync-card strong")?.replaceChildren("账号资料");
@@ -2736,9 +2734,9 @@ function hydrateCloudProjectOnce(project) {
   return hydratingCloudProjects.get(key);
 }
 
-/** 登录用户和本地版的草稿长期存在本机，历史照常可用；游客草稿只留在当前标签页，不显示历史。 */
+/** 迁移期保留登录用户的本机历史入口；11 月起在线版隐藏入口，数据留在本机供恢复。 */
 function syncHistoryAvailability() {
-  const disabled = activeStorageScope === "guest";
+  const disabled = activeStorageScope === "guest" || (!LOCAL_DEPLOYMENT_MODE && !ACCOUNT_MAINTENANCE);
   document.body.classList.toggle("history-disabled", disabled);
   if (disabled) setHistoryOpen(false);
 }
@@ -3617,10 +3615,10 @@ async function createNewProject() {
   resetTextHistory();
   updateProjectHistory();
   await render();
-  // 历史记录暂时下线时，旧的一条没有入口可回，别让用户以为还能找回来。
+  // 历史栏关闭时，上一条没有直接入口；提示用户从 ZIP 恢复。
   els.status.textContent = historyEnabled()
     ? "已新建图文，上一条已保存在历史记录"
-    : "已新建图文";
+    : "已新建图文；需要保留原稿时请下载 ZIP";
 }
 
 const FIRST_RUN_ONBOARDING_STEPS = [
@@ -3651,8 +3649,8 @@ const WHATS_NEW_ONBOARDING_STEPS = [
     target: "#accountBtn",
     title: "账户同步",
     body: () => cloudState.user
-      ? "你已经登录。头像和昵称会跟着账号同步，图文草稿和历史记录保存在这台设备上。"
-      : "想保留历史草稿时，可以随时登录；继续使用游客模式，也不影响原来的排版和下载流程。",
+      ? "你已经登录。头像和昵称会跟着账号同步；请下载 ZIP 保留原稿，以后可从左上角导入。"
+      : "登录后可同步头像和昵称。需要保留原稿时，请下载 ZIP；以后可重新导入编辑。",
     actionLabel: () => cloudState.user ? "查看账号资料" : "登录 / 注册",
     action: () => {
       if (cloudState.user) {
@@ -5567,6 +5565,25 @@ async function inspectPortableFolder(files) {
   return options.length === 1 ? options[0].candidate : options;
 }
 
+function recordImportedMigrationZip(loaded, fileName, userId) {
+  if (!ACCOUNT_MAINTENANCE || !userId || cloudState.user?.id !== userId || cloudState.legacyProjectsStatus !== "ready") return 0;
+  const projects = new Map(cloudState.legacyProjects.map((project) => [project.id, project]));
+  const options = Array.isArray(loaded) ? loaded : [{ candidate: loaded }];
+  const matched = new Set();
+  for (const { candidate } of options) {
+    const original = projects.get(candidate.source?.id);
+    if (!original || original.updatedAt !== Number(candidate.source.updatedAt)) continue;
+    recordMigrationReceipt(original, fileName);
+    matched.add(original.id);
+  }
+  if (matched.size) {
+    renderCloudMigrationList();
+    updateCloudMigrationStatus();
+    updateMigrationTestUi();
+  }
+  return matched.size;
+}
+
 function setPortableImportStatus(message, error = false) {
   els.portableImportStatus.textContent = message;
   els.portableImportStatus.classList.toggle("is-error", error);
@@ -5617,8 +5634,9 @@ function selectPortableImportOption(index) {
   els.portableImportConfirm.disabled = false;
 }
 
-async function previewPortableImport(load, name) {
+async function previewPortableImport(load, name, verifyZip = false) {
   const selectionId = ++portableImportSelectionId;
+  const userId = cloudState.user?.id;
   portableImportCandidate = null;
   portableImportOptions = [];
   els.portableImportChoice.hidden = true;
@@ -5628,6 +5646,7 @@ async function previewPortableImport(load, name) {
   try {
     const loaded = await load();
     if (selectionId !== portableImportSelectionId) return;
+    const confirmed = verifyZip ? recordImportedMigrationZip(loaded, name, userId) : 0;
     portableImportOptions = Array.isArray(loaded) ? loaded : [{ candidate: loaded, name }];
     if (!portableImportOptions.length) throw new Error("没有找到可导入的原稿。");
     els.portableImportChoiceSelect.replaceChildren();
@@ -5641,9 +5660,10 @@ async function previewPortableImport(load, name) {
       els.portableImportChoice.hidden = false;
     }
     selectPortableImportOption(0);
-    setPortableImportStatus(portableImportOptions.length > 1
+    const status = portableImportOptions.length > 1
       ? `找到 ${portableImportOptions.length} 篇完整原稿，请选一篇继续编辑。`
-      : "文件结构和素材大小已检查，可以打开编辑。");
+      : "文件结构和素材大小已检查，可以打开编辑。";
+    setPortableImportStatus(confirmed ? `${status} 其中 ${confirmed} 篇旧稿已核对保存。` : status);
   } catch (error) {
     if (selectionId !== portableImportSelectionId) return;
     setPortableImportStatus(error?.message || "原稿检查失败。", true);
@@ -5672,7 +5692,7 @@ async function handlePortableImportDrop(event) {
   els.portableImportDropzone.classList.remove("is-dragging");
   const files = Array.from(event.dataTransfer?.files || []);
   if (files.length === 1 && /\.zip$/i.test(files[0].name)) {
-    await previewPortableImport(() => inspectPortableZip(files[0]), files[0].name);
+    await previewPortableImport(() => inspectPortableZip(files[0]), files[0].name, true);
     return;
   }
   setPortableImportStatus("请拖入一个原稿 ZIP 或迁移 ZIP。", true);
@@ -5733,9 +5753,7 @@ function renderCloudMigrationList() {
     title.textContent = project.title || "未命名图文";
     const detail = document.createElement("small");
     const createdAt = projectCreatedAt(project);
-    const imageCount = Object.keys(project.data?.images || {}).length;
-    const liveCount = Object.values(project.data?.images || {}).filter((image) => image?.kind === "live").length;
-    detail.textContent = `${createdAt ? new Date(createdAt).toLocaleString("zh-CN", { hour12: false }) : "创建时间未知"} · ${imageCount} 个图片/GIF${liveCount ? ` · ${liveCount} 项实况` : ""}`;
+    detail.textContent = createdAt ? new Date(createdAt).toLocaleDateString("zh-CN") : "创建时间未知";
     copy.append(title, detail);
     row.dataset.cloudProjectId = project.id;
     const result = document.createElement("span");
@@ -5745,8 +5763,8 @@ function renderCloudMigrationList() {
     const packaged = receipt?.state === "packaged";
     const saved = receipt && !incomplete && !packaged;
     result.textContent = incomplete
-      ? (/object not found/i.test(receipt.error || "") ? "未完成 · 素材缺失" : "未完成")
-      : saved ? "已核对保存 · 待抽查" : packaged ? "已打包 · 待核对 ZIP" : "待迁移";
+      ? (/object not found/i.test(receipt.error || "") ? "素材缺失" : "未完成")
+      : saved ? "已核对保存" : packaged ? "已打包待确认" : "待迁移";
     if (incomplete) result.title = receipt.error || "请重新迁移这一篇";
     row.classList.toggle("is-saved", Boolean(saved));
     row.classList.toggle("is-incomplete", incomplete);
@@ -5767,11 +5785,11 @@ function renderCloudMigrationList() {
 function updateCloudMigrationStatus() {
   if (!els.cloudMigrationStatus) return;
   if (cloudState.legacyProjectsStatus === "loading") {
-    els.cloudMigrationStatus.textContent = "正在读取旧稿清单…";
+    els.cloudMigrationStatus.textContent = "正在读取旧稿…";
     return;
   }
   if (cloudState.legacyProjectsStatus === "error") {
-    els.cloudMigrationStatus.textContent = "旧稿清单读取失败，请点击「刷新清单」重试；这不代表账号里没有旧稿。";
+    els.cloudMigrationStatus.textContent = "读取失败，请刷新清单。";
     return;
   }
   const total = cloudState.legacyProjects.length;
@@ -5780,15 +5798,10 @@ function updateCloudMigrationStatus() {
   const packaged = packagedMigrationCount();
   const unknown = total - saved - incomplete - packaged;
   if (!total) {
-    els.cloudMigrationStatus.textContent = "已读取清单：这个账号没有查到云端旧稿。";
-  } else if (saved === total) {
-    els.cloudMigrationStatus.textContent = `云端 ${total} 篇；已核对保存 ${saved} 篇。请保留 ZIP 并导入抽查。`;
-  } else if (saved || incomplete || packaged) {
-    els.cloudMigrationStatus.textContent = `云端 ${total} 篇；已核对 ${saved} 篇${packaged ? `，已打包待核对 ${packaged} 篇` : ""}${incomplete ? `，未完成 ${incomplete} 篇` : ""}${unknown ? `，待迁移 ${unknown} 篇` : ""}。`;
+    els.cloudMigrationStatus.textContent = "这个账号暂无云端旧稿。";
   } else {
-    els.cloudMigrationStatus.textContent = `云端 ${total} 篇；请一键迁移并保留 ZIP 原稿。`;
+    els.cloudMigrationStatus.textContent = `${total} 篇旧稿 · 已核对 ${saved} 篇${packaged ? ` · 已打包待确认 ${packaged} 篇` : ""}${incomplete ? ` · 未完成 ${incomplete} 篇` : ""}${unknown ? ` · 待迁移 ${unknown} 篇` : ""}`;
   }
-  els.cloudMigrationStatus.textContent += ` ${MIGRATION_DEADLINE_NOTICE}`;
 }
 
 function updateMigrationAllButton() {
@@ -5799,7 +5812,6 @@ function updateMigrationAllButton() {
   if (els.cloudMigrationAllLabel) els.cloudMigrationAllLabel.textContent = total && savedMigrationCount() === total
     ? "再次下载全部 ZIP" : "一键迁移为 ZIP";
   els.cloudMigrationAll.title = supported ? "" : "ZIP 组件未加载，请刷新页面";
-  if (els.cloudMigrationVerify) els.cloudMigrationVerify.disabled = !cloudIsReady() || cloudState.legacyProjectsStatus !== "ready" || cloudState.migrationBusy;
 }
 
 function setMigrationBusy(busy) {
@@ -5911,35 +5923,6 @@ async function verifySavedMigrationFolder(files) {
   }
 }
 
-async function verifySavedMigrationZip(files) {
-  if (cloudState.migrationBusy || !cloudIsReady() || cloudState.legacyProjectsStatus !== "ready") return;
-  const userId = cloudState.user.id;
-  setMigrationBusy(true);
-  const matched = new Set();
-  try {
-    const current = new Map(cloudState.legacyProjects.map((project) => [project.id, project]));
-    for (const file of files) {
-      const inspected = await inspectPortableZip(file);
-      if (cloudState.user?.id !== userId) throw new Error("账号已变化，请重新选择 ZIP。");
-      const options = Array.isArray(inspected) ? inspected : [{ candidate: inspected }];
-      for (const { candidate } of options) {
-        const original = current.get(candidate.source.id);
-        if (!original || original.updatedAt !== Number(candidate.source.updatedAt)) continue;
-        recordMigrationReceipt(original, file.name);
-        matched.add(original.id);
-      }
-    }
-    renderCloudMigrationList();
-    els.cloudMigrationStatus.textContent = matched.size
-      ? `已核对 ${matched.size} 篇完整原稿；累计已核对保存 ${savedMigrationCount()}/${current.size} 篇。请保留 ZIP，并从左上角导入抽查。`
-      : "所选 ZIP 与当前账号旧稿不匹配，保存状态没有更改。";
-  } catch (error) {
-    els.cloudMigrationStatus.textContent = `核对未完成：${error?.message || "请重新选择 ZIP。"}`;
-  } finally {
-    setMigrationBusy(false);
-  }
-}
-
 async function migrateAllCloudProjects() {
   if (!ACCOUNT_MAINTENANCE || cloudState.migrationBusy || !cloudIsReady() || cloudState.legacyProjectsStatus !== "ready" || !cloudState.legacyProjects.length) return;
   if (!window.JSZip) { els.cloudMigrationStatus.textContent = "ZIP 组件未加载，请刷新页面。"; return; }
@@ -5958,7 +5941,7 @@ async function migrateAllCloudProjects() {
     if (!queued.length) return;
     assertAccount();
     const archiveName = `${batchName}-${String(archives.length + 1).padStart(2, "0")}.zip`;
-    zip.file("迁移说明.txt", `写了就发旧稿迁移\n本包包含 ${queued.length} 篇完整原稿。\n${MIGRATION_DEADLINE_NOTICE}\n左上角「导入原稿」直接选择本 ZIP，再选一篇继续编辑。\n正文、排版、GIF 和原视频均保留；请核对 ZIP 并试着导入。\n云端原件未删除。\n${failed.length ? `\n未完成：\n${failed.join("\n")}\n请在截止前重试；以页面最终结果为准。` : ""}\n`);
+    zip.file("迁移说明.txt", `写了就发旧稿迁移\n本包包含 ${queued.length} 篇完整原稿。\n${MIGRATION_DEADLINE_NOTICE}\n左上角「导入原稿」直接选择本 ZIP，再选一篇继续编辑。\n正文、排版、GIF 和原视频均保留；请从左上角导入并抽查。\n云端原件未删除。\n${failed.length ? `\n未完成：\n${failed.join("\n")}\n请在截止前重试；以页面最终结果为准。` : ""}\n`);
     const blob = await zip.generateAsync({ type: "blob", compression: "STORE", streamFiles: true }, (metadata) => {
       updateMigrationProgress(processed, totalUnits, "正在生成 ZIP…", `${archiveName} · 打包 ${Math.floor(metadata.percent)}%`);
     });
@@ -6014,7 +5997,7 @@ async function migrateAllCloudProjects() {
     }
     await flush();
     processed = totalUnits;
-    els.cloudMigrationStatus.textContent = `已交给浏览器下载 ${archives.length} 个 ZIP，包含 ${completed}/${projects.length} 篇完整原稿。${failed.length ? `${failed.length} 篇未完成，请在截止前重试。` : ""}请在下载目录确认文件，再点击「核对 ZIP」。`;
+    els.cloudMigrationStatus.textContent = `已生成 ${archives.length} 个 ZIP，包含 ${completed}/${projects.length} 篇完整原稿。${failed.length ? `${failed.length} 篇未完成，请在截止前重试。` : ""}请检查下载目录，并从左上角「导入原稿」试打开。`;
     updateMigrationProgress(processed, totalUnits, failed.length ? "处理结束：部分原稿未完成" : "ZIP 迁移处理完成", `成功 ${completed} 篇 · 未完成 ${failed.length} 篇 · ${archives.length} 个 ZIP`, false);
   } catch (error) {
     for (const { project } of queued) recordMigrationFailure(project, error?.message || "ZIP 保存失败");
@@ -13124,7 +13107,7 @@ function bindEvents() {
   els.portableImportZipInput?.addEventListener("change", (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) void previewPortableImport(() => inspectPortableZip(file), file.name);
+    if (file) void previewPortableImport(() => inspectPortableZip(file), file.name, true);
   });
   els.portableImportFolder.hidden = true;
   els.portableImportFolder?.addEventListener("click", () => els.portableImportFolderInput.click());
@@ -13158,12 +13141,6 @@ function bindEvents() {
   els.cloudMigrationRefresh?.addEventListener("click", () => void refreshCloudMigrationList());
   els.cloudMigrationAll?.addEventListener("click", () => void migrateAllCloudProjects());
 
-  els.cloudMigrationVerify?.addEventListener("click", () => els.cloudMigrationVerifyInput.click());
-  els.cloudMigrationVerifyInput?.addEventListener("change", (event) => {
-    const files = Array.from(event.target.files || []);
-    event.target.value = "";
-    if (files.length) void verifySavedMigrationZip(files);
-  });
   els.cloudMigrationModal?.addEventListener("click", (event) => {
     if (event.target === els.cloudMigrationModal) closeCloudMigrationModal();
   });

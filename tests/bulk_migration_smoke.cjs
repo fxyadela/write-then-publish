@@ -36,7 +36,7 @@ const context = {
   portableCoverBlob: async () => { throw new Error('must fetch original'); },
   portableVideoBlob: async () => { throw new Error('must fetch original'); },
   setMigrationBusy: busy => { cloudState.migrationBusy = busy; },
-  renderCloudMigrationList() {}, updateMigrationTestUi() {},
+  renderCloudMigrationList() {}, updateMigrationTestUi() {}, updateCloudMigrationStatus() {},
   recordMigrationPackage: (project, archive) => packaged.set(project.id, archive),
   recordMigrationReceipt: (project, archive) => saved.set(project.id, archive),
   recordMigrationFailure: (project, reason) => failed.set(project.id, reason),
@@ -51,6 +51,7 @@ vm.runInContext([
   section('function portableProjectMigrationUnits(', 'async function exportPortableProject('),
   section('async function inspectPortableProject(', 'async function importPortableProject('),
   section('async function inspectPortableZip(', 'async function inspectPortableFolder('),
+  section('function recordImportedMigrationZip(', 'function setPortableImportStatus('),
   section('function updateMigrationProgress(', 'async function refreshCloudMigrationList('),
 ].join('\n'), context);
 (async () => {
@@ -73,9 +74,13 @@ vm.runInContext([
   }
   assert.match(await zip.file('迁移说明.txt').async('string'), /10 月 31 日/);
   downloads[0].blob.name = downloads[0].name;
-  await context.verifySavedMigrationZip([downloads[0].blob, downloads[0].blob]);
-  assert.equal(saved.size, 2, 'only real complete ZIPs mark drafts as verified');
-  assert.match(els.cloudMigrationStatus.textContent, /已核对 2 篇/, 'duplicate selected files do not inflate the count');
+  const inspected = await context.inspectPortableZip(downloads[0].blob);
+  assert.equal(context.recordImportedMigrationZip(inspected, downloads[0].name, 'another-user'), 0);
+  assert.equal(saved.size, 0, 'another account cannot confirm these drafts');
+  assert.equal(context.recordImportedMigrationZip(inspected, downloads[0].name, 'test-user'), 2);
+  assert.equal(saved.size, 2, 'a real ZIP selected for import confirms all matching drafts');
+  assert.equal(context.recordImportedMigrationZip(inspected, downloads[0].name, 'test-user'), 2);
+  assert.equal(saved.size, 2, 'repeat selection does not inflate saved draft count');
   downloads.length = 0; packaged.clear(); percentages.length = 0;
   context.portableCloudBlob = async path => {
     if (path === 'cover-1') throw new Error('Object not found');
@@ -92,5 +97,5 @@ vm.runInContext([
   const count = downloads.length;
   await context.migrateAllCloudProjects();
   assert.equal(downloads.length, count, 'no new migration after cutoff');
-  console.log('OK: all drafts in ZIP, real GIF/MP4 bytes, progress, ZIP verification and partial failure');
+  console.log('OK: all drafts in ZIP, real GIF/MP4 bytes, progress, import verification and partial failure');
 })().catch(error => { console.error(error); process.exitCode = 1; });
