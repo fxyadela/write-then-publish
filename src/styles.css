@@ -351,7 +351,6 @@ body.account-maintenance.migration-test-mode .account-maintenance-status {
   text-decoration: none;
 }
 
-.migration-pilot-link[hidden],
 .migration-test-email-form[hidden] {
   display: none;
 }
@@ -412,7 +411,7 @@ body.account-maintenance.migration-test-mode .account-maintenance-status {
   gap: 10px;
 }
 
-.migration-test-email-form span {
+.migration-test-email-form label {
   color: var(--muted);
   font-size: 12px;
 }
@@ -426,10 +425,6 @@ body.account-maintenance.migration-test-mode .account-maintenance-status {
   background: var(--paper);
   color: var(--ink);
   font: inherit;
-}
-
-.migration-test-email-form input[readonly] {
-  background: var(--soft);
 }
 
 .account-dock-button {

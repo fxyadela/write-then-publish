@@ -147,6 +147,11 @@
     throwIfError(error);
   }
 
+  async function signOutLocal() {
+    const { error } = await requireClient().auth.signOut({ scope: "local" });
+    throwIfError(error);
+  }
+
   async function getSession() {
     if (!client) return null;
     const { data, error } = await client.auth.getSession();
@@ -372,6 +377,7 @@
     sendPasswordReset,
     updatePassword,
     signOut,
+    signOutLocal,
     getSession,
     setSession,
     onAuthStateChange,
