@@ -69,15 +69,22 @@ vm.runInContext([
 
   context.recordMigrationReceipt(projects[0], "2026-10-03_旧稿1");
   context.recordMigrationFailure(projects[1], "图片 sample 读取失败");
+  context.recordMigrationFolderSave(projects[2], "我的迁移文件夹", "旧稿-01.zip");
   context.updateMigrationTestUi();
-  assert.match(els.migrationTestOpen.innerHTML, /已核对 1\/17 篇/);
+  assert.match(els.migrationTestOpen.innerHTML, /已保存 2\/17 篇/);
   assert.equal(context.incompleteMigrationCount(), 1);
+  assert.equal(context.writtenMigrationCount(), 1);
   assert.equal(context.loadMigrationReceipts("test-user")[projects[0].id].folderName, "2026-10-03_旧稿1");
+  assert.equal(context.loadMigrationReceipts("test-user")[projects[2].id].state, "written");
+  context.recordMigrationFailure(projects[2], "重试时网络断开");
+  assert.equal(context.writtenMigrationCount(), 1, "later retry failure cannot erase an already saved ZIP");
 
   listProjects = async () => projects;
   await context.refreshCloudMigrationList();
-  assert.match(els.migrationTestOpen.innerHTML, /已核对 1\/17 篇/, "refresh keeps saved state");
+  assert.match(els.migrationTestOpen.innerHTML, /已保存 2\/17 篇/, "refresh keeps saved state");
   assert.equal(context.incompleteMigrationCount(), 1, "refresh keeps failed state");
+  cloudState.migrationReceipts = context.loadMigrationReceipts("test-user");
+  assert.equal(context.writtenMigrationCount(), 1, "new page can restore selected-folder write state");
 
   listProjects = async () => { throw new Error("network error"); };
   await context.refreshCloudMigrationList();
@@ -90,7 +97,7 @@ vm.runInContext([
   await context.loadCloudWorkspace({ user: { id: "test-user", email: "test@example.com" } });
   context.updateMigrationTestUi();
   assert.equal(cloudState.legacyProjectsStatus, "ready", "profile failure does not hide a successful project list");
-  assert.match(els.migrationTestOpen.innerHTML, /已核对 1\/17 篇/);
+  assert.match(els.migrationTestOpen.innerHTML, /已保存 2\/17 篇/);
   context.ACCOUNT_MAINTENANCE = false;
   getProfile = async () => ({ display_name: "测试账号" });
   let projectReads = 0;

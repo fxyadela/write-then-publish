@@ -385,12 +385,27 @@ body.history-disabled .workspace.history-open {
 }
 
 .migration-test-google {
-  width: 100%;
+  min-width: 0;
 }
 
 .migration-test-email-form {
   display: grid;
   gap: 10px;
+}
+
+.migration-test-auth-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.migration-test-auth-actions button {
+  flex: 1;
+  min-width: 0;
+}
+
+.migration-test-auth-actions button[hidden] {
+  display: none;
 }
 
 .migration-test-email-form label {
@@ -3417,6 +3432,11 @@ body.export-busy {
 .cloud-migration-all svg {
   width: 18px;
   height: 18px;
+}
+
+.cloud-migration-browser-download {
+  width: 100%;
+  margin-top: 10px;
 }
 
 .cloud-migration-progress {
