@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20261005-migration-panel" />
+    <link rel="stylesheet" href="src/styles.css?v=20261005-migration-folder-logout" />
   </head>
   <body class="entry-choice-pending history-disabled">
     <main class="workspace">
@@ -799,14 +799,16 @@
         <button id="migrationTestCloseBtn" class="icon-button ghost migration-test-close" type="button" aria-label="关闭登录窗口"><i data-lucide="x"></i></button>
         <span class="migration-test-kicker">旧稿迁移</span>
         <h3 id="migrationTestTitle">先登录原来的账号</h3>
-        <p>登录旧账号 → 一键下载 ZIP → 核对保存。请最迟在 10 月 31 日完成；此入口仅用于迁移旧记录。</p>
+        <p>登录旧账号后，选择文件夹，一键保存旧稿 ZIP。请最迟在 10 月 31 日完成。</p>
         <p id="migrationTestNotice" class="migration-test-notice" role="status" hidden></p>
-        <button id="migrationTestGoogleBtn" class="primary-button migration-test-google" type="button" hidden>用 Google 登录旧账号</button>
         <form id="migrationTestEmailForm" class="migration-test-email-form">
           <label for="migrationTestEmail">邮箱</label>
           <input id="migrationTestEmail" type="email" autocomplete="off" placeholder="请输入邮箱" required />
           <input id="migrationTestPassword" type="password" autocomplete="current-password" placeholder="原密码" required />
-          <button id="migrationTestEmailSignInBtn" class="primary-button" type="submit">登录并查看旧稿</button>
+          <div class="migration-test-auth-actions">
+            <button id="migrationTestGoogleBtn" class="secondary-button migration-test-google" type="button" hidden>Google 登录</button>
+            <button id="migrationTestEmailSignInBtn" class="primary-button" type="submit">邮箱登录</button>
+          </div>
         </form>
       </div>
     </section>
@@ -816,12 +818,13 @@
         <div class="modal-head">
           <div>
             <h3 id="cloudMigrationTitle">一键迁移旧稿</h3>
-            <p>请在 10 月 31 日前下载并保留 ZIP 原稿，正文和素材会一起保存。</p>
+            <p>请在 10 月 31 日前选择文件夹并保存 ZIP 原稿，正文和素材会一起保存。</p>
           </div>
           <button id="cloudMigrationCloseBtn" class="icon-button ghost" type="button" aria-label="关闭迁移面板"><i data-lucide="x"></i></button>
         </div>
         <div class="cloud-migration-body">
           <button id="cloudMigrationAllBtn" class="primary-button cloud-migration-all" type="button" disabled><i data-lucide="folder-down"></i><span id="cloudMigrationAllLabel">一键迁移为 ZIP</span></button>
+          <button id="cloudMigrationBrowserDownloadBtn" class="secondary-button cloud-migration-browser-download" type="button" hidden>改用浏览器下载</button>
           <div id="cloudMigrationProgress" class="cloud-migration-progress" hidden>
             <div class="cloud-migration-progress-head">
               <strong id="cloudMigrationProgressLabel">准备迁移…</strong>
@@ -1368,6 +1371,6 @@
         document.write('<script src="src/supabase.js?v=20261005-migration-zip"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20261005-migration-panel"></script>
+    <script src="src/app.js?v=20261005-migration-folder-logout"></script>
   </body>
 </html>
