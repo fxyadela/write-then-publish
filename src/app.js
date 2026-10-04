@@ -52,18 +52,12 @@ const ACCOUNT_MAINTENANCE = true;
 const REGISTRATION_PAUSED = true;
 const MIGRATION_TEST_USER_ID = "d1f516ce-099d-4615-a6e6-f78de883bad4";
 const MIGRATION_TEST_EMAIL = "heyfxyadela@gmail.com";
-const MIGRATION_TEST_PENDING_KEY = "writeThenPublishMigrationTestPending.v1";
 const MAINTENANCE_WELCOME_KEY = "writeThenPublishMaintenanceWelcome.v2";
 const MIGRATION_RECEIPTS_KEY = "writeThenPublishMigrationReceipts.v1";
-const MIGRATION_TEST_MODE = !LOCAL_DEPLOYMENT_MODE && (() => {
-  try {
-    return new URLSearchParams(window.location.search).get("migration-test") === "1"
-      || sessionStorage.getItem(MIGRATION_TEST_PENDING_KEY) === "1";
-  } catch {
-    return false;
-  }
-})();
+const MIGRATION_TEST_MODE = !LOCAL_DEPLOYMENT_MODE;
+const PILOT_ONLY_NOTICE = "暂时不能测试";
 let activeStorageScope = "guest";
+let migrationTestAuthMode = "signin";
 
 function isMigrationTestUser(user) {
   return MIGRATION_TEST_MODE
@@ -180,11 +174,13 @@ const els = {
   migrationTestModal: $("#migrationTestModal"),
   migrationTestClose: $("#migrationTestCloseBtn"),
   migrationTestGoogle: $("#migrationTestGoogleBtn"),
+  migrationTestSignInMode: $("#migrationTestSignInModeBtn"),
+  migrationTestSignUpMode: $("#migrationTestSignUpModeBtn"),
   migrationTestEmailForm: $("#migrationTestEmailForm"),
+  migrationTestEmail: $("#migrationTestEmail"),
   migrationTestPassword: $("#migrationTestPassword"),
   migrationTestEmailSignIn: $("#migrationTestEmailSignInBtn"),
   migrationTestNotice: $("#migrationTestNotice"),
-  migrationPilotLink: $("#migrationPilotLink"),
   migrationTestControls: $("#migrationTestControls"),
   migrationTestOpen: $("#migrationTestOpenBtn"),
   migrationTestSignOut: $("#migrationTestSignOutBtn"),
@@ -1746,7 +1742,7 @@ function updateMigrationTestUi() {
     : cloudState.legacyProjectsStatus === "error" ? "读取失败" : "读取中";
   els.migrationTestOpen.innerHTML = signedIn
     ? `<i data-lucide="folder-down"></i>迁移旧稿 <small>${detail}</small>`
-    : '<i data-lucide="folder-down"></i>旧稿迁移 <small>测试中</small>';
+    : '<i data-lucide="log-in"></i>登录 / 注册 <small>迁移旧稿</small>';
   els.migrationTestSignOut.hidden = !signedIn;
   els.migrationTestSignOut.disabled = cloudState.migrationBusy;
 }
@@ -2499,7 +2495,27 @@ function setMigrationTestNotice(message = "", error = false) {
 
 async function refreshMigrationTestGoogle() {
   if (!MIGRATION_TEST_MODE || !els.migrationTestGoogle) return;
-  els.migrationTestGoogle.hidden = !(await cloudApi()?.googleSignInAvailable(true));
+  const api = cloudApi();
+  const available = await api?.googleSignInAvailable(true);
+  els.migrationTestGoogle.hidden = migrationTestAuthMode === "signup" || !available;
+  if (api?.isServiceRestricted?.() && !els.migrationTestNotice.textContent) {
+    setMigrationTestNotice("云端服务目前受存储额度限制，暂时无法登录。", true);
+  }
+}
+
+function setMigrationTestAuthMode(mode) {
+  migrationTestAuthMode = mode === "signup" ? "signup" : "signin";
+  const signingUp = migrationTestAuthMode === "signup";
+  els.migrationTestSignInMode?.classList.toggle("is-active", !signingUp);
+  els.migrationTestSignInMode?.setAttribute("aria-selected", String(!signingUp));
+  els.migrationTestSignUpMode?.classList.toggle("is-active", signingUp);
+  els.migrationTestSignUpMode?.setAttribute("aria-selected", String(signingUp));
+  els.migrationTestEmailSignIn.textContent = signingUp ? "注册" : "登录";
+  els.migrationTestPassword.hidden = signingUp;
+  els.migrationTestPassword.required = !signingUp;
+  els.migrationTestGoogle.hidden = true;
+  setMigrationTestNotice(signingUp ? "目前仅开放已注册的测试账号登录，新账号注册暂未开放。" : "");
+  if (!signingUp) void refreshMigrationTestGoogle();
 }
 
 function openMigrationTestLogin() {
@@ -2508,13 +2524,11 @@ function openMigrationTestLogin() {
     openCloudMigrationModal();
     return;
   }
-  const pilotOnly = !MIGRATION_TEST_MODE;
-  els.migrationPilotLink.hidden = !pilotOnly;
-  els.migrationTestEmailForm.hidden = pilotOnly;
-  els.migrationTestGoogle.hidden = true;
-  setMigrationTestNotice(pilotOnly ? "迁移仍在测试，目前只有指定测试账号可以登录和读取旧稿。其他旧账号暂时无法迁移。" : "");
+  els.migrationTestEmail.value = "";
+  els.migrationTestPassword.value = "";
+  setMigrationTestAuthMode("signin");
   els.migrationTestModal.classList.remove("hidden");
-  if (!pilotOnly) void refreshMigrationTestGoogle();
+  requestAnimationFrame(() => els.migrationTestEmail.focus());
 }
 
 function closeMigrationTestLogin() {
@@ -2522,12 +2536,18 @@ function closeMigrationTestLogin() {
 }
 
 function setMigrationTestBusy(busy) {
-  [els.migrationTestGoogle, els.migrationTestPassword, els.migrationTestEmailSignIn]
+  [els.migrationTestGoogle, els.migrationTestEmail, els.migrationTestPassword,
+    els.migrationTestEmailSignIn, els.migrationTestSignInMode, els.migrationTestSignUpMode]
     .filter(Boolean).forEach((element) => { element.disabled = busy; });
 }
 
 async function finishMigrationTestLogin(session, { openMigration = true } = {}) {
-  if (!isMigrationTestUser(session?.user)) throw new Error(`请使用 ${MIGRATION_TEST_EMAIL} 对应的旧账号。`);
+  if (!isMigrationTestUser(session?.user)) {
+    if (session?.user) {
+      try { await cloudApi().signOutLocal(); } catch { /* 仍需拒绝非测试账号进入工作区。 */ }
+    }
+    throw new Error(PILOT_ONLY_NOTICE);
+  }
   await loadCloudWorkspace(session);
   finishEntryChoice("account", { returning: true });
   closeMigrationTestLogin();
@@ -2539,16 +2559,30 @@ async function finishMigrationTestLogin(session, { openMigration = true } = {}) 
 
 async function signInMigrationTestWithEmail(event) {
   event.preventDefault();
+  const email = els.migrationTestEmail.value.trim().toLowerCase();
+  if (email !== MIGRATION_TEST_EMAIL) {
+    setMigrationTestNotice(PILOT_ONLY_NOTICE, true);
+    return;
+  }
+  if (migrationTestAuthMode === "signup") {
+    setMigrationTestNotice("这个邮箱已有账号，请切换到登录。", true);
+    return;
+  }
   const password = els.migrationTestPassword.value;
   if (!password) return;
   setMigrationTestBusy(true);
   setMigrationTestNotice("正在登录旧账号…");
   try {
-    const result = await cloudApi().signIn(MIGRATION_TEST_EMAIL, password);
+    const result = await cloudApi().signIn(email, password);
     await finishMigrationTestLogin(result.session);
     els.migrationTestPassword.value = "";
   } catch (error) {
-    setMigrationTestNotice(error?.message || "登录失败，请检查原密码。", true);
+    setMigrationTestNotice(
+      isCloudRestrictedMessage(error?.message)
+        ? "云端服务目前受存储额度限制，暂时无法登录。"
+        : error?.message || "登录失败，请检查原密码。",
+      true,
+    );
   } finally {
     setMigrationTestBusy(false);
   }
@@ -2558,7 +2592,6 @@ async function signInMigrationTestWithGoogle() {
   setMigrationTestBusy(true);
   setMigrationTestNotice("正在跳转到 Google…");
   try {
-    sessionStorage.setItem(MIGRATION_TEST_PENDING_KEY, "1");
     await cloudApi().signInWithGoogle(true);
     setMigrationTestNotice("没有打开 Google 登录页，请重新尝试。", true);
     setMigrationTestBusy(false);
@@ -2819,6 +2852,7 @@ async function initializeCloudAccount() {
     cloudState.initialized = true;
     if (MIGRATION_TEST_MODE) {
       document.body.classList.add("migration-test-mode");
+      const redirectStatus = authRedirectStatus();
       try {
         const session = await cloudApi()?.getSession();
         if (isMigrationTestUser(session?.user)) {
@@ -2826,21 +2860,33 @@ async function initializeCloudAccount() {
           showMaintenanceWelcomeOnce();
           return;
         }
-        await chooseGuestMode();
-        const welcomeShown = showMaintenanceWelcomeOnce();
-        if (!welcomeShown) openMigrationTestLogin();
-        const redirectStatus = authRedirectStatus();
         if (session?.user) {
-          setMigrationTestNotice(`当前登录的不是 ${MIGRATION_TEST_EMAIL}，请切换 Google 账号后重试。`, true);
-        } else if (redirectStatus) {
-          setMigrationTestNotice(redirectStatus.message, redirectStatus.tone === "error");
+          try { await cloudApi().signOutLocal(); } catch { /* 本站仍只提供游客工作区。 */ }
+        }
+        await chooseGuestMode();
+        showMaintenanceWelcomeOnce();
+        if (session?.user || redirectStatus) {
+          finishMaintenanceWelcome();
+          openMigrationTestLogin();
+          setMigrationTestNotice(session?.user ? PILOT_ONLY_NOTICE : redirectStatus.message, true);
         } else if (!cloudApi()?.configured) {
+          // 游客仍可继续使用；仅在主动打开登录窗口时说明账号服务状态。
           setMigrationTestNotice("云端账号服务暂时不可用，请稍后重试。", true);
         }
       } catch (error) {
+        await handleCloudSession(null);
         await chooseGuestMode();
-        if (!showMaintenanceWelcomeOnce()) openMigrationTestLogin();
-        setMigrationTestNotice(error?.message || "云端账号连接失败，请稍后重试。", true);
+        showMaintenanceWelcomeOnce();
+        if (redirectStatus || error) {
+          finishMaintenanceWelcome();
+          openMigrationTestLogin();
+          setMigrationTestNotice(
+            isCloudRestrictedMessage(error?.message)
+              ? "云端服务目前受存储额度限制，暂时无法登录。"
+              : redirectStatus?.message || error?.message || "云端账号连接失败，请稍后重试。",
+            true,
+          );
+        }
       }
       return;
     }
@@ -13101,6 +13147,8 @@ function bindEvents() {
     if (event.target === els.migrationTestModal) closeMigrationTestLogin();
   });
   els.migrationTestEmailForm?.addEventListener("submit", (event) => void signInMigrationTestWithEmail(event));
+  els.migrationTestSignInMode?.addEventListener("click", () => setMigrationTestAuthMode("signin"));
+  els.migrationTestSignUpMode?.addEventListener("click", () => setMigrationTestAuthMode("signup"));
   els.migrationTestGoogle?.addEventListener("click", () => void signInMigrationTestWithGoogle());
   els.cloudMigrationClose?.addEventListener("click", closeCloudMigrationModal);
   els.cloudMigrationRefresh?.addEventListener("click", () => void refreshCloudMigrationList());
