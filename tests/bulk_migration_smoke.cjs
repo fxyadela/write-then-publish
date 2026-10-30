@@ -77,7 +77,7 @@ vm.runInContext([
   section('function projectCreatedAt(', 'function loadProjectStore('),
   section('function normalizeObsidianImagePath(', 'function countMarkdownImageReferences('),
   section('function portableMediaExtension(', 'async function portableCloudBlob('),
-  section('function portableProjectImages(', 'async function exportPortableProject('),
+  section('function referencedProjectImages(', 'async function exportPortableProject('),
   section('async function inspectPortableProject(', 'async function importPortableProject('),
   section('async function inspectPortableZip(', 'async function inspectPortableFolder('),
   section('function recordImportedMigrationZip(', 'function setPortableImportStatus('),
