@@ -47,14 +47,15 @@ const ctx = {
   readFileAsDataURL: async blob => `data:${blob.type};base64,${Buffer.from(await blob.arrayBuffer()).toString('base64')}`,
   writeLiveMediaBlob: async (key, blob) => videoStore.set(key, blob), readLiveMediaBlob: async key => videoStore.get(key),
   replaceLiveMediaCache: (key, blob) => liveMediaFiles.set(key, { blob }),
-  cloudApi: () => { cloudCalls++; throw new Error('offline import cannot call cloud'); },
+  cloudApi: () => ({ downloadProjectAsset: async () => { cloudCalls++; throw new Error('Object not found'); } }),
   saveState() {}, applyForm() {}, syncGuideReadOnlyMode() {}, resetTextHistory() {}, saveProjectStore() {}, updateProjectHistory() {}, render: async () => {},
 };
 vm.createContext(ctx);
 vm.runInContext([
  section('function projectCreatedAt(', 'function loadProjectStore('),
- section('function portableMediaExtension(', 'async function portableCloudBlob('),
- section('async function portableCoverBlob(', 'function portableProjectMigrationUnits('),
+  section('function normalizeObsidianImagePath(', 'function countMarkdownImageReferences('),
+  section('function portableMediaExtension(', 'function portableProjectMigrationUnits('),
+  section('function portableProjectMigrationUnits(', 'async function writePortableProject('),
  section('async function writePortableProject(', 'async function exportPortableProject('),
  section('async function inspectPortableProject(', 'async function inspectPortableFolder('),
  section('async function prepareDownloadZip(', 'async function saveBlob('),
@@ -70,10 +71,15 @@ vm.runInContext([
   assert.equal(imported.data.fontSize, original.data.fontSize);
   for (const image of Object.values(imported.data.images)) image.src = '';
   liveMediaFiles.clear();
+  // Legacy drafts can retain this unused built-in image after its cloud object is gone.
+  imported.data.images.sample = { name: 'sample', src: '', storagePath: 'deleted/sample' };
   // A publication download is a ZIP with both the PNG and editable source.
   const output = await ctx.prepareDownloadZip(new Blob([fixture('still.png')], { type: 'image/png' }), 'publication.png');
   assert.equal(output.filename, 'publication.zip');
   const restored = await ctx.inspectPortableZip(output.blob);
+  assert.equal(restored.source.data.images.sample, undefined, 'unused built-in sample is not part of the editable source');
+  assert.equal(imported.data.images.sample.storagePath, 'deleted/sample', 'export must not alter the working draft');
+  assert.equal(ctx.portableProjectMigrationUnits(imported), 5, 'progress excludes the unused built-in sample');
   assert.equal(restored.source.data.content, original.data.content);
   assert.equal(restored.source.data.articleFont, 'serif');
   for (const [id, image] of Object.entries(original.data.images)) {
@@ -83,10 +89,31 @@ vm.runInContext([
     if (image.kind === 'live') assert.deepEqual(Buffer.from(await (await restored.read(result.portableVideoPath)).arrayBuffer()), media[image.portableVideoPath].bytes);
   }
   assert.equal(cloudCalls, 0);
+  // References must be preserved in every supported form, including either side of a pair.
+  const pngSrc = `data:image/png;base64,${fixture('still.png').toString('base64')}`;
+  for (const content of ['[[image:sample]]', '[[image:sample|png]]', '[[image:png|sample|4x3]]', '![[sample]]', '![图片](sample)']) {
+    const project = { ...original, data: { content, images: {
+      sample: { name: 'sample', src: pngSrc }, png: { name: '图片.png', src: pngSrc },
+    } } };
+    const files = new Map();
+    await ctx.writePortableProject(project, (name, value) => files.set(name, value));
+    const saved = JSON.parse(files.get('project.json'));
+    assert.ok(saved.data.images.sample, `keep referenced sample: ${content}`);
+    assert.deepEqual(Buffer.from(await files.get(saved.data.images.sample.portableSrcPath).arrayBuffer()), fixture('still.png'));
+  }
+  assert.equal(cloudCalls, 0);
+  const missing = { ...original, data: { content: '[[image:sample]]', images: {
+    sample: { name: 'sample', src: '', storagePath: 'deleted/sample' },
+  } } };
+  await assert.rejects(ctx.writePortableProject(missing, () => {}), /图片\/GIF sample 读取失败：Object not found/, 'referenced missing media must still fail');
+  const unusedUserImage = { ...original, data: { content: '正文', images: {
+    attachment: { name: '用户原图.png', src: '', storagePath: 'deleted/user-image' },
+  } } };
+  await assert.rejects(ctx.writePortableProject(unusedUserImage, () => {}), /用户原图.png 读取失败/, 'keep real attachments even when they are not in the body');
   const batch = new BrowserZip(); addOriginal(batch, '日期一'); addOriginal(batch, '日期二');
   const options = await ctx.inspectPortableZip(await batch.generateAsync({ type: 'blob' }));
   assert.equal(options.length, 2, 'batch ZIP offers a draft selection');
   zip.remove('2026-10-04_12-00-00/media/001.gif');
   await assert.rejects(ctx.inspectPortableZip(await zip.generateAsync({ type: 'blob' })), /文件缺失/);
-  console.log('OK: publication and migration ZIPs import; real GIF/PNG/MP4 bytes, text/crop/settings/date; local media re-export without cloud');
+  console.log('OK: publication ZIP skips unused legacy sample; preserves referenced images, GIF/PNG/MP4 bytes and settings; missing real media still fails');
 })().catch(error => { console.error(error); process.exitCode = 1; });
