@@ -18,6 +18,7 @@ const projects = [0, 1].map(index => ({
     videoName: '原视频.mp4', videoStoragePath: `video-${index}`,
   } } },
 }));
+projects[0].data.images.sample = { name: 'sample', src: '', storagePath: 'deleted/sample' };
 const cloudState = { user: { id: 'test-user' }, legacyProjects: projects, legacyProjectsStatus: 'ready', migrationBusy: false };
 const packaged = new Map(), written = new Map(), saved = new Map(), failed = new Map(), downloads = [], percentages = [];
 const folderFiles = new Map();
@@ -55,7 +56,11 @@ const context = {
     showDirectoryPicker: async () => { pickerCalls++; return directory; },
   }, cloudIsReady: () => true,
   isBuiltInProject: () => false,
-  portableCloudBlob: async path => { cloudReads++; return path.startsWith('cover-') ? gif : video; },
+  portableCloudBlob: async path => {
+    cloudReads++;
+    if (path === 'deleted/sample') throw new Error('Object not found');
+    return path.startsWith('cover-') ? gif : video;
+  },
   portableCoverBlob: async () => { throw new Error('must fetch original'); },
   portableVideoBlob: async () => { throw new Error('must fetch original'); },
   setMigrationBusy: busy => { cloudState.migrationBusy = busy; },
@@ -70,8 +75,9 @@ const context = {
 vm.createContext(context);
 vm.runInContext([
   section('function projectCreatedAt(', 'function loadProjectStore('),
+  section('function normalizeObsidianImagePath(', 'function countMarkdownImageReferences('),
   section('function portableMediaExtension(', 'async function portableCloudBlob('),
-  section('function portableProjectMigrationUnits(', 'async function exportPortableProject('),
+  section('function portableProjectImages(', 'async function exportPortableProject('),
   section('async function inspectPortableProject(', 'async function importPortableProject('),
   section('async function inspectPortableZip(', 'async function inspectPortableFolder('),
   section('function recordImportedMigrationZip(', 'function setPortableImportStatus('),
@@ -104,6 +110,7 @@ vm.runInContext([
   assert.equal(manifests.length, 2);
   for (const manifest of manifests) {
     const root = manifest.slice(0, -'manifest.json'.length);
+    assert.equal(JSON.parse(await zip.file(root+'project.json').async('string')).data.images.sample, undefined);
     assert.deepEqual(await zip.file(root+'media/001.gif').async('nodebuffer'), Buffer.from(await gif.arrayBuffer()));
     assert.deepEqual(await zip.file(root+'media/001-video.mp4').async('nodebuffer'), Buffer.from(await video.arrayBuffer()));
   }

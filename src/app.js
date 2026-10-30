@@ -5386,8 +5386,22 @@ async function portableVideoBlob(image, id) {
   throw new Error(`实况原视频缺失：${image.videoName || image.name || id}`);
 }
 
+function portableProjectImages(project) {
+  const images = project?.data?.images || {};
+  if (images.sample?.name !== "sample") return images;
+  const content = convertObsidianImageReferences(project.data.content, images).content;
+  const sampleReferenced = Array.from(content.matchAll(/\[\[image:([\w-]+)(?:\|([\w-]+)(?:\|[\w-]+)?)?\]\]/g))
+    .some(([, left, right]) => left === "sample" || right === "sample");
+  if (sampleReferenced) return images;
+  // 旧稿可能残留已删除云端原件的默认示例图。只从导出副本中排除未使用的示例，
+  // 真实附件和正文引用的示例仍须完整保存，不能忽略素材缺失错误。
+  const exported = { ...images };
+  delete exported.sample;
+  return exported;
+}
+
 function portableProjectMigrationUnits(project) {
-  return 1 + Object.values(project.data?.images || {}).reduce((count, image) => {
+  return 1 + Object.values(portableProjectImages(project)).reduce((count, image) => {
     if (!image || typeof image !== "object") return count;
     return count + (image.kind === "live" ? 2 : 1);
   }, 0);
@@ -5397,11 +5411,12 @@ async function writePortableProject(project, writeFile, fromCloud = false, onPro
   if (fromCloud && !cloudIsReady()) throw new Error("账号连接已断开，请重新登录后再迁移。");
   const migrationUserId = fromCloud ? cloudState.user.id : "";
   if (!project || isBuiltInProject(project)) throw new Error("请先新建并编辑自己的稿件，再保存原稿。");
-  const copy = JSON.parse(JSON.stringify(project));
+  const images = portableProjectImages(project);
+  const copy = JSON.parse(JSON.stringify({ ...project, data: { ...project.data, images } }));
   copy.createdAt = projectCreatedAt(project);
   const media = [];
   const readablePaths = new Map();
-  for (const [index, [id, image]] of Object.entries(project.data?.images || {}).entries()) {
+  for (const [index, [id, image]] of Object.entries(images).entries()) {
     if (!image || typeof image !== "object") continue;
     if (fromCloud && cloudState.user?.id !== migrationUserId) throw new Error("账号已切换，请重新选择旧稿。");
     onProgress?.({ type: "reading", label: `图片/GIF「${image.name || id}」` });
