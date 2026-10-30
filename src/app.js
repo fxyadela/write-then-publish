@@ -5386,13 +5386,20 @@ async function portableVideoBlob(image, id) {
   throw new Error(`实况原视频缺失：${image.videoName || image.name || id}`);
 }
 
+function referencedProjectImages(project) {
+  const images = project?.data?.images || {};
+  const content = convertObsidianImageReferences(project?.data?.content, images).content;
+  const referenced = new Set();
+  for (const [, left, right] of content.matchAll(/\[\[image:([\w-]+)(?:\|([\w-]+)(?:\|[\w-]+)?)?\]\]/g)) {
+    referenced.add(left);
+    if (right) referenced.add(right);
+  }
+  return Object.fromEntries(Object.entries(images).filter(([id]) => referenced.has(id)));
+}
+
 function portableProjectImages(project) {
   const images = project?.data?.images || {};
-  if (images.sample?.name !== "sample") return images;
-  const content = convertObsidianImageReferences(project.data.content, images).content;
-  const sampleReferenced = Array.from(content.matchAll(/\[\[image:([\w-]+)(?:\|([\w-]+)(?:\|[\w-]+)?)?\]\]/g))
-    .some(([, left, right]) => left === "sample" || right === "sample");
-  if (sampleReferenced) return images;
+  if (images.sample?.name !== "sample" || referencedProjectImages(project).sample) return images;
   // 旧稿可能残留已删除云端原件的默认示例图。只从导出副本中排除未使用的示例，
   // 真实附件和正文引用的示例仍须完整保存，不能忽略素材缺失错误。
   const exported = { ...images };
@@ -12550,7 +12557,9 @@ async function prepareDownloadZip(blob, filename) {
   const project = state.projects.find((item) => item.id === state.currentProjectId);
   if (project && !isBuiltInProject(project)) {
     const root = `原稿/${projectFolderName(project)}`;
-    await writePortableProject(project, (path, value) => zip.file(`${root}/${path}`, value));
+    // 发布包只需恢复当前正文；历史未使用的附件留在工作稿与完整原稿备份中。
+    const publication = { ...project, data: { ...project.data, images: referencedProjectImages(project) } };
+    await writePortableProject(publication, (path, value) => zip.file(`${root}/${path}`, value));
   }
   return {
     blob: await zip.generateAsync({ type: "blob", compression: "STORE", streamFiles: true }),

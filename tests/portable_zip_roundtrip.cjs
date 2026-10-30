@@ -73,13 +73,19 @@ vm.runInContext([
   liveMediaFiles.clear();
   // Legacy drafts can retain this unused built-in image after its cloud object is gone.
   imported.data.images.sample = { name: 'sample', src: '', storagePath: 'deleted/sample' };
+  assert.equal(ctx.portableProjectMigrationUnits(imported), 5, 'progress excludes the unused built-in sample');
+  imported.data.images.oldImage = { name: '未使用的旧图.png', src: '', storagePath: 'deleted/old-image' };
+  imported.data.images.oldLive = { name: '未使用的旧视频', kind: 'live', src: '', storagePath: 'deleted/old-cover', videoStoragePath: 'deleted/old-video' };
   // A publication download is a ZIP with both the PNG and editable source.
   const output = await ctx.prepareDownloadZip(new Blob([fixture('still.png')], { type: 'image/png' }), 'publication.png');
   assert.equal(output.filename, 'publication.zip');
   const restored = await ctx.inspectPortableZip(output.blob);
   assert.equal(restored.source.data.images.sample, undefined, 'unused built-in sample is not part of the editable source');
+  assert.equal(restored.source.data.images.oldImage, undefined, 'publication source includes only referenced media');
+  assert.equal(restored.source.data.images.oldLive, undefined, 'unused old video must not block publication');
   assert.equal(imported.data.images.sample.storagePath, 'deleted/sample', 'export must not alter the working draft');
-  assert.equal(ctx.portableProjectMigrationUnits(imported), 5, 'progress excludes the unused built-in sample');
+  assert.equal(imported.data.images.oldImage.storagePath, 'deleted/old-image', 'keep original unused attachments in the working draft');
+  assert.equal(imported.data.images.oldLive.videoStoragePath, 'deleted/old-video');
   assert.equal(restored.source.data.content, original.data.content);
   assert.equal(restored.source.data.articleFont, 'serif');
   for (const [id, image] of Object.entries(original.data.images)) {
@@ -115,5 +121,5 @@ vm.runInContext([
   assert.equal(options.length, 2, 'batch ZIP offers a draft selection');
   zip.remove('2026-10-04_12-00-00/media/001.gif');
   await assert.rejects(ctx.inspectPortableZip(await zip.generateAsync({ type: 'blob' })), /文件缺失/);
-  console.log('OK: publication ZIP skips unused legacy sample; preserves referenced images, GIF/PNG/MP4 bytes and settings; missing real media still fails');
+  console.log('OK: publication ZIP skips unused legacy attachments; preserves referenced GIF/PNG/MP4 and settings; full backups still validate real attachments');
 })().catch(error => { console.error(error); process.exitCode = 1; });
