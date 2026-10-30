@@ -6116,6 +6116,7 @@ body.account-maintenance .account-benefits {
 
 .export-progress-compact .handoff-progress-ring {
   display: grid;
+  grid-area: 1 / 1;
   place-items: center;
   width: 96px;
   height: 96px;
@@ -6135,9 +6136,12 @@ body.account-maintenance .account-benefits {
   position: absolute;
   inset: 0;
   display: grid;
+  grid-area: 1 / 1;
+  place-self: stretch;
   place-items: center;
   color: var(--ink);
   font-size: 20px;
+  line-height: 1;
   font-weight: 850;
   letter-spacing: -0.03em;
 }
