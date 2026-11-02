@@ -45,9 +45,11 @@ const response = (status, body) => ({ ok: status >= 200 && status < 300, status,
   ctx.updateFeedbackEmailLink();
   const fallback = new URL(ctx.els.feedbackEmail.href);
   assert.equal(fallback.protocol, 'mailto:');
+  assert.equal(fallback.pathname, 'heyfxyadela@gmail.com', 'fallback uses the confirmed recipient');
   assert.match(fallback.searchParams.get('body'), /从 Obsidian 同步后/);
   assert.match(fallback.searchParams.get('subject'), new RegExp(id));
   assert.equal(requests.length, 1, 'preparing a fallback must not send another message');
+  assert.equal(requests[0].url, 'https://formsubmit.co/ajax/heyfxyadela@gmail.com', 'form delivery uses the same confirmed recipient');
   assert.deepEqual(requests[0].entries.filter(([key]) => !['_subject', '_template', '_honey', '反馈编号', '问题描述', '联系方式', '页面版本', 'email'].includes(key)), [], 'only form fields are submitted');
 
   reply = response(503, { success: false, message: 'Service unavailable' });
