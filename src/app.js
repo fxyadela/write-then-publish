@@ -41,8 +41,9 @@ const ACCOUNT_ADD_PENDING_SESSION_KEY = "writeThenPublishAccountAddPending.v1";
 const EXPERIENCE_VERSION = "2026.08";
 const WELCOME_BACK_STORAGE_KEY = "writeThenPublishWelcomeBackVersion.v1";
 const WHATS_NEW_STORAGE_KEY = "writeThenPublishWhatsNewVersion.v1";
-const FEEDBACK_ENDPOINT = "https://formsubmit.co/ajax/heytomato@gmail.com";
-const FEEDBACK_VERSION = "20260815-feedback-underline";
+const FEEDBACK_EMAIL = "heytomato@gmail.com";
+const FEEDBACK_ENDPOINT = `https://formsubmit.co/ajax/${FEEDBACK_EMAIL}`;
+const FEEDBACK_VERSION = "20261102-feedback-obsidian";
 const FEEDBACK_MAX_FILES = 3;
 const FEEDBACK_MAX_FILE_BYTES = 5 * 1024 * 1024;
 const FEEDBACK_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
@@ -269,6 +270,8 @@ const els = {
   feedbackImageList: $("#feedbackImageList"),
   feedbackNotice: $("#feedbackNotice"),
   feedbackSubmit: $("#feedbackSubmitBtn"),
+  feedbackEmail: $("#feedbackEmailLink"),
+  feedbackCopy: $("#feedbackCopyBtn"),
   downloadZip: $("#downloadZipBtn"),
   downloadArticle: $("#downloadArticleBtn"),
   downloadMenu: $("#downloadMenu"),
@@ -1885,6 +1888,7 @@ function clearFeedbackPreviewUrls() {
 
 function renderFeedbackFiles() {
   if (!els.feedbackImageList) return;
+  updateFeedbackEmailLink();
   clearFeedbackPreviewUrls();
   els.feedbackImageList.replaceChildren();
 
@@ -1975,6 +1979,50 @@ function updateFeedbackMessageCount() {
 function handleFeedbackFieldInput() {
   markFeedbackChanged();
   updateFeedbackMessageCount();
+  updateFeedbackEmailLink();
+}
+
+function feedbackEmailDraft() {
+  const feedbackId = feedbackCurrentId || createFeedbackId();
+  feedbackCurrentId = feedbackId;
+  const message = els.feedbackMessage?.value.trim() || "";
+  const contact = els.feedbackContact?.value.trim() || "未填写";
+  const attachments = feedbackFiles.length
+    ? `\n\n截图（请在邮件中手动添加）：\n${feedbackFiles.map((file) => file.name).join("\n")}`
+    : "";
+  return {
+    subject: `【写了就发】问题反馈 ${feedbackId}`,
+    body: `反馈编号：${feedbackId}\n\n问题描述：\n${message}\n\n联系方式：${contact}\n页面版本：${FEEDBACK_VERSION}${attachments}`,
+  };
+}
+
+function updateFeedbackEmailLink() {
+  if (!els.feedbackEmail) return;
+  const draft = feedbackEmailDraft();
+  els.feedbackEmail.href = `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
+  els.feedbackEmail.textContent = `直接发邮件到 ${FEEDBACK_EMAIL}`;
+}
+
+async function copyFeedbackEmailDraft() {
+  const draft = feedbackEmailDraft();
+  const text = `收件人：${FEEDBACK_EMAIL}\n主题：${draft.subject}\n\n${draft.body}`;
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    copied = true;
+  } catch {
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    helper.style.position = "fixed";
+    helper.style.opacity = "0";
+    els.feedbackModal.append(helper);
+    helper.select();
+    copied = document.execCommand("copy");
+    helper.remove();
+  }
+  setFeedbackNotice(copied
+    ? "已复制反馈内容，尚未发送。请粘贴到邮件中发送；截图需手动添加。"
+    : "复制未成功，请手动复制问题描述后发邮件。", copied ? "" : "error");
 }
 
 function setFeedbackSending(sending) {
@@ -2039,6 +2087,7 @@ function openFeedbackModal() {
   setDialogBackgroundInert(true);
   els.feedbackModal.classList.remove("hidden");
   updateFeedbackMessageCount();
+  updateFeedbackEmailLink();
   requestAnimationFrame(() => els.feedbackMessage?.focus());
 }
 
@@ -2125,7 +2174,7 @@ async function submitFeedback(event) {
     if (activationRequired) {
       feedbackSubmissionAccepted = false;
       setFeedbackNotice(
-        `邮件通道尚未激活。激活邮件已发送到收件箱；内容和编号 ${feedbackId} 已保留，点击激活后再提交。`,
+        `反馈邮件通道暂不可用，需要作者处理。内容和编号 ${feedbackId} 已保留，请用下方“直接发邮件”或“复制反馈内容”继续反馈。`,
         "activation",
       );
       return;
@@ -2139,7 +2188,7 @@ async function submitFeedback(event) {
 
     feedbackSubmissionAccepted = true;
     setFeedbackNotice(
-      `邮件服务已受理，编号 ${feedbackId}。这不等于邮箱已经送达，请以收件箱为准。`,
+      `邮件服务已受理反馈，编号 ${feedbackId}。感谢你帮助改进写了就发。`,
       "success",
     );
   } catch (error) {
@@ -2147,11 +2196,11 @@ async function submitFeedback(event) {
     feedbackSubmissionAccepted = false;
     if (aborted || !error?.confirmedFailure) {
       setFeedbackNotice(
-        `发送结果未确认，邮件服务可能已收到。内容和编号 ${feedbackId} 已保留，请先检查收件箱，不要立刻重复提交。`,
+        `发送结果未确认，邮件服务可能已收到。内容和编号 ${feedbackId} 已保留，请稍后重试，或用下方备用入口反馈。`,
         "activation",
       );
     } else {
-      setFeedbackNotice(`发送失败：${error?.message || "请检查网络后重试。"} 内容已保留。`, "error");
+      setFeedbackNotice(`发送失败：${error?.message || "请检查网络后重试。"} 内容已保留，也可以用下方备用入口反馈。`, "error");
     }
   } finally {
     window.clearTimeout(timeout);
@@ -4088,6 +4137,9 @@ function plainTextForCopy(content) {
 
   // 标题与引用前缀
   text = text.replace(/^(\s*)#{1,6}\s+/gm, "$1").replace(/^(\s*)>\s?/gm, "$1");
+
+  // 与预览共用行内解析，去掉 Obsidian 的 span 包装，保留正文与代码示例。
+  text = parseInline(text).map((token) => token.text || "").join("");
 
   // 删图片行留下的连续空行收敛为一个空行
   return text.replace(/\n{3,}/g, "\n\n").trim();
@@ -7455,7 +7507,7 @@ function isMarkdownImageBlock(line) {
     || /^!\[[^\]\n]*\]\((?:<[^>]+>|[^\s)]+)(?:\s+[^)]*)?\)$/.test(line);
 }
 
-function collectMultilineUnderlineMarkers(text) {
+function collectMultilineInlineMarkers(text) {
   const markers = [];
   let searchFrom = 0;
   while (searchFrom < text.length) {
@@ -7466,6 +7518,7 @@ function collectMultilineUnderlineMarkers(text) {
       markers.push({
         ...marker,
         open,
+        inlineStyle: { underline: marker.style },
         tokens: applyInlineStyle(
           parseInline(text.slice(marker.innerStart, marker.innerEnd), marker.innerStart),
           { underline: marker.style },
@@ -7473,6 +7526,25 @@ function collectMultilineUnderlineMarkers(text) {
       });
     }
     searchFrom = open + 2;
+  }
+
+  const stack = [];
+  for (const match of text.matchAll(inlineHtmlSpanPattern())) {
+    if (match[1]) continue; // 反引号里的 HTML 是代码，不是排版标签。
+    if (!/^<\//.test(match[0])) {
+      stack.push({ open: match.index, innerStart: match.index + match[0].length, inlineStyle: inlineHtmlSpanStyle(match[0]) });
+      continue;
+    }
+    const marker = stack.pop();
+    if (!marker) continue;
+    const inner = text.slice(marker.innerStart, match.index);
+    if (!inner.includes("\n")) continue;
+    markers.push({
+      ...marker,
+      innerEnd: match.index,
+      end: match.index + match[0].length,
+      tokens: applyInlineStyle(parseInline(inner, marker.innerStart), marker.inlineStyle),
+    });
   }
   return markers;
 }
@@ -7498,10 +7570,10 @@ function sliceInlineTokensBySourceRange(tokens, start, end) {
   return sliced;
 }
 
-function parseInlineSourceRange(source, start, end, multilineUnderlines = []) {
+function parseInlineSourceRange(source, start, end, multilineMarkers = []) {
   const safeStart = clamp(Number(start) || 0, 0, source.length);
   const safeEnd = clamp(Number(end) || safeStart, safeStart, source.length);
-  const relevant = multilineUnderlines.filter((marker) => marker.open < safeEnd && marker.end > safeStart);
+  const relevant = multilineMarkers.filter((marker) => marker.open < safeEnd && marker.end > safeStart);
   if (!relevant.length) return parseInline(source.slice(safeStart, safeEnd), safeStart);
 
   const syntaxRanges = relevant.flatMap((marker) => [
@@ -7530,7 +7602,7 @@ function parseInlineSourceRange(source, start, end, multilineUnderlines = []) {
       ? sliceInlineTokensBySourceRange(active[0].tokens, partStart, partEnd)
       : parseInline(source.slice(partStart, partEnd), partStart);
     for (const marker of active) {
-      partTokens = applyInlineStyle(partTokens, { underline: marker.style });
+      partTokens = applyInlineStyle(partTokens, marker.inlineStyle);
     }
     tokens.push(...partTokens);
   }
@@ -7540,7 +7612,7 @@ function parseInlineSourceRange(source, start, end, multilineUnderlines = []) {
 function parseBlocks(content, images = {}) {
   const normalized = content.replace(/\r\n/g, "\n");
   const lines = normalized.split("\n");
-  const multilineUnderlines = collectMultilineUnderlineMarkers(normalized);
+  const multilineMarkers = collectMultilineInlineMarkers(normalized);
   const imageLookup = buildImageReferenceLookup(images);
   const lineOffsets = [];
   let runningOffset = 0;
@@ -7553,6 +7625,7 @@ function parseBlocks(content, images = {}) {
   let paragraphStart = null;
   let paragraphEnd = null;
   let lastQuoteLineIndex = -2;
+  let inCode = false;
 
   const flushParagraph = () => {
     if (!paragraphLines.length) return;
@@ -7598,6 +7671,16 @@ function parseBlocks(content, images = {}) {
     const trailing = line.match(/\s*$/)[0].length;
     const trimmed = line.slice(leading, line.length - trailing);
     const trimmedStart = lineOffsets[index] + leading;
+
+    if (trimmed.startsWith("```")) {
+      flushParagraph();
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) {
+      appendParagraphLine([{ text: line, code: true, sourceStart: lineOffsets[index], sourceEnd: lineOffsets[index] + line.length }], index, line);
+      continue;
+    }
 
     if (trimmed) {
       const pairBlock = resolveInternalImagePairBlock(trimmed);
@@ -7665,7 +7748,7 @@ function parseBlocks(content, images = {}) {
               normalized,
               contentStart,
               trimmedStart + trimmed.length,
-              multilineUnderlines,
+              multilineMarkers,
             ),
             sourceStart: lineOffsets[index],
             sourceEnd: lineOffsets[index] + line.length,
@@ -7677,7 +7760,7 @@ function parseBlocks(content, images = {}) {
             normalized,
             contentStart,
             contentStart + trimmed.slice(2).trim().length,
-            multilineUnderlines,
+            multilineMarkers,
           );
           // 连续的 > 行归入同一个引用块，每行仍各自换行；空行才断开
           const previousBlock = blocks[blocks.length - 1];
@@ -7699,18 +7782,18 @@ function parseBlocks(content, images = {}) {
             normalized,
             itemStart,
             trimmedStart + trimmed.length,
-            multilineUnderlines,
+            multilineMarkers,
           );
           const bullet = {
             text: "• ",
             sourceStart: trimmedStart,
             sourceEnd: itemStart,
           };
-          const bulletUnderline = multilineUnderlines
+          const bulletMarkers = multilineMarkers
             .filter((marker) => marker.innerStart <= trimmedStart && itemStart <= marker.innerEnd)
-            .sort((a, b) => (a.innerEnd - a.innerStart) - (b.innerEnd - b.innerStart))[0];
-          if (bulletUnderline) bullet.underline = bulletUnderline.style;
-          appendParagraphTokens([bullet, ...itemTokens], index, line);
+            .sort((a, b) => (a.innerEnd - a.innerStart) - (b.innerEnd - b.innerStart));
+          const styledBullet = bulletMarkers.reduce((tokens, marker) => applyInlineStyle(tokens, marker.inlineStyle), [bullet]);
+          appendParagraphTokens([...styledBullet, ...itemTokens], index, line);
         } else if (/^([-*_])(?:\s*\1){2,}\s*$/.test(trimmed)) {
           flushParagraph();
           blocks.push({ type: "spacer", sourceStart: lineOffsets[index], sourceEnd: lineOffsets[index] + line.length });
@@ -7720,7 +7803,7 @@ function parseBlocks(content, images = {}) {
               normalized,
               trimmedStart,
               trimmedStart + trimmed.length,
-              multilineUnderlines,
+              multilineMarkers,
             ),
             index,
             line,
@@ -7794,11 +7877,112 @@ function matchUnderlineMarker(text, i) {
   };
 }
 
+function inlineHtmlSpanPattern() {
+  return /(`+)(?!`)[\s\S]*?\1(?!`)|<\/?span\b(?:"[^"]*"|'[^']*'|[^'">])*>/gi;
+}
+
+const inlineHtmlColors = new Map();
+let inlineHtmlColorContext = null;
+
+function inlineHtmlColor(value) {
+  const color = String(value || "").trim();
+  if (!color || /(?:var|env|url)\(|^(?:inherit|initial|unset|revert|currentcolor)$/i.test(color)) return "";
+  if (inlineHtmlColors.has(color)) return inlineHtmlColors.get(color);
+  if (!CSS.supports("color", color)) return "";
+  if (!inlineHtmlColorContext) {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    inlineHtmlColorContext = canvas.getContext("2d", { willReadFrequently: true });
+  }
+  const context = inlineHtmlColorContext;
+  if (!context) return "";
+  context.clearRect(0, 0, 1, 1);
+  context.fillStyle = color;
+  context.fillRect(0, 0, 1, 1);
+  const channels = Array.from(context.getImageData(0, 0, 1, 1).data);
+  const normalized = `#${channels.slice(0, channels[3] === 255 ? 3 : 4).map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+  inlineHtmlColors.set(color, normalized);
+  return normalized;
+}
+
+function decodeInlineHtmlEntity(entity) {
+  const named = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
+  const name = entity.slice(1, -1);
+  if (Object.hasOwn(named, name)) return named[name];
+  if (!/^#(?:x[\da-f]+|\d+)$/i.test(name)) return entity;
+  const point = /^#x/i.test(name) ? Number.parseInt(name.slice(2), 16) : Number(name.slice(1));
+  return point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff) ? String.fromCodePoint(point) : entity;
+}
+
+function inlineHtmlSpanStyle(tag) {
+  // 只读取允许的文字样式；原始标签、事件、class 和其他 CSS 不进入页面。
+  const match = tag.match(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+  if (!match) return {};
+  const declaration = document.createElement("span").style;
+  declaration.cssText = (match[1] ?? match[2] ?? match[3]).replace(/&(?:#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, decodeInlineHtmlEntity);
+  const style = {};
+  const color = inlineHtmlColor(declaration.color);
+  const background = inlineHtmlColor(declaration.backgroundColor);
+  if (color) style.color = color;
+  if (background) style.bgColor = background;
+  if (declaration.fontWeight) style.bold = /^(?:bold|bolder|[7-9]00|1000)$/.test(declaration.fontWeight);
+  if (declaration.fontStyle) style.italic = /^(?:italic|oblique)/.test(declaration.fontStyle);
+  if (declaration.textDecorationLine) {
+    style.underline = declaration.textDecorationLine.includes("underline")
+      ? declaration.textDecorationStyle === "dashed" ? "dashed" : "solid"
+      : false;
+  }
+  return style;
+}
+
+function matchInlineHtmlSpan(text, start) {
+  const pattern = inlineHtmlSpanPattern();
+  pattern.lastIndex = start;
+  const opening = pattern.exec(text);
+  if (!opening || opening.index !== start || !/^<span\b/i.test(opening[0])) return null;
+  let depth = 1;
+  for (let match; (match = pattern.exec(text));) {
+    if (match[1]) continue;
+    depth += /^<\//.test(match[0]) ? -1 : 1;
+    if (!depth) return {
+      innerStart: start + opening[0].length,
+      innerEnd: match.index,
+      end: pattern.lastIndex,
+      style: inlineHtmlSpanStyle(opening[0]),
+    };
+  }
+  return null;
+}
+
 function parseInline(text, baseStart = 0) {
   const tokens = [];
   let i = 0;
 
   while (i < text.length) {
+    const codeMatch = text.slice(i).match(/^(`+)(?!`)([\s\S]*?)\1(?!`)/);
+    if (codeMatch) {
+      tokens.push({ text: codeMatch[2], code: true, sourceStart: baseStart + i + codeMatch[1].length, sourceEnd: baseStart + i + codeMatch[0].length - codeMatch[1].length });
+      i += codeMatch[0].length;
+      continue;
+    }
+
+    const spanMatch = text[i] === "<" ? matchInlineHtmlSpan(text, i) : null;
+    if (spanMatch) {
+      tokens.push(...applyInlineStyle(
+        parseInline(text.slice(spanMatch.innerStart, spanMatch.innerEnd), baseStart + spanMatch.innerStart),
+        spanMatch.style,
+      ));
+      i = spanMatch.end;
+      continue;
+    }
+
+    const entityMatch = text.slice(i).match(/^&(?:#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/i);
+    if (entityMatch) {
+      tokens.push({ text: decodeInlineHtmlEntity(entityMatch[0]), sourceStart: baseStart + i, sourceEnd: baseStart + i + entityMatch[0].length });
+      i += entityMatch[0].length;
+      continue;
+    }
+
     const imageMatch = text.slice(i).match(/^\[\[image:([\w-]+)\]\]/);
     if (imageMatch) {
       tokens.push({
@@ -7890,7 +8074,7 @@ function parseInline(text, baseStart = 0) {
       }
     }
 
-    const nextMarkers = ["[[image:", "[", "{{underline:", "{{color:", "{{bg:", "***", "**", "*"]
+    const nextMarkers = ["<", "`", "&", "[[image:", "[", "{{underline:", "{{color:", "{{bg:", "***", "**", "*"]
       .map((marker) => text.indexOf(marker, i + 1))
       .filter((index) => index !== -1);
     const next = nextMarkers.length ? Math.min(...nextMarkers) : text.length;
@@ -8063,7 +8247,7 @@ function wrapTokens(ctx, tokens, style, maxWidth) {
         ...token,
         text: unit.text,
         sourceStart: token.sourceStart + unit.start,
-        sourceEnd: token.sourceStart + unit.end,
+        sourceEnd: unit.end === token.text.length ? token.sourceEnd : token.sourceStart + unit.end,
       };
       const measured = measureToken(ctx, part, style);
       const shouldStayWithPrevious = isNoLineStartPunctuation(unit.text);
@@ -8762,7 +8946,7 @@ function markdownToArticleHtml(markdown, images = {}) {
     lineOffsets.push(runningOffset);
     runningOffset += line.length + 1;
   });
-  const multilineUnderlines = collectMultilineUnderlineMarkers(normalized);
+  const multilineMarkers = collectMultilineInlineMarkers(normalized);
   const imageLookup = buildImageReferenceLookup(images);
   const html = [];
   let paragraph = [];
@@ -8772,7 +8956,7 @@ function markdownToArticleHtml(markdown, images = {}) {
   let inCode = false;
 
   const renderSourceRange = (start, end) => renderArticleInlineTokens(
-    parseInlineSourceRange(normalized, start, end, multilineUnderlines),
+    parseInlineSourceRange(normalized, start, end, multilineMarkers),
   );
 
   const flushParagraph = () => {
@@ -8906,7 +9090,8 @@ function renderArticleInline(text) {
 function renderArticleInlineTokens(tokens) {
   return tokens
     .map((token) => {
-      let inner = escapeHtml(token.text).replace(/`([^`]+)`/g, "<code>$1</code>");
+      let inner = escapeHtml(token.text);
+      if (token.code) inner = `<code>${inner}</code>`;
       if (token.bold) inner = `<strong>${inner}</strong>`;
       if (token.italic) inner = `<em>${inner}</em>`;
       if (token.link) {
@@ -13137,6 +13322,11 @@ function bindEvents() {
   els.feedbackClose?.addEventListener("click", closeFeedbackModal);
   els.feedbackCancel?.addEventListener("click", closeFeedbackModal);
   els.feedbackForm?.addEventListener("submit", submitFeedback);
+  els.feedbackCopy?.addEventListener("click", copyFeedbackEmailDraft);
+  els.feedbackEmail?.addEventListener("click", () => {
+    updateFeedbackEmailLink();
+    setFeedbackNotice("请在打开的邮件应用中发送反馈。截图需手动添加；如果没有打开邮件应用，可先复制反馈内容。");
+  });
   els.feedbackMessage?.addEventListener("input", handleFeedbackFieldInput);
   els.feedbackContact?.addEventListener("input", handleFeedbackFieldInput);
   els.feedbackImageInput?.addEventListener("change", (event) => addFeedbackFiles(event.target.files));
