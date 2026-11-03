@@ -48,7 +48,7 @@ const ctx = {
   writeLiveMediaBlob: async (key, blob) => videoStore.set(key, blob), readLiveMediaBlob: async key => videoStore.get(key),
   replaceLiveMediaCache: (key, blob) => liveMediaFiles.set(key, { blob }),
   cloudApi: () => ({ downloadProjectAsset: async () => { cloudCalls++; throw new Error('Object not found'); } }),
-  saveState() {}, applyForm() {}, syncGuideReadOnlyMode() {}, resetTextHistory() {}, saveProjectStore() {}, updateProjectHistory() {}, render: async () => {},
+  saveState() {}, applyForm() {}, syncGuideReadOnlyMode() {}, resetTextHistory() {}, saveProjectStore() {}, updateProjectHistory() {}, setHistoryOpen() {}, render: async () => {},
 };
 vm.createContext(ctx);
 vm.runInContext([
@@ -95,6 +95,10 @@ vm.runInContext([
     if (image.kind === 'live') assert.deepEqual(Buffer.from(await (await restored.read(result.portableVideoPath)).arrayBuffer()), media[image.portableVideoPath].bytes);
   }
   assert.equal(cloudCalls, 0);
+  const firstId = imported.id;
+  await ctx.importPortableProject(await ctx.inspectPortableZip(input));
+  assert.equal(state.projects.length, 2, 'a second guest import appends a draft instead of replacing the first');
+  assert.ok(state.projects.some(project => project.id === firstId), 'keep the first draft and its media after another import');
   // References must be preserved in every supported form, including either side of a pair.
   const pngSrc = `data:image/png;base64,${fixture('still.png').toString('base64')}`;
   for (const content of ['[[image:sample]]', '[[image:sample|png]]', '[[image:png|sample|4x3]]', '![[sample]]', '![图片](sample)']) {

@@ -92,8 +92,8 @@ function scopedStorageKey(baseKey, scope = activeStorageScope) {
   return scope === "local" ? baseKey : `${baseKey}.${scope}`;
 }
 
-function storageForScope(scope = activeStorageScope) {
-  return scope === "guest" ? sessionStorage : localStorage;
+function storageForScope() {
+  return localStorage;
 }
 
 function livePhotoApiUrl(path) {
@@ -903,7 +903,7 @@ function blockBuiltInGuideDownload() {
 }
 
 function allHistoryProjects() {
-  return [...builtInGuideProjects(), ...state.projects];
+  return [...state.projects, ...builtInGuideProjects()];
 }
 
 function findHistoryProject(projectId) {
@@ -991,8 +991,7 @@ function normalizeAuthorProfile(data = {}) {
   };
 }
 
-// 头像、昵称这类设置在任何模式下都要跨次访问保留，所以一律放 localStorage；
-// 游客的草稿仍放 sessionStorage，关掉标签页就清空。
+// 头像、昵称和草稿都在当前浏览器保留；游客与各账号仍使用不同的键。
 function authorProfileStorage() {
   return localStorage;
 }
@@ -1001,7 +1000,8 @@ function loadStoredAuthorProfile() {
   try {
     const key = scopedStorageKey(AUTHOR_PROFILE_STORAGE_KEY);
     // 兼容改动前存在 sessionStorage 里的游客资料
-    const raw = authorProfileStorage().getItem(key) || storageForScope().getItem(key);
+    const raw = authorProfileStorage().getItem(key)
+      || (activeStorageScope === "guest" ? sessionStorage.getItem(key) : null);
     return raw ? normalizeAuthorProfile(JSON.parse(raw)) : null;
   } catch {
     return null;
@@ -1271,7 +1271,7 @@ function saveState() {
     const data = readForm();
     if (isBuiltInProjectId(state.currentProjectId)) {
       updateProjectHistory();
-      return;
+      return true;
     }
     saveAuthorProfile(data);
 
@@ -1288,15 +1288,17 @@ function saveState() {
     state.projects = [
       current,
       ...state.projects.filter((project) => project.id !== current.id),
-    ].slice(0, MAX_PROJECTS);
+    ];
     storageForScope().setItem(
       scopedStorageKey(STORAGE_KEY),
       JSON.stringify(withExternalizedImages(data, current.id)),
     );
     saveProjectStore();
     updateProjectHistory();
+    return true;
   } catch {
-    els.status.textContent = "本次内容较大，浏览器未写入本地缓存";
+    els.status.textContent = "草稿暂未保存到本机，请先下载可编辑原稿，再整理浏览器存储。";
+    return false;
   }
 }
 
@@ -1334,7 +1336,7 @@ function loadProjectStoreForScope(scope) {
 
 // 云端超出免费额度时 Supabase 直接返回一段英文的 402 说明，用户看不懂也无从下手。
 // 所有账号相关提示都经过 setAccountNotice，在这里统一换成中文并给出游客入口。
-const CLOUD_RESTRICTED_NOTICE = "账号服务暂时不可用。你仍可使用游客模式排版；关闭前请保存 ZIP 原稿，之后可从左上角重新导入。";
+const CLOUD_RESTRICTED_NOTICE = "账号服务暂时不可用。你仍可使用游客模式排版，本地草稿保存在当前浏览器；重要内容请另存 ZIP 原稿。";
 
 function isCloudRestrictedMessage(message) {
   const text = String(message || "");
@@ -1681,7 +1683,7 @@ function updateAccountUi() {
   if (els.accountMenuDescription) {
     els.accountMenuDescription.textContent = signedIn
       ? "只同步头像昵称；请下载 ZIP 保留原稿"
-      : "草稿仅临时保存在当前标签页";
+      : "草稿保存在当前浏览器，可从左侧切换";
   }
   if (els.accountMenuLogin) els.accountMenuLogin.hidden = signedIn;
   if (els.accountMenuManage) els.accountMenuManage.hidden = !signedIn;
@@ -2560,9 +2562,7 @@ async function chooseGuestMode() {
   sessionStorage.setItem(ENTRY_MODE_SESSION_KEY, "guest");
   await activateGuestWorkspace();
   finishEntryChoice("guest");
-  els.status.textContent = ACCOUNT_MAINTENANCE
-    ? "游客模式 · 新稿不上传云端，关闭前请保存 ZIP 原稿"
-    : "游客模式：内容仅临时保存在当前标签页";
+  els.status.textContent = "游客模式：草稿保存在当前浏览器，可从左侧切换；请定期保存 ZIP 原稿。";
 }
 
 function hasSeenMaintenanceWelcome() {
@@ -2808,11 +2808,9 @@ function hydrateCloudProjectOnce(project) {
   return hydratingCloudProjects.get(key);
 }
 
-/** 迁移期保留登录用户的本机历史入口；11 月起在线版隐藏入口，数据留在本机供恢复。 */
+/** 本地草稿入口不依赖云端迁移期限，也不要求登录。 */
 function syncHistoryAvailability() {
-  const disabled = activeStorageScope === "guest" || (!LOCAL_DEPLOYMENT_MODE && !ACCOUNT_MAINTENANCE);
-  document.body.classList.toggle("history-disabled", disabled);
-  if (disabled) setHistoryOpen(false);
+  document.body.classList.remove("history-disabled");
 }
 
 async function activateWorkspaceScope(scope, projects = null, profile = null) {
@@ -2837,7 +2835,7 @@ async function activateWorkspaceScope(scope, projects = null, profile = null) {
     }
 
     if (Array.isArray(projects)) {
-      const list = projects.filter(Boolean).slice(0, MAX_PROJECTS);
+      const list = projects.filter(Boolean);
       state.projects = list;
       state.currentProjectId = state.projects[0]?.id || GUIDE_CARDS_PROJECT_ID;
       saveProjectStore();
@@ -2852,6 +2850,7 @@ async function activateWorkspaceScope(scope, projects = null, profile = null) {
     syncGuideReadOnlyMode();
     resetTextHistory();
     updateProjectHistory();
+    setHistoryOpen(state.projects.length > 1);
     await render();
   } finally {
     cloudState.loadingWorkspace = false;
@@ -2872,8 +2871,7 @@ async function loadCloudWorkspace(session) {
   const guestProjects = loadProjectStoreForScope("guest").projects;
   const legacyProjects = loadProjectStoreForScope("local").projects;
   cloudState.localImportProjects = [...guestProjects, ...legacyProjects]
-    .filter((project, index, projects) => projects.findIndex((item) => item.id === project.id) === index)
-    .slice(0, MAX_PROJECTS);
+    .filter((project, index, projects) => projects.findIndex((item) => item.id === project.id) === index);
   setAccountBusy(true);
   if (els.accountSyncStatus) els.accountSyncStatus.textContent = "正在读取账号数据…";
   updateAccountUi();
@@ -3355,16 +3353,18 @@ async function importLocalProjectsToAccount() {
   if (!cloudState.user || !cloudState.localImportProjects.length) return;
   // 草稿改为本机保存后，导入就是并进这个账号在本机的历史记录，不经过云端。
   // 图片缓存键只跟项目和图片编号有关，不分作用域，直接复用。
-  const count = cloudState.localImportProjects.length;
   const existing = new Set(state.projects.map((project) => project.id));
   const incoming = cloudState.localImportProjects.filter((project) => !existing.has(project.id));
+  if (state.projects.length + incoming.length > MAX_PROJECTS) {
+    setAccountNotice(`合并后超过 ${MAX_PROJECTS} 篇本地草稿，请先备份并整理旧稿，再导入。`, "error");
+    return;
+  }
   state.projects = [...incoming, ...state.projects.filter((project) => !isBuiltInProject(project))]
-    .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))
-    .slice(0, MAX_PROJECTS);
+    .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
   saveProjectStore();
   updateProjectHistory();
   cloudState.localImportProjects = [];
-  setAccountNotice(`已把 ${count} 条游客 / 本机草稿加进这个账号的历史记录，原数据仍然保留。`, "success");
+  setAccountNotice(`已把 ${incoming.length} 条游客 / 本机草稿加进这个账号的本地草稿，原数据仍然保留。`, "success");
   updateAccountUi();
 }
 
@@ -3455,13 +3455,38 @@ function projectFolderName(project) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
 }
 
+function migrateGuestDraftsFromSession() {
+  const key = scopedStorageKey(PROJECTS_STORAGE_KEY, "guest");
+  let merged = null;
+  try {
+    const previous = JSON.parse(sessionStorage.getItem(key) || "null");
+    if (!Array.isArray(previous?.projects) || !previous.projects.length) return null;
+    const current = JSON.parse(localStorage.getItem(key) || "{}");
+    const projects = new Map();
+    for (const project of [...(current.projects || []), ...previous.projects]) {
+      if (!project?.id) continue;
+      const existing = projects.get(project.id);
+      if (!existing || (Number(project.updatedAt) || 0) > (Number(existing.updatedAt) || 0)) projects.set(project.id, project);
+    }
+    merged = {
+      activeId: previous.activeId || current.activeId,
+      projects: [...projects.values()].sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)),
+    };
+    localStorage.setItem(key, JSON.stringify(merged));
+    // 只有持久保存成功才移走旧会话索引；素材仍复用已有 IndexedDB 记录。
+    sessionStorage.removeItem(key);
+  } catch { /* 写入失败时保留旧会话，并尽量让当前页继续读取它。 */ }
+  return merged;
+}
+
 function loadProjectStore() {
   try {
-    const raw = storageForScope().getItem(scopedStorageKey(PROJECTS_STORAGE_KEY));
+    const migrated = activeStorageScope === "guest" ? migrateGuestDraftsFromSession() : null;
+    const raw = migrated ? JSON.stringify(migrated) : storageForScope().getItem(scopedStorageKey(PROJECTS_STORAGE_KEY));
     if (raw) {
       const parsed = JSON.parse(raw);
       const projects = Array.isArray(parsed.projects)
-        ? parsed.projects.map(normalizeProject).filter(Boolean).slice(0, MAX_PROJECTS)
+        ? parsed.projects.map(normalizeProject).filter(Boolean)
         : [];
       const activeId = isBuiltInProjectId(parsed.activeId)
         ? parsed.activeId
@@ -3504,7 +3529,6 @@ function saveProjectStore() {
       activeId: state.currentProjectId,
       projects: state.projects
         .filter((project) => !isBuiltInProject(project))
-        .slice(0, MAX_PROJECTS)
         .map((project) => ({ ...project, data: withExternalizedImages(project.data, project.id) })),
     }),
   );
@@ -3547,7 +3571,7 @@ function updateProjectHistory() {
   if (!visibleProjects.length) {
     const empty = document.createElement("div");
     empty.className = "history-empty";
-    empty.textContent = state.historyFilter === "article" ? "暂无长文记录" : state.historyFilter === "cards" ? "暂无图文记录" : "暂无历史记录";
+    empty.textContent = state.historyFilter === "article" ? "暂无长文草稿" : state.historyFilter === "cards" ? "暂无图文草稿" : "暂无本地草稿";
     els.projectHistory.append(empty);
     return;
   }
@@ -3569,7 +3593,7 @@ function updateProjectHistory() {
       ${
         builtIn
           ? '<span class="history-lock" title="内置说明书不可修改"><i data-lucide="lock"></i></span>'
-          : `<button type="button" class="history-delete" title="删除历史记录" aria-label="删除 ${escapeHtml(project.title || "未命名图文")}">
+          : `<button type="button" class="history-delete" title="删除本地草稿" aria-label="删除 ${escapeHtml(project.title || "未命名图文")}">
               <i data-lucide="trash-2"></i>
             </button>`
       }
@@ -3595,8 +3619,8 @@ function setHistoryOpen(open) {
   if (open && !historyEnabled()) return;
   els.historySidebar.classList.toggle("open", open);
   els.workspace?.classList.toggle("history-open", open);
-  els.historyToggle?.setAttribute("aria-label", open ? "收起历史记录" : "打开历史记录");
-  els.historyToggle?.setAttribute("title", open ? "收起历史记录" : "打开历史记录");
+  els.historyToggle?.setAttribute("aria-label", open ? "收起本地草稿" : "打开本地草稿");
+  els.historyToggle?.setAttribute("title", open ? "收起本地草稿" : "打开本地草稿");
 }
 
 function toggleHistory() {
@@ -3605,7 +3629,7 @@ function toggleHistory() {
 
 async function openProject(projectId) {
   if (!projectId || projectId === state.currentProjectId) return;
-  saveState();
+  if (saveState() === false) return;
   const project = findHistoryProject(projectId);
   if (!project) return;
   // 后台预载可能还没轮到这个项目：打开前把缺的云端素材补齐（幂等，已就绪时立即返回）
@@ -3679,21 +3703,22 @@ async function deleteProject(projectId) {
 }
 
 async function createNewProject() {
-  if (ACCOUNT_MAINTENANCE && activeStorageScope === "guest" && !isBuiltInProjectId(state.currentProjectId)
-    && !window.confirm("游客模式没有历史入口。新建后，当前稿将无法从页面找回；请先从右侧下载菜单保存可编辑原稿。确定新建吗？")) return;
-  saveState();
+  if (saveState() === false) return;
+  if (state.projects.length >= MAX_PROJECTS) {
+    setHistoryOpen(true);
+    els.status.textContent = `本地草稿已达 ${MAX_PROJECTS} 篇，请先下载原稿并整理旧稿，再新建。`;
+    return;
+  }
   const project = createProject(blankFormState());
-  state.projects = [project, ...state.projects.filter((item) => item.id !== project.id)].slice(0, MAX_PROJECTS);
+  state.projects = [project, ...state.projects.filter((item) => item.id !== project.id)];
   state.currentProjectId = project.id;
   applyForm(project.data);
   syncGuideReadOnlyMode();
   resetTextHistory();
   updateProjectHistory();
+  if (state.projects.length > 1) setHistoryOpen(true);
   await render();
-  // 历史栏关闭时，上一条没有直接入口；提示用户从 ZIP 恢复。
-  els.status.textContent = historyEnabled()
-    ? "已新建图文，上一条已保存在历史记录"
-    : "已新建图文；需要保留原稿时请下载 ZIP";
+  els.status.textContent = "已新建图文，上一条已保存在左侧本地草稿。";
 }
 
 const FIRST_RUN_ONBOARDING_STEPS = [
@@ -4416,8 +4441,12 @@ function normalizeCustomColorPalette(value) {
 
 function loadCustomColorPalette() {
   try {
-    const raw = storageForScope().getItem(scopedStorageKey(CUSTOM_COLOR_PALETTE_STORAGE_KEY));
-    return normalizeCustomColorPalette(raw ? JSON.parse(raw) : null);
+    const key = scopedStorageKey(CUSTOM_COLOR_PALETTE_STORAGE_KEY);
+    const stored = storageForScope().getItem(key);
+    const raw = stored || (activeStorageScope === "guest" ? sessionStorage.getItem(key) : null);
+    const palette = normalizeCustomColorPalette(raw ? JSON.parse(raw) : null);
+    if (!stored && raw) saveCustomColorPalette(palette);
+    return palette;
   } catch {
     return { color: [], bg: [] };
   }
@@ -5575,7 +5604,8 @@ async function inspectPortableProject(read, paths) {
 }
 
 async function importPortableProject({ read, source, listed }) {
-  if (activeStorageScope !== "guest" && state.projects.length >= MAX_PROJECTS) {
+  if (saveState() === false) throw new Error("当前草稿尚未保存，请先下载原稿，再导入。");
+  if (state.projects.length >= MAX_PROJECTS) {
     throw new Error(`这台设备已有 ${MAX_PROJECTS} 篇稿件，请先备份并整理旧稿，再导入。`);
   }
   const imported = createProject(source.data);
@@ -5608,16 +5638,14 @@ async function importPortableProject({ read, source, listed }) {
     }
     imported.data.images[id] = restored;
   }
-  saveState();
-  state.projects = activeStorageScope === "guest"
-    ? [imported]
-    : [imported, ...state.projects.filter((item) => !isBuiltInProject(item))];
+  state.projects = [imported, ...state.projects.filter((item) => !isBuiltInProject(item))];
   state.currentProjectId = imported.id;
   applyForm(imported.data);
   syncGuideReadOnlyMode();
   resetTextHistory();
   saveProjectStore();
   updateProjectHistory();
+  if (state.projects.length > 1) setHistoryOpen(true);
   await render();
   els.status.textContent = `已导入原稿：${imported.title}`;
 }
@@ -5699,9 +5727,7 @@ function openPortableImportModal() {
   els.portableImportChoice.hidden = true;
   els.portableImportPreview.hidden = true;
   els.portableImportConfirm.disabled = true;
-  els.portableImportWarning.textContent = activeStorageScope === "guest"
-    ? "导入会替换当前游客稿；未保存的内容请先下载原稿。"
-    : "导入后会新增一篇稿件，不会覆盖当前稿。";
+  els.portableImportWarning.textContent = "导入后会新增一篇本地草稿，当前稿会保留，可从左侧来回切换。";
   setPortableImportStatus("选择可编辑原稿 ZIP 或迁移 ZIP；多篇稿件可在包内选择。");
   els.portableImportModal.classList.remove("hidden");
   setDialogBackgroundInert(true);
