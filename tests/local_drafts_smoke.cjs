@@ -46,7 +46,7 @@ function workspace(local = new Map(), session = new Map()) {
     section('function saveState()', 'function loadState()'),
     section('function syncHistoryAvailability()', 'async function activateWorkspaceScope('),
     section('function migrateGuestDraftsFromSession()', 'function normalizeProject('),
-    section('function saveProjectStore()', 'function projectTitleFromData('),
+    section('function saveProjectStore(', 'function projectTitleFromData('),
     section('async function openProject(', 'async function deleteProject('),
     section('async function createNewProject()', 'const FIRST_RUN_ONBOARDING_STEPS'),
     section('function loadCustomColorPalette()', 'function rememberCustomColor('),
@@ -73,7 +73,8 @@ function workspace(local = new Map(), session = new Map()) {
   assert.equal(app.ctx.loadCustomColorPalette().color[0], '#123456');
   assert.equal(JSON.parse(local.get('palette.guest')).color[0], '#123456', 'keep custom colors when moving guest storage to disk');
   assert.equal(app.load().projects.length, 2, 'merge old guest session into the persistent draft list');
-  assert.equal(app.ctx.allHistoryProjects()[0].id, 'a', 'put working drafts before built-in guides');
+  const historyIds = app => Array.from(app.ctx.allHistoryProjects(), project => project.id);
+  assert.deepEqual(historyIds(app), ['b', 'a', 'guide-cards'], 'keep the stored order while recovering newer contents');
   assert.equal(app.content(), '甲最新内容', 'prefer the newer copy of the same draft');
   assert.equal(session.has(key), false, 'remove the session index only after durable write succeeds');
   app.ctx.syncHistoryAvailability();
@@ -86,9 +87,11 @@ function workspace(local = new Map(), session = new Map()) {
   await app.ctx.openProject('a');
   assert.equal(app.content(), '甲刚输入还没等自动保存的内容', 'switching back restores the first draft');
   assert.equal(app.ctx.state.projects.find(project => project.id === 'b').data.content, '乙修改后的内容');
+  assert.deepEqual(historyIds(app), ['b', 'a', 'guide-cards'], 'editing and switching must not reorder drafts');
 
   const reopened = workspace(local);
   assert.equal(reopened.load().projects.length, 2, 'drafts survive a new tab/session');
+  assert.deepEqual(historyIds(reopened), ['b', 'a', 'guide-cards'], 'keep the same order after reopening');
   assert.equal(reopened.content(), '甲刚输入还没等自动保存的内容');
   await reopened.ctx.openProject('b');
   assert.equal(reopened.content(), '乙修改后的内容');

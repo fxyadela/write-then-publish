@@ -34,12 +34,13 @@ function addOriginal(zip, root) {
   for (const [path, file] of Object.entries(media)) zip.file(`${root}/${path}`, file.bytes);
 }
 const imageStore = new Map(), videoStore = new Map(), liveMediaFiles = new Map();
-const state = { projects: [], currentProjectId: null };
+const state = { projects: [], currentProjectId: null, historyFilter: 'article', historyOpen: false };
 let cloudCalls = 0, nextId = 0;
+let projectStoreFull = false;
 const ctx = {
   Blob, fetch, Date, JSON, String, Number, Object, Map, Error,
   state, liveMediaFiles, activeStorageScope: 'guest', MAX_PROJECTS: 24,
-  window: { JSZip: BrowserZip }, cloudState: { user: null }, els: { status: {} },
+  window: { JSZip: BrowserZip }, cloudState: { user: null }, els: { status: {}, projectHistory: { scrollTop: 80 } },
   isBuiltInProject: () => false,
   createProject: data => ({ id: `import-${++nextId}`, title: '测试', updatedAt: Date.now(), data: JSON.parse(JSON.stringify(data)) }),
   imageSourceKey: (project, image) => `${project}::${image}`,
@@ -48,7 +49,10 @@ const ctx = {
   writeLiveMediaBlob: async (key, blob) => videoStore.set(key, blob), readLiveMediaBlob: async key => videoStore.get(key),
   replaceLiveMediaCache: (key, blob) => liveMediaFiles.set(key, { blob }),
   cloudApi: () => ({ downloadProjectAsset: async () => { cloudCalls++; throw new Error('Object not found'); } }),
-  saveState() {}, applyForm() {}, syncGuideReadOnlyMode() {}, resetTextHistory() {}, saveProjectStore() {}, updateProjectHistory() {}, setHistoryOpen() {}, render: async () => {},
+  saveState() {}, applyForm() {}, syncGuideReadOnlyMode() {}, resetTextHistory() {}, render: async () => {},
+  saveProjectStore() { if (projectStoreFull) throw new Error('QuotaExceededError'); },
+  setHistoryFilter(filter) { state.historyFilter = filter; },
+  setHistoryOpen(open) { state.historyOpen = open; },
 };
 vm.createContext(ctx);
 vm.runInContext([
@@ -66,6 +70,9 @@ vm.runInContext([
   const input = await zip.generateAsync({ type: 'blob' });
   await ctx.importPortableProject(await ctx.inspectPortableZip(input));
   const imported = state.projects[0];
+  assert.equal(state.historyOpen, true, 'expand the sidebar on the first import');
+  assert.equal(state.historyFilter, 'all', 'reveal an imported draft even when another type was selected');
+  assert.equal(ctx.els.projectHistory.scrollTop, 0, 'scroll the list to the newest draft');
   assert.equal(imported.data.content, original.data.content);
   assert.equal(imported.createdAt, original.createdAt);
   assert.equal(imported.data.fontSize, original.data.fontSize);
@@ -96,9 +103,14 @@ vm.runInContext([
   }
   assert.equal(cloudCalls, 0);
   const firstId = imported.id;
-  await ctx.importPortableProject(await ctx.inspectPortableZip(input));
-  assert.equal(state.projects.length, 2, 'a second guest import appends a draft instead of replacing the first');
-  assert.ok(state.projects.some(project => project.id === firstId), 'keep the first draft and its media after another import');
+  const candidate = await ctx.inspectPortableZip(input);
+  await ctx.importPortableProject(candidate);
+  const secondId = state.currentProjectId;
+  assert.deepEqual(Array.from(state.projects, project => project.id), [secondId, firstId], 'put each newly imported draft above the previous ones');
+  projectStoreFull = true;
+  await assert.rejects(ctx.importPortableProject(candidate), /原稿未能保存/);
+  assert.equal(state.currentProjectId, secondId, 'a failed import keeps the current draft open');
+  assert.deepEqual(Array.from(state.projects, project => project.id), [secondId, firstId], 'a failed import leaves the list intact');
   // References must be preserved in every supported form, including either side of a pair.
   const pngSrc = `data:image/png;base64,${fixture('still.png').toString('base64')}`;
   for (const content of ['[[image:sample]]', '[[image:sample|png]]', '[[image:png|sample|4x3]]', '![[sample]]', '![图片](sample)']) {

@@ -172,7 +172,6 @@ const els = {
   portableImportChoiceSelect: $("#portableImportChoiceSelect"),
   portableImportName: $("#portableImportName"),
   portableImportDetails: $("#portableImportDetails"),
-  portableImportWarning: $("#portableImportWarning"),
   portableImportConfirm: $("#portableImportConfirmBtn"),
   portableImportZip: $("#portableImportZipBtn"),
   portableImportFolder: $("#portableImportFolderBtn"),
@@ -903,6 +902,7 @@ function blockBuiltInGuideDownload() {
 }
 
 function allHistoryProjects() {
+  // 草稿在加入时置顶，之后的编辑与切换沿用列表顺序。
   return [...state.projects, ...builtInGuideProjects()];
 }
 
@@ -1285,10 +1285,6 @@ function saveState() {
     current.data = data;
     current.title = projectTitleFromData(data);
     current.updatedAt = now;
-    state.projects = [
-      current,
-      ...state.projects.filter((project) => project.id !== current.id),
-    ];
     storageForScope().setItem(
       scopedStorageKey(STORAGE_KEY),
       JSON.stringify(withExternalizedImages(data, current.id)),
@@ -2850,7 +2846,7 @@ async function activateWorkspaceScope(scope, projects = null, profile = null) {
     syncGuideReadOnlyMode();
     resetTextHistory();
     updateProjectHistory();
-    setHistoryOpen(state.projects.length > 1);
+    setHistoryOpen(state.projects.length > 0);
     await render();
   } finally {
     cloudState.loadingWorkspace = false;
@@ -3359,8 +3355,7 @@ async function importLocalProjectsToAccount() {
     setAccountNotice(`合并后超过 ${MAX_PROJECTS} 篇本地草稿，请先备份并整理旧稿，再导入。`, "error");
     return;
   }
-  state.projects = [...incoming, ...state.projects.filter((project) => !isBuiltInProject(project))]
-    .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+  state.projects = [...incoming, ...state.projects.filter((project) => !isBuiltInProject(project))];
   saveProjectStore();
   updateProjectHistory();
   cloudState.localImportProjects = [];
@@ -3470,7 +3465,7 @@ function migrateGuestDraftsFromSession() {
     }
     merged = {
       activeId: previous.activeId || current.activeId,
-      projects: [...projects.values()].sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)),
+      projects: [...projects.values()],
     };
     localStorage.setItem(key, JSON.stringify(merged));
     // 只有持久保存成功才移走旧会话索引；素材仍复用已有 IndexedDB 记录。
@@ -3522,12 +3517,12 @@ function normalizeProject(project) {
   };
 }
 
-function saveProjectStore() {
+function saveProjectStore(projects = state.projects, activeId = state.currentProjectId) {
   storageForScope().setItem(
     scopedStorageKey(PROJECTS_STORAGE_KEY),
     JSON.stringify({
-      activeId: state.currentProjectId,
-      projects: state.projects
+      activeId,
+      projects: projects
         .filter((project) => !isBuiltInProject(project))
         .map((project) => ({ ...project, data: withExternalizedImages(project.data, project.id) })),
     }),
@@ -5638,14 +5633,20 @@ async function importPortableProject({ read, source, listed }) {
     }
     imported.data.images[id] = restored;
   }
-  state.projects = [imported, ...state.projects.filter((item) => !isBuiltInProject(item))];
+  const projects = [imported, ...state.projects.filter((item) => !isBuiltInProject(item))];
+  try {
+    saveProjectStore(projects, imported.id);
+  } catch {
+    throw new Error("原稿未能保存到当前浏览器，请先备份并整理本地草稿，再导入。");
+  }
+  state.projects = projects;
   state.currentProjectId = imported.id;
   applyForm(imported.data);
   syncGuideReadOnlyMode();
   resetTextHistory();
-  saveProjectStore();
-  updateProjectHistory();
-  if (state.projects.length > 1) setHistoryOpen(true);
+  setHistoryFilter("all");
+  setHistoryOpen(true);
+  if (els.projectHistory) els.projectHistory.scrollTop = 0;
   await render();
   els.status.textContent = `已导入原稿：${imported.title}`;
 }
@@ -5727,7 +5728,6 @@ function openPortableImportModal() {
   els.portableImportChoice.hidden = true;
   els.portableImportPreview.hidden = true;
   els.portableImportConfirm.disabled = true;
-  els.portableImportWarning.textContent = "导入后会新增一篇本地草稿，当前稿会保留，可从左侧来回切换。";
   setPortableImportStatus("选择可编辑原稿 ZIP 或迁移 ZIP；多篇稿件可在包内选择。");
   els.portableImportModal.classList.remove("hidden");
   setDialogBackgroundInert(true);
