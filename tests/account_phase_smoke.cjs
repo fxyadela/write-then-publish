@@ -64,7 +64,10 @@ vm.runInContext([
   await ctx.resolveAccountPolicy();
   assert.equal(ctx.ACCOUNT_MAINTENANCE, false);
   ctx.syncHistoryAvailability();
-  assert.equal(bodyClasses.has('history-disabled'), true, 'signed-in history sidebar closes after cutoff');
+  assert.equal(bodyClasses.has('history-disabled'), false, 'local drafts remain available after cloud migration closes');
+  ctx.activeStorageScope = 'guest';
+  ctx.syncHistoryAvailability();
+  assert.equal(bodyClasses.has('history-disabled'), false, 'guests can switch between local drafts without login');
   ctx.LOCAL_DEPLOYMENT_MODE = true;
   ctx.activeStorageScope = 'local';
   ctx.syncHistoryAvailability();

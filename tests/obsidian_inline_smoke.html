@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8" />
+<title>Obsidian 行内 HTML 兼容检查</title>
+<pre id="result">检查中…</pre>
+<iframe src="../index.html?mode=local" title="隔离的本地编辑器" hidden></iframe>
+<script>
+  const frame = document.querySelector("iframe");
+  const result = document.querySelector("#result");
+  frame.addEventListener("load", async () => {
+    const checks = [];
+    const expect = (condition, message) => {
+      if (!condition) throw new Error(message);
+      checks.push(message);
+    };
+    try {
+      const app = frame.contentWindow;
+      const tokens = (text) => app.parseInline(text);
+      const text = (items) => items.map((token) => token.text || "").join("");
+      const plain = '<span style="color: red">红字</span>';
+      const red = tokens(plain);
+      expect(text(red) === "红字" && red[0].color === "#ff0000", "卡片解析 span 文字与命名颜色");
+      expect(plain.slice(red[0].sourceStart, red[0].sourceEnd) === "红字", "样式标签不破坏原文选区位置");
+
+      const nested = tokens('<span style="color: #ff0000; background-color: rgb(255, 243, 163)">外层<span style="color: blue">**内层**</span>结尾</span>');
+      expect(text(nested) === "外层内层结尾", "嵌套 span 不显示标签");
+      expect(nested.find((token) => token.text === "内层")?.color === "#0000ff", "内层颜色优先于外层");
+      expect(nested.every((token) => token.bgColor === "#fff3a3"), "背景色继承到嵌套文字");
+      expect(nested.find((token) => token.text === "内层")?.bold === true, "span 内仍解析 Markdown 加粗");
+      expect(tokens('<span style="font-weight: bold; font-style: italic; text-decoration: underline dashed">字</span>')[0].underline === "dashed", "白名单内的字体与下划线样式");
+      expect(tokens('<span class="plugin-class">内容</span>')[0].text === "内容", "未知插件 class 保留内文");
+
+      const multiline = '<span style="color: red">\n# 标题\n\n- 列表\n> 引用\n\n第二段<span style="color: blue">内层</span>\n</span>';
+      const blocks = app.parseBlocks(multiline);
+      const all = blocks.flatMap((block) => block.tokens || block.lines?.flat() || []);
+      expect(all.every((token) => !/<\/?span/.test(token.text || "")), "跨段落 span 在卡片里不泄漏标签");
+      expect(blocks.find((block) => block.type === "h1")?.tokens[0].color === "#ff0000", "跨行 span 继承到标题");
+      expect(all.find((token) => token.text === "引用")?.color === "#ff0000", "跨行 span 继承到引用");
+      expect(all.find((token) => token.text === "内层")?.color === "#0000ff", "跨行与嵌套 span 同时工作");
+      const underlined = app.parseBlocks('{{underline:solid|<span style="color: red">第一行\n第二行</span>}}').flatMap((block) => block.lines?.flat() || []);
+      expect(underlined.every((token) => token.color === "#ff0000" && token.underline === "solid"), "跨行 span 与已有下划线标记组合");
+
+      const article = app.markdownToArticleHtml(multiline);
+      const rendered = document.createElement("article");
+      rendered.innerHTML = article;
+      expect(!rendered.textContent.includes("<span") && rendered.querySelector("h1 span")?.style.color === "rgb(255, 0, 0)", "长文预览使用同一 span 兼容逻辑");
+      expect(app.markdownToArticleHtml('| 列一 | 列二 |\n| --- | --- |\n| <span style="color: red">单元格</span> | 正文 |').includes('color: #ff0000'), "表格单元格中的 span");
+
+      const code = '`<span style="color:red">代码</span>`';
+      expect(tokens(code)[0].code && text(tokens(code)) === code.slice(1, -1), "行内代码中的 span 保持字面内容");
+      const fenced = '```html\n<span style="color:red">代码</span>\n```';
+      const codeBlocks = app.parseBlocks(fenced).flatMap((block) => block.lines?.flat() || []);
+      expect(text(codeBlocks).includes('<span style="color:red">') && codeBlocks.every((token) => !token.color), "卡片代码块不执行 span 排版");
+      expect(app.markdownToArticleHtml(fenced).includes('&lt;span style=&quot;color:red&quot;&gt;'), "长文代码块保持转义");
+
+      const entity = tokens('<span>A&amp;B&nbsp;&#x1f345;</span>');
+      expect(text(entity) === "A&B\u00a0🍅", "常见 HTML 实体解码一次");
+      expect('<span>A&amp;B&nbsp;&#x1f345;</span>'.slice(entity[1].sourceStart, entity[1].sourceEnd) === "&amp;", "HTML 实体保持原文映射");
+      expect(app.renderArticleInline('&lt;span&gt;示例&lt;/span&gt;').includes('&lt;span&gt;'), "转义的标签不被二次解释");
+
+      const unsafe = app.renderArticleInline('<span onclick="alert(1)" style="color:red;position:fixed;background-image:url(https://example.com/track)">安全正文</span><img src=x onerror=alert(1)>');
+      rendered.innerHTML = unsafe;
+      expect(!rendered.querySelector('[onclick],img') && !unsafe.includes("position:fixed") && !unsafe.includes("background-image"), "原始 HTML 事件、布局和远程背景不会进入页面");
+      expect(app.plainTextForCopy(plain) === "红字", "复制全文去掉 span 包装");
+
+      frame.contentDocument.querySelector("#contentInput").value = plain;
+      const exported = await app.buildObsidianExport();
+      expect(exported.markdown.includes(plain), "同步回 Obsidian 保留原始 span 源文");
+      result.textContent = `PASS：${checks.length} 项\n${checks.join("\n")}`;
+      result.dataset.status = "pass";
+    } catch (error) {
+      result.textContent = `FAIL：${error.stack || error.message}\n已通过：${checks.length} 项`;
+      result.dataset.status = "fail";
+    }
+  });
+</script>
+</html>

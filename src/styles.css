@@ -3848,6 +3848,38 @@ body.export-busy {
   gap: 9px;
 }
 
+.feedback-fallback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.feedback-fallback p,
+.feedback-fallback small {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+}
+
+.feedback-fallback a,
+.feedback-fallback button {
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  background: none;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
 .feedback-actions .primary-button,
 .feedback-actions .secondary-button {
   min-width: 108px;
