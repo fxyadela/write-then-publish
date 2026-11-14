@@ -35,7 +35,7 @@ Use this as a starting pool. Prefer first-party sources and add only the stronge
 - Product Hunt AI category
 - ArXiv cs.AI, cs.CL, cs.CV, cs.LG, stat.ML
 - Papers with Code trending
-- aihot.virxact.com selected items as a Chinese-market cross-check
+- [AIHOT selected items](https://aihot.news/) as a Chinese-market cross-check
 
 ## Exclusion Rules
 
