@@ -4,21 +4,22 @@
   </a>
 </p>
 
-<div align="center">
+<p align="center">写作、排版、预览、导出，在一个工作区完成。</p>
 
-# 写了就发
+<p align="center">
+  <strong><a href="https://fawen.fun">在线使用 →</a></strong> ·
+  <a href="#核心功能">核心功能</a> ·
+  <a href="#本地运行">本地运行</a> ·
+  <a href="#能力矩阵">能力矩阵</a>
+</p>
 
-**Write Then Publish · [捏捏番茄出品](#作者)**
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Personal%20Non--Commercial-18212f.svg" alt="License: Personal Non-Commercial" /></a>
+  <a href="#技术与边界"><img src="https://img.shields.io/badge/Frontend-HTML%20%2F%20CSS%20%2F%20JS-18212f.svg" alt="Frontend: HTML / CSS / JS" /></a>
+  <a href="#live-photo"><img src="https://img.shields.io/badge/Live_Photo-WebCodecs-177d69.svg" alt="Live Photo: WebCodecs" /></a>
+</p>
 
-### 写完，不必再到处排版。
-
-一份正文，排成图文卡片或公众号长文。图片、拼图、Live Photo、预览和导出，都在同一个工作区完成。
-
-**[在线使用 →](https://fawen.fun)** · [核心功能](#核心功能) · [本地运行](#本地运行) · [能力矩阵](#能力矩阵)
-
-[![License: Personal Non-Commercial](https://img.shields.io/badge/License-Personal%20Non--Commercial-18212f.svg)](LICENSE) [![Frontend](https://img.shields.io/badge/Frontend-HTML%20%2F%20CSS%20%2F%20JS-18212f.svg)](#技术与边界) [![Live Photo](https://img.shields.io/badge/Live_Photo-WebCodecs-177d69.svg)](#live-photo)
-
-</div>
+## 工作区预览
 
 <p align="center">
   <img src="docs/readme/auto-layout-workspace.png" width="100%" alt="写了就发自动排版的实际页面：左侧编辑正文和图片引用，右侧三列预览 6 张图文卡片，可单张或整组下载" />
@@ -106,7 +107,7 @@
 
 发布图片、长图与实况的整包下载会附带**当前正文的可编辑原稿**，包含正文实际引用的图片、GIF 和原视频。历史未使用的附件保留在工作稿中；单独保存完整原稿或迁移旧稿时仍会校验这些真实附件，素材缺失会明确报错。
 
-之后点左上角 **导入原稿** 选择 ZIP，无需解压；也支持旧版已解压的原稿文件夹。导入前检查文件结构与素材大小，导入后可继续修改；GIF 和视频原件随包保留。每次导入都会展开左侧“本地草稿”，将新稿放在第一项。切换编辑时，列表顺序保持稳定。
+之后点左上角 **导入原稿** 选择 ZIP，无需解压；也支持旧版已解压的原稿文件夹。导入前检查文件结构与素材大小，导入后可继续修改；GIF 和视频原件随包保留。每次导入都会将新稿放在第一项，宽屏会展开“本地草稿”，窄窗口可点击同名按钮打开列表。切换编辑时，列表顺序保持稳定。
 
 > Obsidian 的 Markdown 导入包与“可编辑原稿”是两种不同用途的 ZIP。需要恢复完整排版和实况设置时，请保存可编辑原稿。
 
