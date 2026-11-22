@@ -124,6 +124,7 @@ const PANEL_LIMITS = {
   history: { min: 210, max: 380, fallback: 260 },
   editor: { min: 360, fallbackRatio: 0.42 },
 };
+const COMPACT_WORKSPACE_QUERY = "(max-width: 1240px), (any-pointer: coarse) and (max-width: 1366px)";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -3621,17 +3622,20 @@ function historyEnabled() {
   return !document.body.classList.contains("history-disabled");
 }
 
-function setHistoryOpen(open) {
+function setHistoryOpen(open, { userInitiated = false } = {}) {
   if (!els.historySidebar) return;
   if (open && !historyEnabled()) return;
+  // 窄窗口优先保留编辑空间，只有用户主动打开时才展开草稿列表。
+  if (open && !userInitiated && window.matchMedia(COMPACT_WORKSPACE_QUERY).matches) open = false;
   els.historySidebar.classList.toggle("open", open);
   els.workspace?.classList.toggle("history-open", open);
   els.historyToggle?.setAttribute("aria-label", open ? "收起本地草稿" : "打开本地草稿");
   els.historyToggle?.setAttribute("title", open ? "收起本地草稿" : "打开本地草稿");
+  els.historyToggle?.setAttribute("aria-expanded", String(open));
 }
 
 function toggleHistory() {
-  setHistoryOpen(!els.historySidebar?.classList.contains("open"));
+  setHistoryOpen(!els.historySidebar?.classList.contains("open"), { userInitiated: true });
 }
 
 async function openProject(projectId) {
@@ -13639,6 +13643,19 @@ function bindEvents() {
   });
   els.historyToggle.addEventListener("click", toggleHistory);
   els.historyClose.addEventListener("click", () => setHistoryOpen(false));
+  const compactWorkspace = window.matchMedia(COMPACT_WORKSPACE_QUERY);
+  let desktopHistoryOpen;
+  compactWorkspace.addEventListener("change", ({ matches }) => {
+    if (matches) {
+      desktopHistoryOpen = els.historySidebar.classList.contains("open");
+      setHistoryOpen(false);
+    } else {
+      setHistoryOpen(desktopHistoryOpen ?? (state.projects.length > 0));
+    }
+  });
+  els.projectHistory.addEventListener("click", (event) => {
+    if (compactWorkspace.matches && event.target.closest(".history-open")) setHistoryOpen(false);
+  });
   els.historyFilterButtons.forEach((button) => {
     button.addEventListener("click", () => setHistoryFilter(button.dataset.historyFilter));
   });
