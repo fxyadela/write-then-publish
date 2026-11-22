@@ -796,6 +796,10 @@ body.history-disabled .workspace.history-open {
   height: 18px;
 }
 
+.history-tab-label {
+  display: none;
+}
+
 .history-drawer {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
@@ -6479,8 +6483,9 @@ body.onboarding-account-step .site-footer {
   }
 
   .workspace {
+    --compact-history-height: 50px;
     grid-template-columns: minmax(360px, var(--editor-share, 42fr)) 12px minmax(320px, var(--preview-share, 58fr));
-    grid-template-rows: 50px minmax(0, 1fr);
+    grid-template-rows: var(--compact-history-height) minmax(0, 1fr);
     height: 100%;
     min-height: 0;
     overflow: hidden;
@@ -6489,6 +6494,7 @@ body.onboarding-account-step .site-footer {
   }
 
   .workspace.history-open {
+    --compact-history-height: min(280px, 35dvh);
     grid-template-columns: minmax(360px, var(--editor-share, 42fr)) 12px minmax(320px, var(--preview-share, 58fr));
   }
 
@@ -6561,7 +6567,7 @@ body.onboarding-account-step .site-footer {
     grid-row: 1;
     z-index: 180;
     width: auto;
-    height: 50px;
+    height: var(--compact-history-height);
     flex: none;
     border-right: 0;
     border-bottom: 1px solid var(--line);
@@ -6570,15 +6576,25 @@ body.onboarding-account-step .site-footer {
 
   .history-sidebar.open {
     width: auto;
-    height: 250px;
-    height: min(340px, calc(100dvh - 116px));
+    height: var(--compact-history-height);
   }
 
   .history-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     top: 3px;
     left: max(14px, env(safe-area-inset-left, 0px));
-    width: 44px;
+    width: auto;
     height: 44px;
+    padding: 0 12px;
+  }
+
+  .history-tab-label {
+    display: inline;
+    font-size: 13px;
+    font-weight: 700;
   }
 
   .history-drawer {
@@ -6672,15 +6688,14 @@ body.onboarding-account-step .site-footer {
   .workspace,
   .workspace.history-open {
     grid-template-columns: 1fr;
-    grid-template-rows: 50px auto auto;
+    grid-template-rows: var(--compact-history-height) auto auto;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
   }
 
   .history-sidebar {
-    position: sticky;
-    top: 0;
+    position: relative;
   }
 
   .panel-resizer[data-panel-resize="editor"] {
