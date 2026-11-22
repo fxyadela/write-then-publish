@@ -21,3 +21,9 @@
 | `feature-portable.png` | Obsidian 读写、权限降级、ZIP 原稿导入导出 | `buildObsidianExport`、`syncCurrentNoteToObsidian`、`writePortableProject`、`importPortableProject` |
 
 基于 `6ff00b0` 的现有实现整理（2026-10-30）。四张设计图均为 `1800 × 1000`，使用原生排版与矢量图形栅格化；不是产品页面截图，也未使用 AI 图像生成。
+
+## README 顶部产品海报 · 2026-11-22
+
+`product-banner.png` 为 `1854 × 848` 的横版产品海报，使用 imagegen 生成。构图参考用户提供的绿色产品海报：中间突出产品名、用途和作者，两侧分别展示真实工作区与导出的图文卡片。输入画面来自本次修改后的本地页面，示例昵称为「捏捏番茄」；成品卡片中的插画来自仓库已有的 `docs/guide-assets/guide-static-image.jpg`。
+
+海报文案限定为已有功能：图文卡片、公众号长文、图片拼图、Live Photo、Obsidian，以及「捏捏番茄出品」和 `fawen.fun`。海报用于产品介绍，下方原有工作区截图继续作为实际操作界面的展示。
