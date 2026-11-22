@@ -15,6 +15,7 @@ const UNDERLINE_GAP = 15;
 const CARD_BODY_FONT_WEIGHT = 400;
 const CARD_BODY_STROKE_WIDTH = 0;
 const EXPORT_IMAGE_MIME = "image/png";
+const DEFAULT_DISPLAY_NAME = "捏捏番茄";
 const DEFAULT_HANDLE = "@X: iamcora13";
 const EXPORT_IMAGE_EXTENSION = ".png";
 const EXPORT_ZIP_COMPRESSION = "STORE";
@@ -121,7 +122,7 @@ const GUIDE_CARDS_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}cards`;
 const GUIDE_ARTICLE_PROJECT_ID = `${BUILT_IN_PROJECT_PREFIX}article`;
 const PANEL_LIMITS = {
   history: { min: 210, max: 380, fallback: 260 },
-  editor: { min: 360, max: 760, fallback: 500 },
+  editor: { min: 360, fallbackRatio: 0.42 },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -559,7 +560,7 @@ const state = {
   historyFilter: "all",
   panelLayout: {
     history: PANEL_LIMITS.history.fallback,
-    editor: PANEL_LIMITS.editor.fallback,
+    editorRatio: PANEL_LIMITS.editor.fallbackRatio,
   },
 };
 
@@ -679,7 +680,7 @@ const obsidianVault = {
 function defaultFormState() {
   return {
     content: defaultText,
-    displayName: "捏捏番茄（AI图文版）",
+    displayName: DEFAULT_DISPLAY_NAME,
     handle: DEFAULT_HANDLE,
     textColor: "#202938",
     accentColor: "#2563eb",
@@ -973,7 +974,11 @@ function readForm() {
 }
 
 function normalizeAuthorProfile(data = {}) {
-  const displayName = String(data.displayName || "").trim().slice(0, 40) || "捏捏番茄（AI图文版）";
+  const savedName = String(data.displayName || "").trim().slice(0, 40);
+  // 更新旧模板署名；其他创作者自己保存的昵称继续保留。
+  const displayName = !savedName || ["Leo说科技", "捏捏番茄（AI图文版）"].includes(savedName)
+    ? DEFAULT_DISPLAY_NAME
+    : savedName;
   const avatarCrop = data.avatarCrop && typeof data.avatarCrop === "object"
     ? {
         x: finiteNumber(data.avatarCrop.x, 0),
@@ -1198,10 +1203,11 @@ function loadPanelLayout() {
   try {
     const stored = JSON.parse(localStorage.getItem(PANEL_LAYOUT_STORAGE_KEY) || "{}");
     state.panelLayout.history = clamp(Number(stored.history) || PANEL_LIMITS.history.fallback, PANEL_LIMITS.history.min, PANEL_LIMITS.history.max);
-    state.panelLayout.editor = clamp(Number(stored.editor) || PANEL_LIMITS.editor.fallback, PANEL_LIMITS.editor.min, PANEL_LIMITS.editor.max);
+    // 旧版只记像素宽度。首次升级使用自适应比例，之后保留用户拖动的比例。
+    state.panelLayout.editorRatio = clamp(Number(stored.editorRatio) || PANEL_LIMITS.editor.fallbackRatio, 0.2, 0.8);
   } catch {
     state.panelLayout.history = PANEL_LIMITS.history.fallback;
-    state.panelLayout.editor = PANEL_LIMITS.editor.fallback;
+    state.panelLayout.editorRatio = PANEL_LIMITS.editor.fallbackRatio;
   }
 }
 
@@ -1211,13 +1217,15 @@ function savePanelLayout() {
 
 function applyPanelLayout() {
   els.workspace?.style.setProperty("--history-width", `${Math.round(state.panelLayout.history)}px`);
-  els.workspace?.style.setProperty("--editor-width", `${Math.round(state.panelLayout.editor)}px`);
+  const ratio = state.panelLayout.editorRatio;
+  els.workspace?.style.setProperty("--editor-share", `${ratio * 100}fr`);
+  els.workspace?.style.setProperty("--preview-share", `${(1 - ratio) * 100}fr`);
 }
 
 function startPanelResize(event) {
   const target = event.currentTarget.dataset.panelResize;
   if (!["history", "editor"].includes(target)) return;
-  if (window.matchMedia("(max-width: 680px)").matches) return;
+  if (window.matchMedia("(max-width: 760px)").matches) return;
 
   event.preventDefault();
   if (target === "history" && !els.historySidebar?.classList.contains("open")) {
@@ -1225,7 +1233,9 @@ function startPanelResize(event) {
   }
 
   const startX = event.clientX;
-  const startEditor = state.panelLayout.editor;
+  const editorWidth = els.workspace.querySelector(".editor-panel").getBoundingClientRect().width;
+  const previewWidth = els.workspace.querySelector(".preview-panel").getBoundingClientRect().width;
+  const panelPairWidth = editorWidth + previewWidth;
   const workspaceRect = els.workspace.getBoundingClientRect();
   const resizeHandle = event.currentTarget;
   resizeHandle.classList.add("active");
@@ -1237,8 +1247,10 @@ function startPanelResize(event) {
       const nextHistory = moveEvent.clientX - workspaceRect.left;
       state.panelLayout.history = clamp(nextHistory, PANEL_LIMITS.history.min, PANEL_LIMITS.history.max);
     } else {
-      const nextEditor = startEditor + moveEvent.clientX - startX;
-      state.panelLayout.editor = clamp(nextEditor, PANEL_LIMITS.editor.min, PANEL_LIMITS.editor.max);
+      const nextEditor = editorWidth + moveEvent.clientX - startX;
+      const previewMin = window.matchMedia("(max-width: 1240px), (any-pointer: coarse) and (max-width: 1366px)").matches ? 320 : 360;
+      const width = clamp(nextEditor, PANEL_LIMITS.editor.min, panelPairWidth - previewMin);
+      state.panelLayout.editorRatio = clamp(width / panelPairWidth, 0.2, 0.8);
     }
     applyPanelLayout();
   };
