@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8" />
+<title>卡片预览清晰度检查</title>
+<pre id="result">检查中…</pre>
+<iframe src="../index.html?mode=local" title="隔离的本地编辑器" hidden></iframe>
+<script>
+  const frame = document.querySelector("iframe");
+  const result = document.querySelector("#result");
+  frame.addEventListener("load", async () => {
+    const checks = [];
+    const expect = (condition, message) => {
+      if (!condition) throw new Error(message);
+      checks.push(message);
+    };
+    const app = frame.contentWindow;
+    const draw = app.drawPageToContext;
+    let preview;
+    try {
+      const settings = app.defaultFormState();
+      settings.content = "# 预览清晰度\n\n中文、English 和 0123456789。\n\n**加粗**与{{bg:#fff3a3|高亮}}。";
+      settings.images = {};
+      const pages = await app.buildPages(settings);
+      const source = app.renderPage(pages[0], 0, pages.length);
+      const before = new Uint8Array(await (await app.canvasToLosslessPngBlob(source)).arrayBuffer());
+      preview = app.createCardPreview(source);
+      let nativeDraws = 0;
+      app.drawPageToContext = (context, page) => {
+        if (context.canvas === preview) nativeDraws += 1;
+        return draw(context, page);
+      };
+
+      for (const [width, density, zoom] of [[320, 1, 1], [864, 2, 1], [720, 2, 2.5], [864, 4, 1]]) {
+        const pixels = app.cardPreviewPixelWidth(width, density, zoom);
+        app.paintCardPreview(preview, pixels);
+        expect(preview.width >= width * density * zoom, `${width}px / ${density} DPR / ${zoom}× 覆盖实际显示像素`);
+        expect(preview.width * 4 === preview.height * 3, "改变清晰度不改变卡片比例");
+      }
+      expect(nativeDraws === 4, "每次分辨率变化都从排版原稿重绘文字，不拉大旧图片");
+      app.paintCardPreview(preview, preview.width);
+      expect(nativeDraws === 4, "分辨率未变化时不重复绘制");
+      expect(app.cardPreviewPixelWidth(10000, 8, 8) <= 4095, "极端缩放有单张画布像素上限");
+      expect(preview._page === source._page && preview._imageHits === source._imageHits
+        && preview._imageDropTargets === source._imageDropTargets, "图片编辑和拖放坐标沿用同一份原稿");
+      app.releaseCardPreview(preview);
+      expect(preview.width === 3 && preview.height === 4, "离开可视区域后释放预览像素并保持比例");
+      expect(source.width === 1728 && source.height === 2304, "预览缩放不改变 PNG 导出尺寸");
+      const after = new Uint8Array(await (await app.canvasToLosslessPngBlob(source)).arrayBuffer());
+      expect(before.length === after.length && before.every((byte, i) => byte === after[i]), "预览重绘与释放前后的导出 PNG 字节完全一致");
+      result.textContent = `PASS：${checks.length} 项\n${checks.join("\n")}`;
+      result.dataset.status = "pass";
+    } catch (error) {
+      result.textContent = `FAIL：${error.stack || error.message}\n已通过：${checks.length} 项`;
+      result.dataset.status = "fail";
+    } finally {
+      app.drawPageToContext = draw;
+      if (preview) app.releaseCardPreview(preview);
+    }
+  });
+</script>
+</html>
