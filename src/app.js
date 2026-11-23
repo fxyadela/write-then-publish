@@ -1,6 +1,7 @@
 const CANVAS_WIDTH = 864;
 const CANVAS_HEIGHT = 1152;
 const CANVAS_RENDER_SCALE = 2;
+const CARD_PREVIEW_MAX_WIDTH = 4095;
 const OUTPUT_CANVAS_WIDTH = CANVAS_WIDTH * CANVAS_RENDER_SCALE;
 const OUTPUT_CANVAS_HEIGHT = CANVAS_HEIGHT * CANVAS_RENDER_SCALE;
 // 实况成片固定 1080x1440，服务端 ffmpeg 也按这个尺寸缩放卡片。
@@ -8959,6 +8960,7 @@ function clampText(ctx, text, maxWidth) {
 }
 
 function renderArticlePreview(settings) {
+  resetCardPreviews();
   state.canvases = [];
   els.pages.innerHTML = "";
   els.pages.className = "pages article-mode";
@@ -10482,6 +10484,125 @@ async function applyLivePhotoAsset(event) {
 // 渲染序号：切换账号/项目时旧渲染可能晚于新渲染完成，
 // 没有这个守卫时，旧账号的卡片会覆盖新账号的预览（表现为“切换后页面没刷新”）。
 let renderSequence = 0;
+const cardPreviewState = {
+  canvases: new Set(),
+  resizeObserver: null,
+  visibilityObserver: null,
+  frame: 0,
+};
+
+function cardPreviewPixelWidth(cssWidth, pixelRatio = window.devicePixelRatio || 1, zoom = window.visualViewport?.scale || 1) {
+  const density = Math.max(0.1, Number(pixelRatio) || 1) * Math.max(0.1, Number(zoom) || 1);
+  // 宽高使用同一比例且均为整数，避免改像素尺寸时改变卡片的布局高度。
+  return Math.min(CARD_PREVIEW_MAX_WIDTH, Math.max(3, Math.ceil((Math.max(0, cssWidth) * density) / 3) * 3));
+}
+
+function createCardPreview(source) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 3;
+  canvas.height = 4;
+  canvas.dataset.page = source.dataset.page;
+  canvas._page = source._page;
+  canvas._imageHits = source._imageHits;
+  canvas._imageDropTargets = source._imageDropTargets;
+  return canvas;
+}
+
+function paintCardPreview(canvas, pixelWidth) {
+  if (!canvas._page || canvas.width === pixelWidth) return;
+  canvas.width = pixelWidth;
+  canvas.height = (pixelWidth / 3) * 4;
+  const context = canvas.getContext("2d");
+  context.imageSmoothingQuality = "high";
+  const scale = pixelWidth / CANVAS_WIDTH;
+  context.setTransform(scale, 0, 0, scale, 0, 0);
+  // 从原始排版重绘字形，而不是把已栅格化的导出图片再次拉大。
+  drawPageToContext(context, canvas._page);
+}
+
+function releaseCardPreview(canvas) {
+  canvas.width = 3;
+  canvas.height = 4;
+}
+
+function resetCardPreviews() {
+  cardPreviewState.resizeObserver?.disconnect();
+  cardPreviewState.visibilityObserver?.disconnect();
+  window.cancelAnimationFrame(cardPreviewState.frame);
+  cardPreviewState.frame = 0;
+  cardPreviewState.canvases.forEach(releaseCardPreview);
+  cardPreviewState.canvases.clear();
+}
+
+function refreshCardPreviews() {
+  cardPreviewState.frame = 0;
+  const viewport = window.visualViewport;
+  const left = viewport?.offsetLeft || 0;
+  const top = viewport?.offsetTop || 0;
+  const right = left + (viewport?.width || window.innerWidth);
+  const bottom = top + (viewport?.height || window.innerHeight);
+  // 先批量读尺寸，再绘制；离开可视范围的预览释放像素，导出原稿单独保留。
+  const targets = [...cardPreviewState.canvases].map((canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const visible = canvas._previewVisible !== false && rect.width > 0
+      && rect.right > left - 160 && rect.left < right + 160
+      && rect.bottom > top - 160 && rect.top < bottom + 160;
+    const width = canvas._previewDevicePixels
+      ? cardPreviewPixelWidth(canvas._previewDevicePixels, 1)
+      : cardPreviewPixelWidth(rect.width);
+    return { canvas, width: visible ? width : 3 };
+  });
+  targets.forEach(({ canvas, width }) => {
+    if (width === 3) {
+      if (canvas.width !== 3) releaseCardPreview(canvas);
+    } else {
+      paintCardPreview(canvas, width);
+    }
+  });
+}
+
+function scheduleCardPreviewRefresh() {
+  if (!cardPreviewState.canvases.size || cardPreviewState.frame) return;
+  cardPreviewState.frame = window.requestAnimationFrame(refreshCardPreviews);
+}
+
+function observeCardPreviews() {
+  if (window.ResizeObserver) {
+    cardPreviewState.resizeObserver ??= new ResizeObserver((entries) => {
+      entries.forEach(({ target, devicePixelContentBoxSize }) => {
+        target._previewDevicePixels = devicePixelContentBoxSize?.[0]?.inlineSize || 0;
+      });
+      scheduleCardPreviewRefresh();
+    });
+    cardPreviewState.canvases.forEach((canvas) => {
+      try {
+        const devicePixels = window.ResizeObserverEntry
+          && "devicePixelContentBoxSize" in ResizeObserverEntry.prototype;
+        cardPreviewState.resizeObserver.observe(canvas, { box: devicePixels ? "device-pixel-content-box" : "content-box" });
+      } catch {
+        cardPreviewState.resizeObserver.observe(canvas);
+      }
+    });
+  }
+  if (window.IntersectionObserver) {
+    cardPreviewState.visibilityObserver ??= new IntersectionObserver((entries) => {
+      entries.forEach(({ target, isIntersecting }) => { target._previewVisible = isIntersecting; });
+      scheduleCardPreviewRefresh();
+    }, { rootMargin: "160px" });
+    cardPreviewState.canvases.forEach((canvas) => cardPreviewState.visibilityObserver.observe(canvas));
+  }
+  scheduleCardPreviewRefresh();
+}
+
+function watchCardPreviewDensity() {
+  const query = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+  const changed = () => {
+    query.removeEventListener("change", changed);
+    watchCardPreviewDensity();
+    scheduleCardPreviewRefresh();
+  };
+  query.addEventListener("change", changed);
+}
 
 async function render() {
   const seq = ++renderSequence;
@@ -10588,6 +10709,7 @@ function scheduleLivePhotoPrewarm() {
 }
 
 function drawPreview(canvases) {
+  resetCardPreviews();
   els.pages.innerHTML = "";
   els.pages.className = "pages";
   els.articleSettings.hidden = true;
@@ -10608,8 +10730,10 @@ function drawPreview(canvases) {
     shell.classList.toggle("has-live", liveHits.length > 0);
     const frame = document.createElement("div");
     frame.className = "page-frame";
-    frame.append(canvas);
-    frame.append(createImageEditLayer(canvas));
+    const preview = createCardPreview(canvas);
+    cardPreviewState.canvases.add(preview);
+    frame.append(preview);
+    frame.append(createImageEditLayer(preview));
     attachPreviewImageDropHandlers(frame);
     frame.addEventListener("pointerdown", (event) => {
       if (!event.target.closest(".preview-image-box")) clearPreviewImageSelection();
@@ -10633,6 +10757,7 @@ function drawPreview(canvases) {
     shell.append(frame, actions);
     els.pages.append(shell);
   });
+  observeCardPreviews();
 
   const livePageCount = canvases.filter((canvas) => liveImageHitsForCanvas(canvas).length).length;
   els.pageCount.textContent = `${canvases.length} 张图片${livePageCount ? ` · ${livePageCount} 张实况` : ""}`;
@@ -13126,6 +13251,10 @@ function bindEvents() {
 
   window.addEventListener("resize", positionOpenToolPopovers);
   window.addEventListener("resize", applyPanelLayout);
+  window.addEventListener("resize", scheduleCardPreviewRefresh);
+  window.visualViewport?.addEventListener("resize", scheduleCardPreviewRefresh);
+  window.visualViewport?.addEventListener("scroll", scheduleCardPreviewRefresh);
+  watchCardPreviewDensity();
 
   els.panelResizers.forEach((resizer) => {
     resizer.addEventListener("pointerdown", startPanelResize);
