@@ -83,8 +83,19 @@ vm.runInContext([
   assert.equal(ctx.portableProjectMigrationUnits(imported), 5, 'progress excludes the unused built-in sample');
   imported.data.images.oldImage = { name: '未使用的旧图.png', src: '', storagePath: 'deleted/old-image' };
   imported.data.images.oldLive = { name: '未使用的旧视频', kind: 'live', src: '', storagePath: 'deleted/old-cover', videoStoragePath: 'deleted/old-video' };
-  // A publication download is a ZIP with both the PNG and editable source.
-  const output = await ctx.prepareDownloadZip(new Blob([fixture('still.png')], { type: 'image/png' }), 'publication.png');
+  // A single image stays byte-identical and does not require the ZIP component.
+  const png = new Blob([fixture('still.png')], { type: 'image/png' });
+  const zipLibrary = ctx.window.JSZip;
+  ctx.window.JSZip = null;
+  const single = await ctx.prepareDownloadZip(png, '单张发布图.png');
+  assert.equal(single.filename, '单张发布图.png');
+  assert.equal(single.blob, png);
+  assert.deepEqual(Buffer.from(await single.blob.arrayBuffer()), fixture('still.png'));
+  ctx.window.JSZip = zipLibrary;
+  // An explicit publication ZIP still includes its PNG and editable source.
+  const publication = new BrowserZip();
+  publication.file('publication-01.png', png);
+  const output = await ctx.prepareDownloadZip(await publication.generateAsync({ type: 'blob' }), 'publication.zip');
   assert.equal(output.filename, 'publication.zip');
   const restored = await ctx.inspectPortableZip(output.blob);
   assert.equal(restored.source.data.images.sample, undefined, 'unused built-in sample is not part of the editable source');
