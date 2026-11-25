@@ -3318,6 +3318,31 @@ body.export-busy {
   font-weight: 600;
 }
 
+.export-name-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--popover-bg);
+  color: var(--ink);
+  box-shadow: var(--shadow-popover);
+}
+
+.export-name-dialog::backdrop { background: var(--modal-overlay); }
+.export-name-dialog .modal-head { align-items: flex-start; }
+.export-name-dialog .modal-head p { line-height: 1.6; }
+.export-name-dialog .modal-head button { flex-shrink: 0; }
+.export-name-body { padding: 20px 20px 8px; }
+.export-name-body > label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 700; }
+.export-name-field { display: flex; align-items: center; gap: 12px; }
+.export-name-field input { flex: 1; min-width: 0; width: 100%; }
+.export-name-field > span { color: var(--muted); font-size: 14px; }
+.export-name-error { min-height: 20px; margin: 6px 0 0; color: var(--coral); font-size: 12px; }
+.export-name-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 8px 20px 20px; }
+
 .cloud-migration-card {
   width: min(760px, 100%);
   border-radius: 18px;
