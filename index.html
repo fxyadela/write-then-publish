@@ -35,7 +35,7 @@
     <meta name="twitter:description" content="一份 Markdown，排成小红书图文卡片或公众号长文。实况照片在浏览器本地合成，生成过程不上传原视频。" />
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
-    <link rel="stylesheet" href="src/styles.css?v=20261122-compact-history" />
+    <link rel="stylesheet" href="src/styles.css?v=20261126-export-names" />
   </head>
   <body class="entry-choice-pending history-disabled">
     <main class="workspace">
@@ -380,13 +380,13 @@
               <div class="download-popover">
                 <strong>下载当前笔记</strong>
                 <button id="downloadZipBtn" type="button">
-                  下载发布图片<small>发布图片 ZIP · 含可编辑原稿</small>
+                  下载发布图片<small>单页静态 PNG · 多页 ZIP 含原稿</small>
                 </button>
                 <button id="downloadArticleBtn" type="button" hidden>
-                  下载发布长图<small>长图 ZIP · 含可编辑原稿</small>
+                  下载发布长图<small>高清 PNG 长图</small>
                 </button>
                 <button id="portableExportBtn" type="button">
-                  保存可编辑原稿<small>日期命名 ZIP · 保留 GIF 与视频原件</small>
+                  保存可编辑原稿<small>原稿 ZIP · 保留 GIF 与视频原件</small>
                 </button>
               </div>
             </details>
@@ -1326,6 +1326,30 @@
       </div>
     </div>
 
+    <dialog id="exportNameDialog" class="export-name-dialog" aria-labelledby="exportNameTitle" aria-describedby="exportNameDescription">
+      <form id="exportNameForm">
+        <div class="modal-head">
+          <div>
+            <h3 id="exportNameTitle">命名下载文件</h3>
+            <p id="exportNameDescription">确认文件名后开始下载。</p>
+          </div>
+          <button id="exportNameCloseBtn" class="icon-button ghost" type="button" aria-label="取消下载"><i data-lucide="x"></i></button>
+        </div>
+        <div class="export-name-body">
+          <label for="exportNameInput">文件名</label>
+          <div class="export-name-field">
+            <input id="exportNameInput" type="text" maxlength="100" autocomplete="off" required autofocus aria-describedby="exportNameError" />
+            <span id="exportNameExtension">.png</span>
+          </div>
+          <p id="exportNameError" class="export-name-error" role="alert"></p>
+        </div>
+        <div class="export-name-actions">
+          <button id="exportNameCancelBtn" class="secondary-button" type="button">取消</button>
+          <button class="primary-button" type="submit"><i data-lucide="download"></i>开始下载</button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- 必须保持为 body 直属层：iPad Safari 会裁剪 sticky/overflow 面板里的 fixed 下载遮罩。 -->
     <section id="exportProgress" class="export-progress" aria-live="polite" aria-label="导出处理进度" hidden>
       <div class="export-progress-card">
@@ -1378,6 +1402,6 @@
         document.write('<script src="src/supabase.js?v=20261005-migration-zip"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20261123-sharp-preview"></script>
+    <script src="src/app.js?v=20261126-export-names"></script>
   </body>
 </html>

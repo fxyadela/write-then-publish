@@ -11,7 +11,8 @@ class BrowserZip extends JSZip {
   }
   static async loadAsync(file, options) {
     const bytes = file instanceof Blob ? Buffer.from(await file.arrayBuffer()) : file;
-    return JSZip.loadAsync(bytes, options);
+    // Loaded archives may receive new browser Blobs too (for example, editable source).
+    return Object.setPrototypeOf(await JSZip.loadAsync(bytes, options), BrowserZip.prototype);
   }
 }
 module.exports = BrowserZip;

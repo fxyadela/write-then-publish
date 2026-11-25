@@ -277,6 +277,14 @@ const els = {
   downloadZip: $("#downloadZipBtn"),
   downloadArticle: $("#downloadArticleBtn"),
   downloadMenu: $("#downloadMenu"),
+  exportNameDialog: $("#exportNameDialog"),
+  exportNameForm: $("#exportNameForm"),
+  exportNameInput: $("#exportNameInput"),
+  exportNameExtension: $("#exportNameExtension"),
+  exportNameDescription: $("#exportNameDescription"),
+  exportNameError: $("#exportNameError"),
+  exportNameClose: $("#exportNameCloseBtn"),
+  exportNameCancel: $("#exportNameCancelBtn"),
   copyWechat: $("#copyWechatBtn"),
   syncWechat: $("#syncWechatBtn"),
   articleSettings: $("#articleSettings"),
@@ -5569,13 +5577,17 @@ async function exportPortableProject(selectedProject = null) {
   if (!project || isBuiltInProject(project)) throw new Error("请先新建并编辑自己的稿件，再保存原稿。");
   if (!window.JSZip) throw new Error("ZIP 组件未加载，请刷新页面后重试。");
   const folderName = projectFolderName(project);
+  const filename = selectedProject ? `${folderName}.zip` : await requestExportFilename(
+    defaultExportFilename("zip", "-原稿", project), "ZIP 包含可编辑原稿及图片、GIF 和视频原件。",
+  );
+  if (!filename) return;
   const zip = new window.JSZip();
   const folder = zip.folder(folderName);
   els.status.textContent = "正在整理原稿与素材…";
   await writePortableProject(project, (path, data) => folder.file(path, data), Boolean(selectedProject));
   const blob = await zip.generateAsync({ type: "blob", compression: "STORE", streamFiles: true });
-  await saveBlob(blob, `${folderName}.zip`);
-  els.status.textContent = `已交给浏览器下载 ${folderName}.zip；请检查下载目录并保留原稿。`;
+  await saveBlob(blob, filename);
+  els.status.textContent = `已交给浏览器下载 ${filename}；请检查下载目录并保留原稿。`;
 }
 
 async function inspectPortableProject(read, paths) {
@@ -10748,7 +10760,7 @@ function drawPreview(canvases) {
     button.dataset.pageExport = "true";
     button.title = liveHits.length
       ? needsLivePhotoStaticFallback() ? "查看实况导出选项" : "自动生成 Live Photo 发布包"
-      : "下载图片 ZIP";
+      : canvasContainsGif(canvas) ? "下载图片与 GIF 原稿 ZIP" : "下载 PNG 图片";
     button.setAttribute("aria-label", liveHits.length ? `导出第 ${index + 1} 张实况` : `下载第 ${index + 1} 张`);
     button.innerHTML = `<i data-lucide="${liveHits.length ? "aperture" : "download"}"></i>`;
     const filename = `layout-page-${String(index + 1).padStart(2, "0")}.png`;
@@ -12520,6 +12532,12 @@ async function downloadOnlineLivePhotoAsImages() {
     .map(([pageIndex, canvas]) => [pageIndex, canvas || state.canvases[pageIndex]])
     .filter(([, canvas]) => canvas);
   if (!entries.length) return;
+  const filename = await requestExportFilename(
+    defaultExportFilename(entries.length > 1 ? "zip" : "png", "-图片版"),
+    entries.length > 1 ? `${entries.length} 张普通 PNG 图片打包下载，附带可编辑原稿。` : "下载一张普通 PNG 图片；视频原件可单独保存到可编辑原稿中。",
+  );
+  if (!filename) return;
+  const baseName = filename.replace(/\.[^.]+$/, "");
   if (!beginExportProgress("handoff", {
     title: entries.length > 1 ? "正在生成全部图片版" : "正在生成当前图片版",
     detail: "在线版会把当前画面导出为高清 PNG，不会伪装成 Live Photo。",
@@ -12541,7 +12559,6 @@ async function downloadOnlineLivePhotoAsImages() {
         detail: `正在把第 ${pageIndex + 1} 页按当前画面导出为高清 PNG…`,
         value: 55,
       });
-      const filename = `layout-page-${String(pageIndex + 1).padStart(2, "0")}-static.png`;
       const saved = await downloadCanvas(canvas, filename);
       if (!saved) {
         finishExportProgress("handoff", {
@@ -12560,10 +12577,10 @@ async function downloadOnlineLivePhotoAsImages() {
           total: progress.total,
           value: progress.type === "archive" ? 88 : 10 + (progress.completed / progress.total) * 70,
         });
-      });
+      }, baseName);
       updateExportProgress("handoff", { title: "正在保存图片版", detail: "文件已经生成，正在交给浏览器下载…", value: 96 });
       if (packageResult?.type === "zip") {
-        await saveBlob(packageResult.blob, "graphic-layout-online-images.zip");
+        await saveBlob(packageResult.blob, filename);
       } else {
         for (const file of packageResult?.files || []) await saveBlob(file.blob, file.filename);
       }
@@ -12596,6 +12613,11 @@ async function downloadLivePhotoBatch() {
     return;
   }
   const isBatch = livePhotoHandoffState.isBatch;
+  const filename = await requestExportFilename(
+    defaultExportFilename("zip", isBatch ? "" : "-实况"),
+    isBatch ? "ZIP 包含全部实况、普通图片与可编辑原稿。" : "ZIP 包含完整实况照片及可编辑原稿。",
+  );
+  if (!filename) return;
   if (!beginExportProgress("handoff", {
     title: isBatch ? "正在生成全部内容" : "正在准备实况照片",
     detail: isBatch ? "系统正在处理 Live Photo 与普通图片…" : "正在整理完整 .pvt…",
@@ -12640,8 +12662,7 @@ async function downloadLivePhotoBatch() {
       });
     }
     updateExportProgress("handoff", { title: "正在保存下载文件", detail: "传输完成，正在交给浏览器保存…", value: 96 });
-    const archiveName = archive.archive_name || (isBatch ? "写了就发-批量导出.zip" : "写了就发-实况照片.zip");
-    await saveBlob(archiveBlob, archiveName);
+    await saveBlob(archiveBlob, filename);
     els.livePhotoHandoffDownload.innerHTML = `<i data-lucide="check"></i>${isBatch ? "全部内容已下载" : "实况照片已下载"}`;
     els.livePhotoHandoffReveal.hidden = !livePhotoHandoffHasLocalFile();
     els.livePhotoHandoffHint.textContent = "";
@@ -12821,7 +12842,9 @@ function showOnlineLivePhotoFallback(entries) {
   els.livePhotoHandoffDownload.innerHTML = `<i data-lucide="download"></i>${livePhotoHandoffState.isBatch ? "下载全部图片版" : "下载当前图片版"}`;
   els.livePhotoHandoffReveal.hidden = true;
   els.livePhotoHandoffReveal.disabled = true;
-  els.livePhotoHandoffHint.textContent = "ZIP 中包含普通 PNG 和可编辑原稿；图片不会显示“实况”标识。";
+  els.livePhotoHandoffHint.textContent = livePhotoHandoffState.isBatch
+    ? "ZIP 中包含普通 PNG 和可编辑原稿；图片不会显示“实况”标识。"
+    : "当前图片版直接下载 PNG；可编辑原稿可在下载菜单中单独保存。";
   els.livePhotoHandoffPreviewHint.hidden = livePhotoHandoffState.isBatch;
   els.livePhotoHandoffThumbnails.hidden = false;
   syncLivePhotoHandoffDensity();
@@ -12831,6 +12854,49 @@ function showOnlineLivePhotoFallback(entries) {
   if (window.lucide) window.lucide.createIcons();
 }
 
+function sanitizeExportBaseName(value) {
+  return String(value || "").trim().replace(/\.(?:png|zip)$/i, "")
+    .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "")
+    .replace(/^[.\s]+|[.\s]+$/g, "").slice(0, 100).replace(/[.\s]+$/g, "");
+}
+
+function defaultExportFilename(extension, suffix = "", project = null) {
+  const title = projectTitleFromData(project ? project.data : readForm());
+  const base = sanitizeExportBaseName(title) || "写了就发";
+  return `${base}${suffix}.${extension}`;
+}
+
+function canvasContainsGif(canvas) {
+  return (canvas?._imageHits || []).some((hit) => {
+    const image = state.images[hit.imageId];
+    return image && (/\.gif$/i.test(image.name || "") || /^data:image\/gif[;,]/i.test(image.src || "")
+      || image.type === "image/gif");
+  });
+}
+
+let exportNamePending = false;
+
+function requestExportFilename(suggestedFilename, description) {
+  if (exportNamePending) return Promise.resolve(null);
+  const dialog = els.exportNameDialog;
+  const extension = /\.[^.]+$/.exec(suggestedFilename)?.[0] || ".png";
+  els.exportNameInput.value = sanitizeExportBaseName(suggestedFilename);
+  els.exportNameExtension.textContent = extension;
+  els.exportNameDescription.textContent = description;
+  els.exportNameError.textContent = "";
+  dialog.returnValue = "";
+  exportNamePending = true;
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => {
+      exportNamePending = false;
+      resolve(dialog.returnValue || null);
+    }, { once: true });
+    dialog.showModal();
+    els.exportNameInput.focus();
+    els.exportNameInput.select();
+  });
+}
+
 async function exportCanvasAutomatically(canvas, filename, pageIndex) {
   if (blockBuiltInGuideDownload()) return;
   const hits = liveImageHitsForCanvas(canvas);
@@ -12838,20 +12904,32 @@ async function exportCanvasAutomatically(canvas, filename, pageIndex) {
     showOnlineLivePhotoFallback([[pageIndex, canvas]]);
     return;
   }
+  if (!hits.length) {
+    const withGif = canvasContainsGif(canvas);
+    filename = await requestExportFilename(
+      defaultExportFilename(withGif ? "zip" : "png", state.canvases.length > 1 ? `-${String(pageIndex + 1).padStart(2, "0")}` : ""),
+      withGif ? "ZIP 包含当前图片与可编辑原稿，保留 GIF 原件。" : "下载一张高清 PNG 图片；可编辑原稿可在下载菜单中单独保存。",
+    );
+    if (!filename) return;
+  }
   if (!beginExportProgress("main", {
     title: hits.length ? `正在处理第 ${pageIndex + 1} 页实况` : `正在导出第 ${pageIndex + 1} 张图片`,
     detail: "正在准备页面素材…",
     value: 5,
   })) return;
   if (!hits.length) {
-    updateExportProgress("main", { title: `正在导出第 ${pageIndex + 1} 张图片`, detail: "请准备 ZIP 下载，随后会生成高清 PNG。", value: 55 });
-    const saved = await downloadCanvas(canvas, filename);
-    finishExportProgress("main", {
-      success: saved,
-      cancelled: !saved,
-      title: saved ? "图片导出完成" : "图片导出已取消",
-      detail: saved ? filename : "没有写入或下载任何文件。",
-    });
+    try {
+      updateExportProgress("main", { title: `正在导出第 ${pageIndex + 1} 张图片`, detail: "正在生成高清 PNG…", value: 55 });
+      const saved = await downloadCanvas(canvas, filename);
+      finishExportProgress("main", {
+        success: saved,
+        title: saved ? "图片导出完成" : "图片生成失败",
+        detail: saved ? filename : "请调整内容后重试。",
+      });
+    } catch (error) {
+      els.status.textContent = error?.message || "图片下载失败，请稍后重试。";
+      finishExportProgress("main", { success: false, title: "图片下载失败", detail: els.status.textContent });
+    }
     return;
   }
   els.status.textContent = `正在生成第 ${pageIndex + 1} 页 Live Photo 发布包…`;
@@ -12887,22 +12965,27 @@ async function exportCanvasAutomatically(canvas, filename, pageIndex) {
 }
 
 async function downloadCanvas(canvas, filename) {
-  const archiveName = filename.replace(/\.[^.]+$/, "") + ".zip";
-  const blob = await canvasToLosslessPngBlob(canvas);
+  let blob = await canvasToLosslessPngBlob(canvas);
   if (!blob) {
     els.status.textContent = "图片生成失败，请调整内容后再试";
     return false;
   }
+  if (/\.zip$/i.test(filename)) {
+    if (!window.JSZip) throw new Error("ZIP 组件未加载，请刷新页面后下载。");
+    const zip = new window.JSZip();
+    zip.file(filename.replace(/\.zip$/i, ".png"), blob);
+    blob = await zip.generateAsync({ type: "blob", compression: EXPORT_ZIP_COMPRESSION });
+  }
   await saveBlob(blob, filename);
-  els.status.textContent = `已交给浏览器下载 ${archiveName}`;
+  els.status.textContent = `已交给浏览器下载 ${filename}`;
   return true;
 }
 
 async function prepareDownloadZip(blob, filename) {
+  // 单个成品直接保存原始文件；只有明确生成的 ZIP 才附带可编辑原稿。
+  if (!/\.zip$/i.test(filename)) return { blob, filename };
   if (!window.JSZip) throw new Error("ZIP 组件未加载，请刷新页面后下载。");
-  const existingZip = /\.zip$/i.test(filename);
-  const zip = existingZip ? await window.JSZip.loadAsync(blob) : new window.JSZip();
-  if (!existingZip) zip.file(filename, blob);
+  const zip = await window.JSZip.loadAsync(blob);
   if (Object.keys(zip.files).some((path) => /(?:^|\/)manifest\.json$/.test(path))) return { blob, filename };
   // 发布图片/实况包同时包含可编辑原稿，同一个 ZIP 可直接导入复用。
   saveState();
@@ -12915,7 +12998,7 @@ async function prepareDownloadZip(blob, filename) {
   }
   return {
     blob: await zip.generateAsync({ type: "blob", compression: "STORE", streamFiles: true }),
-    filename: existingZip ? filename : filename.replace(/\.[^.]+$/, "") + ".zip",
+    filename,
   };
 }
 
@@ -13001,15 +13084,17 @@ async function downloadArticleImage() {
     return;
   }
 
+  const filename = await requestExportFilename(defaultExportFilename("png", "-长图"), "下载一张高清 PNG 长图；可编辑原稿可在下载菜单中单独保存。");
+  if (!filename) return;
+
   if (!beginExportProgress("main", {
     title: "正在生成长文图片",
     detail: "正在准备完整文章画面…",
     value: 5,
   })) return;
 
-  const filename = "write-then-publish-article.png";
   try {
-    updateExportProgress("main", { title: "请准备 ZIP 下载", detail: "将生成高清长图和可编辑原稿 ZIP。", value: 18 });
+    updateExportProgress("main", { title: "正在生成高清长图", detail: "正在绘制完整文章…", value: 18 });
     els.status.textContent = "正在生成长图...";
     updateExportProgress("main", { title: "正在渲染完整长文", detail: "正在合成长文主题、文字和图片…", value: 42 });
     const canvas = await window.html2canvas(article, {
@@ -13032,7 +13117,7 @@ async function downloadArticleImage() {
     if (!blob) throw new Error("长图生成失败，请调整内容后再试");
     updateExportProgress("main", { title: "正在保存长图", detail: "图片已经生成，正在写入下载位置…", value: 96 });
     await saveBlob(blob, filename);
-    els.status.textContent = "已交给浏览器下载 write-then-publish-article.zip";
+    els.status.textContent = `已交给浏览器下载 ${filename}`;
     finishExportProgress("main", { title: "长图下载完成", detail: els.status.textContent });
   } catch (error) {
     els.status.textContent = error?.message || "长图下载失败，请稍后重试";
@@ -13075,21 +13160,21 @@ async function isZipBlob(blob) {
   return header[0] === 0x50 && header[1] === 0x4b && (header[2] === 0x03 || header[2] === 0x05 || header[2] === 0x07);
 }
 
-async function downloadCanvasesIndividually(onProgress = null) {
+async function downloadCanvasesIndividually(baseName, onProgress = null) {
   for (const [index, canvas] of state.canvases.entries()) {
-    const filename = `layout-page-${String(index + 1).padStart(2, "0")}.png`;
+    const filename = `${baseName}-${String(index + 1).padStart(2, "0")}.png`;
     await downloadCanvas(canvas, filename);
     onProgress?.(index + 1, state.canvases.length);
   }
 }
 
-async function prepareStaticCanvasSubset(entries, onProgress = null) {
+async function prepareStaticCanvasSubset(entries, onProgress = null, baseName = "layout-page") {
   if (!entries.length) return null;
   const files = [];
   for (const [index, canvas] of entries) {
     const blob = await canvasToLosslessPngBlob(canvas);
     if (!blob) throw new Error(`第 ${index + 1} 页 PNG 生成失败。`);
-    files.push({ blob, filename: `layout-page-${String(index + 1).padStart(2, "0")}.png`, pageIndex: index });
+    files.push({ blob, filename: `${baseName}-${String(index + 1).padStart(2, "0")}.png`, pageIndex: index });
     onProgress?.({ type: "page", pageIndex: index, completed: files.length, total: entries.length });
   }
   if (!window.JSZip) {
@@ -13122,6 +13207,13 @@ async function downloadAll() {
     showPendingLivePhotoBatchHandoff(entries);
     return;
   }
+  if (entries.length === 1) {
+    await exportCanvasAutomatically(entries[0][1], "", 0);
+    return;
+  }
+  const zipFilename = await requestExportFilename(defaultExportFilename("zip"), `${entries.length} 张高清 PNG 图片，按页序打包，并附带可编辑原稿。`);
+  if (!zipFilename) return;
+  const baseName = zipFilename.replace(/\.zip$/i, "");
   if (!beginExportProgress("main", {
     title: "正在准备批量导出",
     detail: "正在识别普通图片和 Live Photo…",
@@ -13134,7 +13226,6 @@ async function downloadAll() {
     return;
   }
 
-  const zipFilename = "graphic-layout-pages.zip";
   els.status.textContent = "正在打包图片...";
   try {
     const zip = new window.JSZip();
@@ -13152,7 +13243,7 @@ async function downloadAll() {
         finishExportProgress("main", { success: false, title: "图片生成失败", detail: els.status.textContent });
         return;
       }
-      const filename = `layout-page-${String(index + 1).padStart(2, "0")}.png`;
+      const filename = `${baseName}-${String(index + 1).padStart(2, "0")}.png`;
       zip.file(filename, blob);
       updateExportProgress("main", {
         title: `已生成高清图片 ${index + 1}/${state.canvases.length}`,
@@ -13171,19 +13262,19 @@ async function downloadAll() {
 
     if (!(await isZipBlob(blob))) {
       els.status.textContent = "打包文件异常，已改为逐张下载";
-      await downloadCanvasesIndividually();
+      await downloadCanvasesIndividually(baseName);
       finishExportProgress("main", { success: false, title: "ZIP 打包异常", detail: "已改为逐张下载图片。" });
       return;
     }
 
     updateExportProgress("main", { title: "正在保存批量文件", detail: "ZIP 已生成，正在交给浏览器下载…", value: 96 });
     await saveBlob(blob, zipFilename);
-    els.status.textContent = `已下载 ${state.canvases.length} 张图片压缩包`;
+    els.status.textContent = `已下载 ${zipFilename}，包含 ${state.canvases.length} 张图片与可编辑原稿`;
     finishExportProgress("main", { title: "批量下载完成", detail: els.status.textContent });
   } catch (error) {
     console.error(error);
     els.status.textContent = "打包失败，已改为逐张下载";
-    await downloadCanvasesIndividually();
+    await downloadCanvasesIndividually(baseName);
     finishExportProgress("main", { success: false, title: "批量打包失败", detail: "已尝试改为逐张下载图片。" });
   }
 }
@@ -13218,6 +13309,19 @@ function positionOpenToolPopovers() {
 }
 
 function bindEvents() {
+  els.exportNameClose.addEventListener("click", () => els.exportNameDialog.close(""));
+  els.exportNameCancel.addEventListener("click", () => els.exportNameDialog.close(""));
+  els.exportNameInput.addEventListener("input", () => { els.exportNameError.textContent = ""; });
+  els.exportNameForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const base = sanitizeExportBaseName(els.exportNameInput.value);
+    if (!base) {
+      els.exportNameError.textContent = "请填写有效的文件名。";
+      els.exportNameInput.focus();
+      return;
+    }
+    els.exportNameDialog.close(`${base}${els.exportNameExtension.textContent}`);
+  });
   document.querySelectorAll(".tool-menu").forEach((menu) => {
     const summary = menu.querySelector("summary");
     const popover = menu.querySelector(".tool-popover");
@@ -13701,6 +13805,8 @@ function bindEvents() {
   window.addEventListener("mousemove", moveCropDrag);
   window.addEventListener("mouseup", stopCropDrag);
   window.addEventListener("keydown", (event) => {
+    // 让浏览器处理命名窗口的 Escape，避免同时关闭后方的实况面板。
+    if (els.exportNameDialog.open) return;
     if (feedbackModalIsOpen()) {
       if (event.key === "Escape") closeFeedbackModal();
       else if (event.key === "Tab") trapModalFocus(event, els.feedbackModal);
