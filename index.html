@@ -36,20 +36,125 @@
     <meta name="twitter:image" content="https://fawen.fun/brand/og-image.png" />
     <meta name="twitter:creator" content="@iamcora13" />
     <link rel="stylesheet" href="src/styles.css?v=20261126-export-names" />
-  </head>
-  <body class="entry-choice-pending history-disabled">
-    <main class="workspace">
-      <aside id="historySidebar" class="history-sidebar" aria-label="本地草稿">
-        <button id="historyToggleBtn" class="history-tab" type="button" title="打开本地草稿" aria-label="打开本地草稿">
-          <i data-lucide="panel-left-open"></i>
+  <style>#obsidianImportMenu>summary.obsidian-direct-entry{width:auto;min-width:110px;gap:6px;padding-inline:9px;white-space:nowrap}.obsidian-logo-box{display:grid;place-items:center;width:28px;height:28px;overflow:visible;flex-shrink:0}.obsidian-entry-icon{width:30px;height:30px;max-width:none;object-fit:contain}</style><style>@media(pointer:coarse){.onboarding-actions button,.onboarding-action-button{min-height:44px;min-width:44px;}}@media(prefers-reduced-motion:reduce){.onboarding-focus{transition:none}}.preview-entry-bar{display:flex;align-items:center;justify-content:space-between;padding:5px 18px;border-bottom:1px solid var(--line);background:var(--paper);font-size:12px;gap:12px}.preview-entry-bar a{color:var(--ink);text-decoration:none}.preview-creation-switch{display:flex;gap:4px;padding:3px;border-radius:7px;background:var(--soft)}.preview-creation-switch>*{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:5px;min-height:36px}.preview-creation-switch .is-active{background:var(--ink);color:var(--paper)}body{grid-template-rows:auto minmax(0,1fr) auto}@media(max-width:620px){.preview-entry-bar{padding-inline:12px}.preview-entry-bar>small{display:none}.preview-creation-switch>*{min-height:44px;padding-inline:9px}}.preview-history-tools{display:flex;align-items:center;gap:4px;padding-left:6px;margin-left:3px;border-left:1px solid var(--line)}</style><link rel="stylesheet" href="src/toolbar-layout.css?v=20261128-site">
+<link rel="stylesheet" href="src/card-writing.css?v=20261128-site">
+<link rel="stylesheet" href="src/workspace-layout.css?v=20261128-site"><script>(()=>{const p=new URLSearchParams(location.search),a=new URLSearchParams(location.hash.slice(1));const home=/^#(home|intro|about)$/.test(location.hash);const workspace=p.get('mode')==='local'||(!home&&(p.has('workspace')||p.has('tour')||p.has('experience')||p.has('reset')||p.has('code')||a.has('access_token')||location.hash==='#workspace'));document.documentElement.dataset.siteView=workspace?'workspace':'home';})();</script><link rel="stylesheet" href="src/site-shell.css?v=20261128-site"></head>
+  <body class="entry-choice-pending history-disabled"><section id="site-home" aria-label="写了就发网站介绍"></section><template id="site-home-template"><div id="home-app" data-page="home" data-intro-tab="writing" data-demo-mode="classic">
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#home" aria-label="写了就发首页">
+        <img src="home-assets/logo.svg" alt="写了就发原版 logo" width="36" height="36">
+        <span><strong>写了就发</strong><small>Write Then Publish</small></span>
+      </a>
+      <nav class="home-nav" aria-label="网站导航">
+        <button type="button" data-page="home" aria-current="page">首页</button>
+        <button type="button" data-page="intro">简介</button>
+        <button type="button" data-page="about">关于</button>
+      </nav>
+      <div class="header-actions">
+        <span class="guest-hint">默认游客免注册</span>
+        <button type="button" class="button button-secondary login-entry" data-open-account>登录</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="home-content">
+    <section id="home-page" class="screen home-screen" aria-labelledby="home-heading">
+      <div class="hero-grid page-width">
+        <div class="hero-copy">
+          <p class="entry-note"><span>打开即写</span>无需注册 · 草稿自动保存在本地</p>
+          <h1 id="home-heading">一篇图文，<br>多种排版。</h1>
+          <p class="hero-description">先把想法写下来，自动排成<strong>图文卡片</strong>或<strong>公众号长文</strong>。<br>文字和图片一起排好，写完就能发。</p>
+          <div class="hero-actions">
+            <a class="button button-primary" data-start href="#workspace" data-start-creation>开始创作 <i data-lucide="arrow-right" aria-hidden="true"></i></a>
+            <button class="button button-secondary" type="button" data-page="intro">看看怎么写 <i data-lucide="arrow-down" aria-hidden="true"></i></button>
+          </div>
+          <p class="hero-footnote"><span><i data-lucide="check" aria-hidden="true"></i>默认游客身份即可使用</span><span><i data-lucide="check" aria-hidden="true"></i>支持 Markdown 与 Obsidian</span></p>
+          <button class="creator-link" type="button" data-page="about">
+            <img src="home-assets/creator-avatar.webp" alt="捏捏番茄本人头像" width="40" height="40">
+            <span><strong>捏捏番茄 出品</strong><small>全网 60 万订阅 · AI Builder</small></span>
+            <span class="creator-about">关于作者 <i data-lucide="arrow-right" aria-hidden="true"></i></span>
+          </button>
+        </div>
+        <div class="hero-stage" aria-label="同一份正文的图文卡片与公众号长文示例">
+          <span class="stage-label card-label"><i data-lucide="panels-top-left" aria-hidden="true"></i>图文卡片 · 3:4 自动分页</span>
+          <span class="stage-label article-label"><i data-lucide="align-left" aria-hidden="true"></i>公众号长文 · 一键复制</span>
+          <article class="hero-article">
+            <span class="article-overline">公众号长文预览</span>
+            <h2>把时间留给内容。</h2>
+            <div class="article-rule"></div>
+            <p>先把想法写下来，再慢慢打磨表达。排版这件事，可以更轻松。</p>
+            <img src="home-assets/example-comic-mint-bunny-v1.png" alt="薄荷绿小兔与AI终端的两格漫画" width="700" height="394">
+            <p><mark>同一份正文</mark>，既能排成图文卡片，也能排成适合阅读的长文。</p>
+            <small>支持微信绿、经典、优雅等多套主题与字号切换。</small>
+          </article>
+          <article class="hero-card">
+            <div class="card-author"><img src="home-assets/creator-avatar.webp" alt="捏捏番茄本人头像" width="32" height="32"><div><strong>捏捏番茄 <img class="verified" src="home-assets/verified.svg" alt="原版认证标识"></strong><small>全网 60 万订阅的创作者</small></div><i data-lucide="ellipsis" aria-hidden="true"></i></div>
+            <h2>把时间留给内容。</h2>
+            <p>先把想法写下来。<br>文字和图片，一起自动排好。</p>
+            <img class="card-picture" src="home-assets/example-comic-mint-bunny-v1.png" alt="薄荷绿小兔与AI终端的两格漫画" width="700" height="394">
+            <p class="card-highlight"><mark>写完，不必再到处排版。</mark></p>
+          </article>
+          <span class="stage-caption"><i data-lucide="layers" aria-hidden="true"></i>同一份内容，随时切换写法与排版</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="intro-page" class="screen intro-screen" aria-labelledby="intro-heading" hidden>
+      <div class="intro-inner page-width">
+        <div class="intro-heading-row"><div><h1 id="intro-heading"><span>选择怎么写，</span><span>决定排成什么样。</span></h1><p>两种创作方式，两种文章排版。共用同一份正文，随时切换不丢内容。</p></div></div>
+        <nav class="intro-navigation" aria-label="简介章节"><button id="writing-link" type="button" data-intro-section="writing" aria-current="location" aria-controls="writing-panel">创作方式 <span>2 种</span></button><button id="layouts-link" type="button" data-intro-section="layouts" aria-controls="layouts-panel">文章排版 <span>2 种</span></button></nav>
+        <section id="writing-panel" class="intro-panel writing-panel" aria-label="两种创作方式">
+          <div class="writing-layout">
+            <div class="mode-options" role="group" aria-label="创作方式示例">
+              <button type="button" class="mode-option" data-demo-mode="classic" aria-pressed="true"><span class="mode-title"><span class="mode-icon"><i data-lucide="panels-left-bottom" aria-hidden="true"></i></span><strong>经典模式</strong><small>默认推荐</small></span><span class="mode-description">左侧写 Markdown 正文，右侧实时查看多张卡片或长文排版。熟悉的编辑方式与完整工具栏全部保留。</span></button>
+              <button type="button" class="mode-option" data-demo-mode="immersive" aria-pressed="false"><span class="mode-title"><span class="mode-icon"><i data-lucide="pen-line" aria-hidden="true"></i></span><strong>沉浸写作</strong><small>所见即所得</small></span><span class="mode-description">收起左侧编辑栏，直接点进卡片修改文字；内容写到页尾时，自动续页生成下一张卡片。</span></button>
+              <div class="mode-note"><i data-lucide="lightbulb" aria-hidden="true"></i><p><strong>创作方式随时可切</strong><span>不管在左边写还是在卡片上直接改，始终是同一份正文。</span></p></div>
+            </div>
+            <figure class="demo-stage">
+              <div class="demo-window" aria-label="经典模式示例稿">
+                <div class="demo-window-bar"><span class="window-dots" aria-hidden="true"><b></b><b></b><b></b></span><strong id="demo-title">写了就发 · 经典模式</strong><span class="demo-support"><img src="ui-assets/obsidian-entry-framed-v2.png" alt="Obsidian">支持 Obsidian</span><span class="demo-page-count">示例稿 · 6 张</span></div>
+                <div class="demo-columns">
+                  <div class="demo-source"><div class="mini-tools" aria-hidden="true"><b>H1</b><b>H2</b><b>B</b><i>I</i><u>U</u><i data-lucide="highlighter"></i><i data-lucide="image-plus"></i></div><div class="demo-markdown"><p><span>#</span> 把时间留给内容。</p><p>一份正文，可以排成图文卡片，也可以排成公众号长文。</p><p><span>**</span>经典模式<span>**</span>，在左边整理正文，右边实时查看多卡分页。</p><p><span>**</span>沉浸写作<span>**</span>，直接点进卡片修改文字，写满自动续页。</p><p>图片、实况、查找替换等全部继续保留。</p></div><span class="mini-save">Markdown · 本地自动保存</span></div>
+                  <div class="demo-cards" aria-label="六张图文卡片示例"></div>
+                  <aside class="demo-styles" aria-label="示例样式设置"><strong>卡片样式</strong><p>字号 35 · 行距 1.85</p><strong>卡片比例</strong><span class="mini-ratio">3:4</span><strong>主题底色</strong><div class="mini-swatches" aria-hidden="true"><b></b><b></b><b></b><b></b></div><span class="mini-avatar-toggle"><i data-lucide="check" aria-hidden="true"></i>每页显示头像</span></aside>
+                </div>
+              </div>
+              <figcaption><span id="demo-caption">经典模式 · 左边写 Markdown，右边实时预览多张卡片与自动分页</span><span>1728 × 2304 高清导出</span></figcaption>
+            </figure>
+          </div>
+        </section>
+        <section id="layouts-panel" class="intro-panel layouts-panel" aria-labelledby="layouts-heading">
+          <div class="intro-section-heading"><h2 id="layouts-heading"><span>两种文章排版，</span><span>适配不同发布场景。</span></h2><p>写法可以随时切换，排版按发布需要选择。</p></div>
+          <div class="output-options">
+            <article class="output-option"><div><span class="layout-name"><i data-lucide="panels-top-left" aria-hidden="true"></i>文章排版 01</span><h3>图文卡片</h3><p>按卡片高度自动拆页续写。图片、拼图和正文一起排版，支持自定义头像、昵称与每页头像开关。</p><ul><li>3:4 卡片，高清导出</li><li>单张直接下载图片，多文件自动打包</li><li>支持自定义导出文件名</li></ul></div><div class="output-visual output-cards-visual" aria-hidden="true"></div></article>
+            <article class="output-option"><div><span class="layout-name"><i data-lucide="align-left" aria-hidden="true"></i>文章排版 02</span><h3>公众号长文</h3><p>经典、优雅、微信绿、多彩等多套主题，自由选择字体与字号，复制排版后直接粘贴到公众号后台。</p><button type="button" class="text-button" data-media="article">查看长文示例 <i data-lucide="arrow-up-right" aria-hidden="true"></i></button><span class="output-theme-note">主题、字体、字号与主题色独立设置。</span></div><button type="button" class="output-visual output-article-screenshot" data-media="article" aria-label="放大查看公众号长文示例"><img src="home-assets/article-mode-user-1485.png" alt="用户提供的新长文截图：Google AI Studio 文章、约1485字，附主题、字体与字号设置" width="1780" height="1678"></button></article>
+          </div>
+          <button type="button" class="motion-feature" data-media="motion"><span class="motion-copy"><span class="layout-name"><i data-lucide="aperture" aria-hidden="true"></i>图文卡片还支持</span><strong>动态图与 Live Photo 实况</strong><span>一篇图文里放多张动图或实况图片，支持选片段、裁剪、倍速与保留原声。</span><small>点击查看：左侧原图，右侧点开后的设置界面 <i data-lucide="arrow-up-right" aria-hidden="true"></i></small></span><span class="motion-images"><img src="home-assets/live-original.webp" alt="用户提供的实况图文原图"><i data-lucide="arrow-right" aria-hidden="true"></i><img src="home-assets/live-settings.webp" alt="用户提供的实况图片设置界面"></span></button>
+        </section>
+        <div class="capability-strip"><div><i data-lucide="folder-open" aria-hidden="true"></i><p><strong>稿件带得走，下次接着写</strong><span>草稿保存在当前浏览器，可下载可编辑原稿 ZIP。</span></p></div><div><img src="ui-assets/obsidian-entry-framed-v2.png" alt="Obsidian"><p><strong>Markdown 导入与 Obsidian 同步</strong><span>导入本地文档，或连接自己的 Obsidian 笔记库。</span></p></div><div><i data-lucide="image-plus" aria-hidden="true"></i><p><strong>图片、实况与排版工具齐全</strong><span>插图、拼图、实况、高亮、查找替换等全部保留。</span></p></div></div>
+      </div>
+    </section>
+
+    <section id="about-page" class="screen about-screen" aria-labelledby="about-heading" hidden>
+      <div class="about-grid page-width">
+        <div class="creator-intro"><img class="about-avatar" src="home-assets/creator-avatar.webp" alt="捏捏番茄本人头像" width="112" height="112"><h1 id="about-heading">你好，我是捏捏番茄。</h1><p class="creator-subscribers">全网 60 万订阅的创作者。</p><p>从编剧、全栈开发到流量运营，再到 AI Builder。<br>喜欢挑战新事物，也希望在 AI 时代和大家一起找到新乐趣。</p></div>
+        <div class="creator-platforms"><h2>产品更新、创作日常，<br>也在这些地方分享。</h2><a href="https://x.com/iamcora13" target="_blank" rel="noopener noreferrer"><img src="home-assets/x.svg" alt="X logo"><span><strong>X / Twitter</strong><small>@iamcora13</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a><a href="https://www.xiaohongshu.com/user/profile/67952aba000000000e01356a" target="_blank" rel="noopener noreferrer"><span class="redbook-logo" aria-hidden="true">红</span><span><strong>小红书</strong><small>捏捏番茄</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a><a href="https://www.douyin.com/user/MS4wLjABAAAA8HEddoRiC7edoHeoDC48MvCoZuZMcY_EPjBv551akE8" target="_blank" rel="noopener noreferrer"><img src="home-assets/douyin.svg" alt="抖音 logo"><span><strong>抖音</strong><small>捏捏番茄</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a><a href="https://github.com/fxyadela" target="_blank" rel="noopener noreferrer"><img src="home-assets/github.svg" alt="GitHub logo"><span><strong>GitHub</strong><small>@fxyadela</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a><div class="static-platform" aria-label="视频号：捏捏番茄"><svg class="channels-platform-logo" viewBox="25 34 78 66" role="img" aria-label="视频号 logo"><image href="home-assets/channels.png" width="128" height="128"></image></svg><span><strong>视频号</strong><small>捏捏番茄</small></span></div><button type="button" class="static-platform public-account-platform" data-media="official-account" aria-label="查看公众号及贴图号捏捏番茄AI的关注二维码" title="点击查看关注二维码"><svg class="public-account-logo" viewBox="20 32 68 68" aria-hidden="true"><image href="home-assets/wechat-public-logo-source.png" width="314" height="124"></image></svg><span class="platform-name"><strong>公众号 / 贴图号</strong><small>捏捏番茄AI</small></span><span class="qr-mini-entry"><img src="home-assets/wechat-public-qr.jpg" alt="关注二维码缩略图" width="430" height="430"><span>扫码关注</span><i data-lucide="chevron-right" aria-hidden="true"></i></span></button></div>
+      </div>
+    </section>
+  </main>
+  <dialog id="media-dialog" aria-labelledby="media-title"><header><h2 id="media-title">图文示例</h2><button type="button" id="close-media" aria-label="关闭示例"><i data-lucide="x" aria-hidden="true"></i></button></header><div id="media-body"></div></dialog>
+</div></template>
+    <header class="preview-entry-bar"><a href="home.html">← 返回首页</a><div class="preview-creation-switch" role="group" aria-label="创作模式"><button type="button" class="is-active" data-creation-mode="classic" aria-pressed="true">经典模式</button><button type="button" data-creation-mode="immersive" aria-pressed="false">沉浸写作</button></div></header><main class="workspace">
+      <aside id="historySidebar" class="history-sidebar" aria-label="本地草稿" aria-hidden="true" inert>
+        <button id="historyToggleBtn" class="history-tab" type="button" title="打开本地草稿" aria-label="打开本地草稿" aria-controls="historySidebar" aria-expanded="false">
+          <i data-lucide="panel-left-open" class="history-open-icon" aria-hidden="true"></i>
+          <i data-lucide="panel-left-close" class="history-close-icon" aria-hidden="true"></i>
           <span class="history-tab-label">本地草稿</span>
         </button>
         <div class="history-drawer">
           <div class="history-head">
             <span>本地草稿</span>
-            <button id="historyCloseBtn" class="icon-button ghost" type="button" title="收起本地草稿" aria-label="收起本地草稿">
-              <i data-lucide="panel-left-close"></i>
-            </button>
           </div>
           <small class="history-note">自动保存到当前浏览器，点击切换编辑</small>
           <div class="history-filter" aria-label="本地草稿筛选">
@@ -79,9 +184,9 @@
               <span>新建</span>
             </button>
             <button class="secondary-button portable-import-open" id="portableImportOpenBtn" type="button" aria-haspopup="dialog" aria-controls="portableImportModal">
-              <i data-lucide="folder-up"></i>导入原稿
+              <i data-lucide="folder-up"></i>导入
             </button>
-            <button class="secondary-button convert-mode-button" id="convertModeBtn" type="button">
+            <button class="secondary-button convert-mode-button" id="convertModeBtn" hidden type="button">
               <i data-lucide="repeat-2"></i>
               <span>转长文</span>
             </button>
@@ -89,7 +194,7 @@
               <i data-lucide="user-round"></i>
               每页头像
             </button>
-            <button class="icon-button" id="themeToggleBtn" type="button" title="切换黑白主题" aria-label="切换黑白主题">
+            <button class="icon-button" id="themeToggleBtn" hidden type="button" title="切换黑白主题" aria-label="切换黑白主题">
               <i data-lucide="palette"></i>
             </button>
           </div>
@@ -97,13 +202,18 @@
 
         <section class="editor-controls" aria-label="编辑工具">
           <div class="profile-inline">
-            <label class="avatar-picker" title="修改头像">
+            <button class="avatar-picker preview-avatar-trigger" type="button" id="previewAvatarButton" popovertarget="previewAvatarPanel" aria-label="更换头像" title="更换头像">
               <img id="avatarPreview" alt="头像预览" />
-              <input id="avatarInput" type="file" accept="image/*" />
-            </label>
+              <span class="preview-avatar-mask"><i data-lucide="camera" aria-hidden="true"></i></span>
+            </button>
+            <section id="previewAvatarPanel" popover="auto" aria-label="更换头像">
+              <div class="preview-avatar-heading"><strong>更换头像</strong><button type="button" popovertarget="previewAvatarPanel" popovertargetaction="hide" aria-label="关闭头像面板"><i data-lucide="x" aria-hidden="true"></i></button></div>
+              <button id="previewAvatarUpload" class="preview-avatar-upload" type="button" aria-label="重新上传头像" autofocus><img id="previewAvatarImage" alt="当前头像" /><span><i data-lucide="camera" aria-hidden="true"></i>重新上传</span></button>
+              <p>点击图片，选择新的头像</p><input id="avatarInput" type="file" accept="image/*" hidden />
+            </section>
             <input id="displayNameInput" class="compact-input name-input" type="text" aria-label="名称" />
-            <input id="handleInput" class="compact-input handle-input" type="text" aria-label="英文昵称" placeholder="可留空" />
-            <button id="cropAvatarBtn" class="tool-button" type="button" title="裁剪头像" aria-label="裁剪头像">
+            <input id="handleInput" class="compact-input handle-input" type="text" aria-label="个人备注" placeholder="可留空" />
+            <button id="cropAvatarBtn" hidden class="tool-button" type="button" title="裁剪头像" aria-label="裁剪头像">
               <i data-lucide="crop"></i>
             </button>
           </div>
@@ -142,13 +252,12 @@
             </label>
             <label id="livePhotoToolbarBtn" class="tool-button file-tool feature-anchor" title="插入实况图片" aria-label="插入实况图片">
               <i data-lucide="video"></i>
-              <span class="feature-new-badge" data-feature-badge="live" aria-label="新功能">新</span>
+              <span class="feature-new-badge" data-feature-label="live" aria-label="实况">实况</span>
               <input id="contentVideoInput" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" />
             </label>
             <details id="obsidianImportMenu" class="tool-menu obsidian-import-menu">
-              <summary class="tool-button feature-anchor" title="Obsidian 双向同步" aria-label="Obsidian 双向同步">
-                <i data-lucide="clipboard-paste"></i>
-                <span class="feature-new-badge" data-feature-badge="obsidian" aria-label="新功能">新</span>
+              <summary class="tool-button feature-anchor obsidian-direct-entry" title="Obsidian 双向同步" aria-label="Obsidian 双向同步"><span class="obsidian-logo-box"><img src="ui-assets/obsidian-entry-framed-v2.png" alt="" class="obsidian-entry-icon"></span><span>Obsidian</span>
+                <span class="feature-new-badge" data-feature-label="obsidian" aria-label="同步">同步</span>
               </summary>
               <div class="tool-popover obsidian-import-popover">
                 <div class="obsidian-import-heading">
@@ -327,7 +436,7 @@
                   </label>
                   <label>
                     字号
-                    <input id="fontSizeInput" type="number" min="24" max="40" value="34" />
+                    <input id="fontSizeInput" type="number" min="24" max="40" value="35" />
                   </label>
                   <label>
                     行距
@@ -357,7 +466,7 @@
                   </label>
                 </div>
               </div>
-            </details>
+            </details><div class="preview-history-tools" role="group" aria-label="编辑历史"><button type="button" id="previewUndoBtn" class="tool-button" aria-label="撤销" title="撤销"><i data-lucide="undo-2"></i></button><button type="button" id="previewRedoBtn" class="tool-button" aria-label="重做" title="重做"><i data-lucide="redo-2"></i></button></div>
           </div>
 
         </section>
@@ -1370,11 +1479,11 @@
       <div id="onboardingFocus" class="onboarding-focus" aria-hidden="true"></div>
       <section id="onboardingTooltip" class="onboarding-tooltip">
         <span id="onboardingArrow" class="onboarding-arrow" aria-hidden="true"></span>
-        <h3 id="onboardingTitle">先创建自己的内容</h3>
-        <p id="onboardingBody">左侧两个内容是示例模板。点击这里，新建你的图文卡片或公众号长文。</p>
+        <h3 id="onboardingTitle">先设置个人信息</h3>
+        <p id="onboardingBody">默认以游客身份使用，无需注册。先设置个人信息，再开始创作。</p>
         <button id="onboardingActionBtn" class="onboarding-action-button secondary-button" type="button" hidden></button>
         <div class="onboarding-actions">
-          <span id="onboardingProgress">1 / 4</span>
+          <span id="onboardingProgress">1 / 8</span>
           <div>
             <button id="onboardingSkipBtn" class="secondary-button" type="button">跳过</button>
             <button id="onboardingNextBtn" class="primary-button" type="button">下一步</button>
@@ -1387,7 +1496,7 @@
     <script src="src/vendor/mp4box.all.min.js?v=0.5.3" defer></script>
     <script src="src/vendor/mp4muxer.js?v=5.2.1" defer></script>
     <script src="src/live-photo-browser.js?v=20260929-quote-block" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <script src="src/vendor/lucide.min.js?v=1.8.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
       // 本地版通过启动脚本打开 ?mode=local：完全跳过账号 SDK 与云端配置。
@@ -1402,6 +1511,7 @@
         document.write('<script src="src/supabase.js?v=20261005-migration-zip"><\/script>');
       }
     </script>
-    <script src="src/app.js?v=20261126-export-names"></script>
-  </body>
+    <script src="src/site-shell.js?v=20261128-site"></script><script src="src/app.js?v=20261128-site"></script>
+<script src="src/toolbar-layout.js?v=20261128-site"></script>
+  <script src="src/avatar-upload.js?v=20261128-site"></script><script src="src/card-writing.js?v=20261128-site"></script><script src="src/workspace-layout.js?v=20261128-site"></script><script src="src/home.js?v=20261128-site"></script></body>
 </html>
