@@ -1,0 +1,8 @@
+#site-home { display:none; position:fixed; inset:0; z-index:80; width:100%; height:100dvh; overflow:hidden; }
+html[data-site-view=home] #site-home { display:block; }
+html[data-site-view=home] body>.preview-entry-bar,
+html[data-site-view=home] body>.workspace,
+html[data-site-view=home] #maintenanceWelcome,
+html[data-site-view=home] #entryChoiceModal,
+html[data-site-view=home] #onboardingTour,
+html[data-site-view=home] #welcomeBackModal { display:none!important; }

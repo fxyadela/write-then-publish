@@ -10,14 +10,14 @@ const LIVE_PAGE_HEIGHT = 1440;
 const CARD_SIDE_PADDING = 42;
 const CARD_CONTENT_WIDTH = CANVAS_WIDTH - CARD_SIDE_PADDING * 2;
 const CARD_MAX_IMAGE_HEIGHT = CANVAS_HEIGHT - CARD_SIDE_PADDING - 62;
-const DEFAULT_CARD_FONT_SIZE = 34;
+const DEFAULT_CARD_FONT_SIZE = 35;
 const DEFAULT_CARD_LINE_HEIGHT = 1.85;
 const UNDERLINE_GAP = 15;
 const CARD_BODY_FONT_WEIGHT = 400;
 const CARD_BODY_STROKE_WIDTH = 0;
 const EXPORT_IMAGE_MIME = "image/png";
 const DEFAULT_DISPLAY_NAME = "捏捏番茄";
-const DEFAULT_HANDLE = "@X: iamcora13";
+const DEFAULT_HANDLE = "全网 60 万订阅的创作者";
 const EXPORT_IMAGE_EXTENSION = ".png";
 const EXPORT_ZIP_COMPRESSION = "STORE";
 const LIVE_PHOTO_API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:5173" : "";
@@ -144,7 +144,6 @@ const els = {
   exportProgressFill: $("#exportProgressFill"),
   historySidebar: $("#historySidebar"),
   historyToggle: $("#historyToggleBtn"),
-  historyClose: $("#historyCloseBtn"),
   newProject: $("#newProjectBtn"),
   portableImportOpen: $("#portableImportOpenBtn"),
   projectHistory: $("#projectHistory"),
@@ -445,20 +444,7 @@ const els = {
   featureBadges: document.querySelectorAll("[data-feature-badge]"),
 };
 
-const sampleAvatar =
-  "data:image/svg+xml;charset=utf-8," +
-  encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
-  <rect width="160" height="160" fill="#b8dd8a"/>
-  <circle cx="80" cy="82" r="55" fill="#f5f3d8" stroke="#223622" stroke-width="7"/>
-  <path d="M42 48c16-15 56-16 76 1" fill="none" stroke="#223622" stroke-width="8" stroke-linecap="round"/>
-  <circle cx="59" cy="75" r="7" fill="#223622"/>
-  <circle cx="100" cy="75" r="7" fill="#223622"/>
-  <path d="M63 105c10 9 25 9 35 0" fill="none" stroke="#223622" stroke-width="7" stroke-linecap="round"/>
-  <rect x="39" y="62" width="31" height="20" rx="6" fill="none" stroke="#223622" stroke-width="5"/>
-  <rect x="90" y="62" width="31" height="20" rx="6" fill="none" stroke="#223622" stroke-width="5"/>
-  <path d="M70 72h20" stroke="#223622" stroke-width="5"/>
-</svg>`);
+const sampleAvatar = "data:image/webp;base64,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";
 
 const sampleImage =
   "data:image/svg+xml;charset=utf-8," +
@@ -969,7 +955,7 @@ function readForm() {
     zhFont: FONT_STACKS[els.zhFont.value] ? els.zhFont.value : "zh-system",
     enFont: FONT_STACKS[els.enFont.value] ? els.enFont.value : "en-system",
     imageHeight: clamp(Number(els.imageHeight.value) || CARD_MAX_IMAGE_HEIGHT, 220, CARD_MAX_IMAGE_HEIGHT),
-    headerMode: state.headerMode === "first" ? "first" : "every",
+    headerMode: ["first", "none"].includes(state.headerMode) ? state.headerMode : "every",
     appMode: state.appMode === "article" ? "article" : "cards",
     articleTheme: normalizeArticleTheme(state.articleTheme),
     articleFont: normalizeArticleFont(state.articleFont),
@@ -985,6 +971,7 @@ function readForm() {
 
 function normalizeAuthorProfile(data = {}) {
   const savedName = String(data.displayName || "").trim().slice(0, 40);
+  const savedHandle = normalizeHandle(data.handle);
   // 更新旧模板署名；其他创作者自己保存的昵称继续保留。
   const displayName = !savedName || ["Leo说科技", "捏捏番茄（AI图文版）"].includes(savedName)
     ? DEFAULT_DISPLAY_NAME
@@ -1000,7 +987,7 @@ function normalizeAuthorProfile(data = {}) {
   return {
     displayName,
     // 留空是合法状态：清掉之后不要再被默认值顶回来。
-    handle: normalizeHandle(data.handle),
+    handle: ["@X: iamcora13", "@iamcora13", "@heytomato"].includes(savedHandle) ? DEFAULT_HANDLE : savedHandle,
     avatar: typeof data.avatar === "string" && data.avatar ? data.avatar : sampleAvatar,
     avatarCrop,
   };
@@ -1054,7 +1041,7 @@ function applyForm(data) {
   els.imageHeight.value = ["380", "520"].includes(storedImageHeight)
     ? String(CARD_MAX_IMAGE_HEIGHT)
     : storedImageHeight;
-  state.headerMode = data.headerMode === "first" ? "first" : "every";
+  state.headerMode = ["first", "none"].includes(data.headerMode) ? data.headerMode : "every";
   state.appMode = data.appMode === "article" ? "article" : "cards";
   state.articleTheme = normalizeArticleTheme(data.articleTheme);
   state.articleFont = normalizeArticleFont(data.articleFont);
@@ -1107,19 +1094,19 @@ async function toggleUiTheme() {
 
 function updateHeaderModeButton() {
   if (!els.headerModeToggle) return;
-  const firstOnly = state.headerMode === "first";
-  els.headerModeToggle.classList.toggle("active", firstOnly);
-  els.headerModeToggle.innerHTML = `<i data-lucide="${firstOnly ? "user-round-check" : "user-round"}"></i>${firstOnly ? "仅首页头像" : "每页头像"}`;
-  els.headerModeToggle.title = firstOnly ? "当前仅首页显示头像昵称，点击改为每页显示" : "当前每页显示头像昵称，点击改为仅首页显示";
-  els.headerModeToggle.setAttribute("aria-label", els.headerModeToggle.title);
-  if (window.lucide) window.lucide.createIcons();
+  const visible = state.headerMode !== "none";
+  els.headerModeToggle.setAttribute("role", "switch");
+  els.headerModeToggle.setAttribute("aria-checked", String(visible));
+  els.headerModeToggle.title = visible ? "隐藏每页头像" : "显示每页头像";
+  els.headerModeToggle.setAttribute("aria-label", "每页头像");
+  els.headerModeToggle.innerHTML = '<span class="preview-switch-thumb" aria-hidden="true"></span>';
 }
 
 async function toggleHeaderMode() {
-  state.headerMode = state.headerMode === "first" ? "every" : "first";
+  state.headerMode = state.headerMode === "none" ? "every" : "none";
   updateHeaderModeButton();
   await render();
-  els.status.textContent = state.headerMode === "first" ? "仅首页显示个人信息" : "每张图片都显示个人信息";
+  els.status.textContent = state.headerMode === "none" ? "已隐藏卡片头像" : "每张卡片显示头像";
 }
 
 function updateAppMode() {
@@ -1140,7 +1127,8 @@ function updateAppMode() {
   els.copyWechat.hidden = state.appMode !== "article";
   // 草稿箱同步整体还不完善，先全站下线；功能做好后把这里改回按 appMode 判断即可。
   els.syncWechat.hidden = true;
-  els.headerModeToggle.hidden = state.appMode === "article";
+  els.headerModeToggle.hidden = false;
+  els.headerModeToggle.disabled = state.appMode === "article" || isBuiltInProjectId(state.currentProjectId);
 }
 
 async function setAppMode(mode) {
@@ -1869,6 +1857,10 @@ function closeAccountModal() {
   accountAuthAddMode = false;
   updateAccountUi();
   if (!entryState.resolved) showEntryChoice();
+  if (guestGuideResumeAfterAccount) {
+    guestGuideResumeAfterAccount = false;
+    showOnboardingStep(0);
+  }
 }
 
 function setFeedbackNotice(message, type = "") {
@@ -2487,6 +2479,8 @@ async function showGuideProjectForDemo() {
 }
 
 async function presentPostEntryExperience() {
+  if (document.documentElement.dataset.siteView === "home") return;
+  if (document.getElementById("site-home") && !LOCAL_DEPLOYMENT_MODE && !firstRunTourIsForced() && !experiencePreviewMode()) return;
   if (!entryState.resolved) return;
   if (ACCOUNT_MAINTENANCE) return;
   const previewMode = experiencePreviewMode();
@@ -2518,6 +2512,9 @@ function setEntryChoiceNotice(message = "", tone = "") {
 }
 
 function showEntryChoice(message = "", tone = "") {
+  if (document.getElementById("site-home") && !LOCAL_DEPLOYMENT_MODE) {
+    return activateGuestWorkspace().then(() => finishEntryChoice("guest"));
+  }
   closeAccountMenu();
   entryState.mode = "pending";
   entryState.resolved = false;
@@ -3008,7 +3005,7 @@ async function initializeCloudAccount() {
       sessionStorage.setItem(ENTRY_MODE_SESSION_KEY, "guest");
       await chooseGuestMode();
     } else {
-      showEntryChoice();
+      await showEntryChoice();
     }
     showMaintenanceWelcomeOnce();
     return;
@@ -3037,7 +3034,7 @@ async function initializeCloudAccount() {
           await handleCloudSession(null);
           await activateWorkspaceScope("guest");
           sessionStorage.removeItem(ENTRY_MODE_SESSION_KEY);
-          showEntryChoice("登录状态已结束，请重新选择使用方式。");
+          await showEntryChoice("登录状态已结束，请重新选择使用方式。");
         }, 0);
       }
       return;
@@ -3075,20 +3072,20 @@ async function initializeCloudAccount() {
       }
       if (migrationWasPending && ACCOUNT_MAINTENANCE) openCloudMigrationModal();
     } else if (migrationWasPending) {
-      showEntryChoice();
+      await showEntryChoice();
       openMigrationTestLogin();
       setMigrationTestNotice(redirectStatus?.message || GOOGLE_OAUTH_CANCELLED_MESSAGE, Boolean(redirectStatus?.tone === "error"));
     } else if (redirectStatus) {
       const lastEmail = localStorage.getItem(LAST_ACCOUNT_EMAIL_KEY) || "";
       setPendingConfirmation(lastEmail);
-      showEntryChoice();
+      await showEntryChoice();
       window.setTimeout(() => {
         openAccountModal();
         setAccountAuthMode("signin", { keepNotice: true });
         setAccountNotice(redirectStatus.message, redirectStatus.tone);
       }, 0);
     } else if (googleOAuthWasPending) {
-      showEntryChoice();
+      await showEntryChoice();
       window.setTimeout(() => {
         openAccountModal();
         setAccountAuthMode("signin", { keepNotice: true });
@@ -3100,7 +3097,7 @@ async function initializeCloudAccount() {
       sessionStorage.setItem(ENTRY_MODE_SESSION_KEY, "guest");
       await chooseGuestMode();
     } else {
-      showEntryChoice();
+      await showEntryChoice();
     }
   } catch (error) {
     setAccountNotice(error?.message || "登录状态读取失败。", "error");
@@ -3109,7 +3106,7 @@ async function initializeCloudAccount() {
       await activateGuestWorkspace();
       finishEntryChoice("guest", { returning: true });
     } else {
-      showEntryChoice(
+      await showEntryChoice(
         isCloudRestrictedMessage(error?.message) ? CLOUD_RESTRICTED_NOTICE : "暂时无法检查登录状态，你仍可先使用游客模式。",
         "error",
       );
@@ -3402,7 +3399,7 @@ function migrateStoredState(data) {
     data.lineHeight = String(DEFAULT_CARD_LINE_HEIGHT);
   }
   delete data.underlineGap;
-  data.headerMode = data.headerMode === "first" ? "first" : "every";
+  data.headerMode = ["first", "none"].includes(data.headerMode) ? data.headerMode : "every";
   data.appMode = data.appMode === "article" ? "article" : "cards";
   data.articleTheme = normalizeArticleTheme(data.articleTheme);
   data.articleFont = normalizeArticleFont(data.articleFont);
@@ -3636,7 +3633,11 @@ function setHistoryOpen(open, { userInitiated = false } = {}) {
   if (open && !historyEnabled()) return;
   // 窄窗口优先保留编辑空间，只有用户主动打开时才展开草稿列表。
   if (open && !userInitiated && window.matchMedia(COMPACT_WORKSPACE_QUERY).matches) open = false;
+  const returnFocus = !open && els.historySidebar.contains(document.activeElement);
   els.historySidebar.classList.toggle("open", open);
+  els.historySidebar.inert = !open;
+  els.historySidebar.setAttribute("aria-hidden", String(!open));
+  if (returnFocus) els.historyToggle?.focus({ preventScroll: true });
   els.workspace?.classList.toggle("history-open", open);
   els.historyToggle?.setAttribute("aria-label", open ? "收起本地草稿" : "打开本地草稿");
   els.historyToggle?.setAttribute("title", open ? "收起本地草稿" : "打开本地草稿");
@@ -3741,26 +3742,56 @@ async function createNewProject() {
   els.status.textContent = "已新建图文，上一条已保存在左侧本地草稿。";
 }
 
+let guestGuideResumeAfterAccount = false;
 const FIRST_RUN_ONBOARDING_STEPS = [
   {
-    target: "#newProjectBtn",
-    title: "先创建自己的内容",
-    body: "左侧两个内容是示例模板。点击这里，新建你的图文卡片或公众号长文。",
+    target: ".reference-author",
+    panel: "settings",
+    placement: "left",
+    title: "先设置个人信息",
+    body: "默认以游客身份使用，无需注册。在这里上传头像、填写昵称和账号信息，并选择是否每页显示头像。",
+  },
+  {
+    target: ".reference-typography",
+    panel: "settings",
+    placement: "left",
+    title: "调整文字与卡片样式",
+    body: "在这里调整字号和行距。下方还能设置主题底色、字体、文字色和强调色，右侧预览会同步更新。",
+  },
+  {
+    target: "#contentInput",
+    fallbackTarget: "#pages",
+    placement: "right",
+    title: "在编辑区整理正文",
+    body: () => document.body.dataset.creationMode === "immersive"
+      ? "沉浸写作直接在卡片上修改正文。上方保留完整工具栏，可以设置标题、加粗、插入图片和实况，也可以导入已有文稿。"
+      : "在左侧输入或粘贴 Markdown 正文。上方工具栏可以设置标题、加粗、插入图片和实况，也可以导入已有文稿。",
+  },
+  {
+    target: "#pages",
+    placement: "left",
+    title: "在预览区查看排版",
+    body: "正文会实时生成排版效果，内容变长后自动续页。文字、图片、拼图和实况一起排好；画布底部的缩放滑条只改变预览大小。",
   },
   {
     target: "#appModeSwitch",
-    title: "选择发布形式",
-    body: "同一份内容可以在“图文卡片”和“长文”之间切换，不需要重新排版。",
+    title: "选择文章排版",
+    body: "“图文卡片”将内容排成多张 3:4 图片；“公众号长文”排成适合阅读的长文，并支持复制公众号格式。两种排版共用同一份正文。",
   },
   {
-    target: "#obsidianImportMenu",
-    title: "连接并同步 Obsidian",
-    body: "点击这里选择仓库。粘贴笔记时会自动读取图片；修改完成后还能同步回 Obsidian，无法直写时会下载 ZIP。",
+    target: "#referenceWritingTrigger",
+    title: "选择创作方式",
+    body: "“经典模式”在左侧写 Markdown、右侧预览；“沉浸写作”直接在卡片上修改，写满自动续页。创作方式决定在哪里写，与文章排版独立选择。",
   },
   {
-    target: ".preview-topbar",
-    title: "边写边预览，完成后导出",
-    body: "在左侧编辑内容，右侧会实时生成效果。完成后点击这里下载图片或发布包。",
+    target: "#downloadMenu > summary",
+    title: "完成后，从这里下载",
+    body: "单张普通卡片直接下载图片，多张或多个文件才打包。下载时可以重命名，也能保存可编辑原稿，下次导入后继续写。",
+  },
+  {
+    target: "#obsidianImportMenu > summary",
+    title: "更多功能：Obsidian 双向同步",
+    body: "从这里连接自己的 Obsidian 笔记库。导入笔记时读取图片，写完后同步修改；无法直写时可下载原稿 ZIP。暂不连接也能正常创作。",
   },
 ];
 
@@ -3815,48 +3846,99 @@ function onboardingShouldStart() {
   }
 }
 
+// Resolve the visible control after the reference layout moves controls.
+// A collapsed popover is present in the DOM but must never become a 0x0 anchor.
+function onboardingTarget(step) {
+  for (const selector of [step?.target, step?.fallbackTarget].filter(Boolean)) {
+    const node = document.querySelector(selector);
+    if (!node) continue;
+    const box = node.getBoundingClientRect();
+    const style = getComputedStyle(node);
+    if (box.width > 1 && box.height > 1 && style.visibility !== "hidden" && style.opacity !== "0") return node;
+  }
+  return null;
+}
+
+let onboardingPreviousStylesOpen = null;
 function positionOnboardingStep() {
   if (!onboardingIsOpen()) return;
   const step = onboardingSteps()[onboardingStepIndex];
-  const target = step
-    ? document.querySelector(step.target) || (step.fallbackTarget ? document.querySelector(step.fallbackTarget) : null)
-    : null;
-  if (!target) return;
-  const rect = target.getBoundingClientRect();
-  const padding = 7;
-  els.onboardingFocus.style.left = `${Math.max(4, rect.left - padding)}px`;
-  els.onboardingFocus.style.top = `${Math.max(4, rect.top - padding)}px`;
-  els.onboardingFocus.style.width = `${Math.min(window.innerWidth - 8, rect.width + padding * 2)}px`;
-  els.onboardingFocus.style.height = `${Math.min(window.innerHeight - 8, rect.height + padding * 2)}px`;
-
-  const tooltipRect = els.onboardingTooltip.getBoundingClientRect();
-  const gap = 18;
-  let placement = "bottom";
-  let top = rect.bottom + gap;
-  if (top + tooltipRect.height > window.innerHeight - 16) {
-    placement = "top";
-    top = rect.top - tooltipRect.height - gap;
+  if (document.body.classList.contains("reference-workspace")) {
+    document.body.classList.toggle("reference-styles-open", step?.panel === "settings");
   }
-  top = clamp(top, 16, Math.max(16, window.innerHeight - tooltipRect.height - 16));
-  const left = clamp(rect.left, 16, Math.max(16, window.innerWidth - tooltipRect.width - 16));
-  els.onboardingTooltip.dataset.placement = placement;
-  els.onboardingTooltip.style.left = `${left}px`;
-  els.onboardingTooltip.style.top = `${top}px`;
-  const arrow = els.onboardingTooltip.querySelector(".onboarding-arrow");
-  if (arrow) arrow.style.left = `${clamp(rect.left + rect.width / 2 - left - 6, 18, tooltipRect.width - 30)}px`;
+  const target = onboardingTarget(step);
+  const tooltip = els.onboardingTooltip;
+  const arrow = tooltip.querySelector(".onboarding-arrow");
+  const viewport = window.visualViewport;
+  const vx = viewport?.offsetLeft || 0, vy = viewport?.offsetTop || 0;
+  const width = viewport?.width || innerWidth, height = viewport?.height || innerHeight;
+  const margin = 16, gap = 18;
+  if (!target) {
+    els.onboardingFocus.hidden = true;
+    if (arrow) arrow.hidden = true;
+    const box = tooltip.getBoundingClientRect();
+    tooltip.style.left = `${vx + Math.max(margin, (width - box.width) / 2)}px`;
+    tooltip.style.top = `${vy + Math.max(margin, (height - box.height) / 2)}px`;
+    return;
+  }
+  let box = target.getBoundingClientRect();
+  if (box.bottom <= vy + 4 || box.top >= vy + height - 4 || box.right <= vx + 4 || box.left >= vx + width - 4) {
+    target.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+    box = target.getBoundingClientRect();
+  }
+  // Spotlight only the visible portion of a scrollable editor or canvas.
+  const rect = { left: Math.max(vx + 4, box.left), top: Math.max(vy + 4, box.top), right: Math.min(vx + width - 4, box.right), bottom: Math.min(vy + height - 4, box.bottom) };
+  for (let parent = target.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+    const style = getComputedStyle(parent), clip = parent.getBoundingClientRect();
+    if (/(auto|scroll|hidden|clip)/.test(style.overflowX)) { rect.left = Math.max(rect.left, clip.left); rect.right = Math.min(rect.right, clip.right); }
+    if (/(auto|scroll|hidden|clip)/.test(style.overflowY)) { rect.top = Math.max(rect.top, clip.top); rect.bottom = Math.min(rect.bottom, clip.bottom); }
+  }
+  rect.width = Math.max(0, rect.right - rect.left); rect.height = Math.max(0, rect.bottom - rect.top);
+  els.onboardingFocus.hidden = rect.width < 1 || rect.height < 1;
+  const padding = 7;
+  const leftEdge = Math.max(vx + 4, rect.left - padding), topEdge = Math.max(vy + 4, rect.top - padding);
+  els.onboardingFocus.style.left = `${leftEdge}px`;
+  els.onboardingFocus.style.top = `${topEdge}px`;
+  els.onboardingFocus.style.width = `${Math.max(0, Math.min(vx + width - 4, rect.right + padding) - leftEdge)}px`;
+  els.onboardingFocus.style.height = `${Math.max(0, Math.min(vy + height - 4, rect.bottom + padding) - topEdge)}px`;
+
+  const tip = tooltip.getBoundingClientRect();
+  const x = clamp(rect.left + rect.width / 2 - tip.width / 2, vx + margin, Math.max(vx + margin, vx + width - tip.width - margin));
+  const y = clamp(rect.top + rect.height / 2 - tip.height / 2, vy + margin, Math.max(vy + margin, vy + height - tip.height - margin));
+  const candidates = {
+    bottom: { left: x, top: rect.bottom + gap },
+    top: { left: x, top: rect.top - tip.height - gap },
+    left: { left: rect.left - tip.width - gap, top: y },
+    right: { left: rect.right + gap, top: y },
+  };
+  const order = [...new Set([step.placement, "bottom", "top", "right", "left"].filter(Boolean))];
+  const fits = ({left, top}) => left >= vx + margin && top >= vy + margin && left + tip.width <= vx + width - margin && top + tip.height <= vy + height - margin;
+  const placement = order.find(side => fits(candidates[side])) || (height - rect.bottom + vy >= rect.top - vy ? "bottom" : "top");
+  const candidate = candidates[placement];
+  const left = clamp(candidate.left, vx + margin, Math.max(vx + margin, vx + width - tip.width - margin));
+  const top = clamp(candidate.top, vy + margin, Math.max(vy + margin, vy + height - tip.height - margin));
+  tooltip.dataset.placement = placement;
+  tooltip.style.left = `${left}px`; tooltip.style.top = `${top}px`;
+  if (arrow) {
+    arrow.hidden = els.onboardingFocus.hidden;
+    const vertical = placement === "left" || placement === "right";
+    arrow.style.left = vertical ? "" : `${clamp(rect.left + rect.width / 2 - left - 6, 18, tip.width - 30)}px`;
+    arrow.style.top = vertical ? `${clamp(rect.top + rect.height / 2 - top - 6, 18, tip.height - 30)}px` : "";
+  }
 }
 
 function showOnboardingStep(index) {
   const steps = onboardingSteps();
   onboardingStepIndex = clamp(index, 0, steps.length - 1);
   const step = steps[onboardingStepIndex];
+  if (onboardingPreviousStylesOpen === null) onboardingPreviousStylesOpen = document.body.classList.contains("reference-styles-open");
   closeAccountMenu();
   document.body.classList.toggle("onboarding-account-step", onboardingMode === "whats-new" && step.target === "#accountBtn");
   els.onboardingTitle.textContent = step.title;
   els.onboardingBody.textContent = typeof step.body === "function" ? step.body() : step.body;
   els.onboardingProgress.textContent = `${onboardingStepIndex + 1} / ${steps.length}`;
   els.onboardingNext.textContent = onboardingStepIndex === steps.length - 1
-    ? onboardingMode === "whats-new" ? "完成" : "开始使用"
+    ? onboardingMode === "whats-new" ? "完成" : "开始创作"
     : "下一步";
   if (els.onboardingAction) {
     const actionLabel = typeof step.actionLabel === "function" ? step.actionLabel() : step.actionLabel;
@@ -3865,12 +3947,17 @@ function showOnboardingStep(index) {
     els.onboardingAction.onclick = actionLabel && step.action ? step.action : null;
   }
   els.onboardingTour.classList.remove("hidden");
+  positionOnboardingStep();
   window.requestAnimationFrame(positionOnboardingStep);
 }
 
 function finishOnboarding({ remember = true } = {}) {
   els.onboardingTour.classList.add("hidden");
   document.body.classList.remove("onboarding-account-step");
+  if (onboardingPreviousStylesOpen !== null) {
+    document.body.classList.toggle("reference-styles-open", onboardingPreviousStylesOpen);
+    onboardingPreviousStylesOpen = null;
+  }
   closeAccountMenu();
   if (els.onboardingAction) {
     els.onboardingAction.hidden = true;
@@ -3889,13 +3976,33 @@ function finishOnboarding({ remember = true } = {}) {
   }
 }
 
+let onboardingExitBusy = false;
+async function exitOnboardingToBlank() {
+  if (onboardingExitBusy || !onboardingIsOpen()) return;
+  if (onboardingMode !== "first-run") { finishOnboarding(); return; }
+  onboardingExitBusy = true;
+  els.onboardingNext.disabled = true;
+  els.onboardingSkip.disabled = true;
+  try {
+    const previousId = state.currentProjectId;
+    finishOnboarding();
+    await createNewProject();
+    if (state.currentProjectId !== previousId) {
+      setHistoryOpen(false);
+      els.content.focus({ preventScroll: true });
+      els.status.textContent = "已为你新建空白稿，可以开始创作。";
+    }
+  } finally {
+    onboardingExitBusy = false;
+    els.onboardingNext.disabled = false;
+    els.onboardingSkip.disabled = false;
+  }
+}
+
 async function advanceOnboarding() {
   const steps = onboardingSteps();
-  if (onboardingMode === "first-run" && onboardingStepIndex === 0 && isBuiltInProjectId(state.currentProjectId)) {
-    await createNewProject();
-  }
   if (onboardingStepIndex >= steps.length - 1) {
-    finishOnboarding();
+    await exitOnboardingToBlank();
     return;
   }
   showOnboardingStep(onboardingStepIndex + 1);
@@ -8471,7 +8578,7 @@ async function buildPages(settings) {
   let previousBlockType = null;
 
   function createPage() {
-    const showHeader = settings.headerMode !== "first" || pages.length === 0;
+    const showHeader = settings.headerMode !== "none" && (settings.headerMode !== "first" || pages.length === 0);
     const bounds = contentBoundsForHeader(showHeader);
     return {
       avatar,
@@ -10626,6 +10733,7 @@ async function render() {
   if (state.appMode === "article") {
     renderArticlePreview(settings);
     saveState();
+    window.dispatchEvent(new Event("preview-document-rendered"));
     return;
   }
   const pages = await buildPages(settings);
@@ -10634,6 +10742,7 @@ async function render() {
   drawPreview(state.canvases);
   saveState();
   scheduleLivePhotoPrewarm();
+  window.dispatchEvent(new Event("preview-document-rendered"));
 }
 
 async function cancelStaleLivePhotoPrewarm(entry) {
@@ -11365,7 +11474,7 @@ function previewFrameAtPoint(clientX, clientY) {
 }
 
 function autoScrollPreviewDuringImageDrag(clientY) {
-  const panel = document.querySelector(".preview-panel");
+  const panel = document.querySelector(document.body.dataset.creationMode === "immersive" ? ".preview-native-surface" : ".preview-body");
   if (!panel || panel.scrollHeight <= panel.clientHeight) return;
   const rect = panel.getBoundingClientRect();
   const edge = 64;
@@ -13338,11 +13447,6 @@ function bindEvents() {
       });
       requestAnimationFrame(() => positionToolPopover(menu));
     });
-    if (menu.classList.contains("settings-menu")) {
-      popover?.addEventListener("mouseleave", () => {
-        menu.open = false;
-      });
-    }
   });
 
   document.addEventListener("pointerdown", (event) => {
@@ -13587,7 +13691,7 @@ function bindEvents() {
   els.livePhotoHandoffReveal.addEventListener("click", revealLivePhotoHandoff);
   els.livePhotoHandoffAirdrop.addEventListener("click", airdropLivePhotoHandoff);
   els.livePhotoHandoffDownload.addEventListener("click", downloadLivePhotoBatch);
-  els.onboardingSkip.addEventListener("click", finishOnboarding);
+  els.onboardingSkip.addEventListener("click", exitOnboardingToBlank);
   els.onboardingNext.addEventListener("click", advanceOnboarding);
   els.welcomeBackClose?.addEventListener("click", () => closeWelcomeBack());
   els.welcomeBackDirect?.addEventListener("click", () => closeWelcomeBack());
@@ -13762,6 +13866,8 @@ function bindEvents() {
     if (event.persisted) restoreCancelledGoogleOAuth();
   });
   window.addEventListener("resize", positionOnboardingStep);
+  window.visualViewport?.addEventListener("resize", positionOnboardingStep);
+  window.visualViewport?.addEventListener("scroll", positionOnboardingStep);
   window.addEventListener("scroll", positionOnboardingStep, true);
   els.livePhotoForm.addEventListener("submit", applyLivePhotoAsset);
   els.livePhotoVideoInput.addEventListener("change", handleLivePhotoVideo);
@@ -13877,7 +13983,6 @@ function bindEvents() {
     });
   });
   els.historyToggle.addEventListener("click", toggleHistory);
-  els.historyClose.addEventListener("click", () => setHistoryOpen(false));
   const compactWorkspace = window.matchMedia(COMPACT_WORKSPACE_QUERY);
   let desktopHistoryOpen;
   compactWorkspace.addEventListener("change", ({ matches }) => {
@@ -13896,7 +14001,7 @@ function bindEvents() {
   });
   els.newProject.addEventListener("click", async () => {
     await createNewProject();
-    if (onboardingMode === "first-run" && onboardingIsOpen() && onboardingStepIndex === 0) showOnboardingStep(1);
+    if (onboardingMode === "first-run" && onboardingIsOpen() && onboardingStepIndex === 1) showOnboardingStep(2);
   });
   els.convertMode.addEventListener("click", convertCurrentMode);
   els.headerModeToggle.addEventListener("click", toggleHeaderMode);
@@ -13923,7 +14028,11 @@ resetTextHistory();
 updateProjectHistory();
 bindEvents();
 void loadObsidianVaultConnection();
-void initializeCloudAccount();
+window.wtpAccountReady = initializeCloudAccount();
 if (window.lucide) {
   window.lucide.createIcons();
 }
+
+// Additive preview controls reuse incumbent history functions.
+document.querySelector("#previewUndoBtn").addEventListener("click", undoTextChange);
+document.querySelector("#previewRedoBtn").addEventListener("click", redoTextChange);
