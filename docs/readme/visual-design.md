@@ -1,17 +1,27 @@
-# README 图像与页面来源
+# README 功能海报
 
-2026-11-28更新。README主图及功能图片均为当前实现的浏览器截图，不使用生成的界面示意图冒充实际功能。
+2026-11-28 按用户要求重新设计。README 的七张主图与功能配图改用围绕现有功能构思的海报，以大标题、纸张与图解讲清使用方式。它们是功能示意；此前真实界面截图继续保留在本目录，网页实现和用户稿件不受影响。
 
-- product-banner.png：首页，1440×900。
-- auto-layout-workspace.png：经典模式，真实Markdown与图片自动分页；1600×1000。
-- immersive-workspace.png：相同正文的沉浸卡片，原工具栏与样式栏保留；1200×1000。
-- feature-formats.png：同一正文切换公众号长文，原主题与字体设置。
-- feature-media.png：上传后从图片直接打开裁剪窗口。
-- feature-live-photo.png：导入仓库原有5秒演示视频后的实际实况编辑窗口。
-- feature-portable.png：实际Obsidian连接与同步入口，没有伪造已连接状态。
+## 视觉与内容
 
-截图中的示例稿仅为说明功能而编写。图文卡片不增加产品页脚或页码；页外保留实际下载标签。头像、产品logo、蓝色认证沿用用户原素材。
+- 黑白、墨绿与浅鼠尾草绿；统一宽幅、粗体标题、白色纸张和连接箭头。
+- 中文产品名“写了就发”与英文名“Write Then Publish”在总览中同时突出；各功能图保留英文品牌。
+- 经典／沉浸对应在哪里写；图文卡片／公众号长文对应最终文章排版，分别说明。
+- 卡片用段落线与山水插图表现内容流动；不增加人物头像、认证、虚构页脚或页码，不改动原产品logo。
+- 实况海报区分倍速与原速保留原声；Obsidian海报说明连接并授权后同步，不描绘已连接的真实状态。
 
-薄荷绿小兔两格漫画由内置ImageGen根据用户要求生成，完整提示词为home-assets/example-comic-mint-bunny-v1.prompt.txt。公众号二维码使用原始图片，Obsidian图标为已确认的黑白带底版本，网页副本缩小到128px用于展示，原始设计资产保留在本地设计稿。
+| 文件 | 功能重点 |
+|---|---|
+| posters/hero-v1.png | 一篇图文、多种排版，游客打开即写 |
+| posters/classic-writing-v1.png | Markdown正文、实时预览、自动分页 |
+| posters/immersive-writing-v1.png | 卡片直接编辑、向下续页、共用正文 |
+| posters/article-layouts-v1.png | 3:4图文卡片、公众号长文、复制富文本 |
+| posters/image-layout-v1.png | 上传粘贴拖放、图片位置与大小、裁剪和拼图 |
+| posters/live-photo-v1.png | 片段、时长、倍速、原速原声、本机合成 |
+| posters/obsidian-portable-v1.png | Markdown导入、Obsidian授权同步、ZIP原稿备份 |
 
-README顶部在线入口、功能／本地运行／能力矩阵导航以及License、Frontend、Live Photo三项徽章继续保留。历史截图文件保留，但新版README仅引用以上当前图像。
+七张均为1672×941 PNG，使用内置 image_gen 生成。首图确定系列风格，其余海报以首图为风格参考独立生成；实况海报追加一次局部编辑，精简重复的原声说明。
+
+完整提示词见 [posters/prompts.md](posters/prompts.md)，文件尺寸及哈希见 [posters/manifest.json](posters/manifest.json)。文案依据当前 README、src/app.js 和 index.html 中已有功能逐项核对，未加入自动发布、云端稿件同步或AI写作等能力。
+
+README顶部在线入口、功能／本地运行／能力矩阵导航以及License、Frontend、Live Photo三项徽章继续保留。此前 product-banner.png、auto-layout-workspace.png 等截图原件保持不变。

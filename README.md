@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://fawen.fun">
-    <img src="docs/readme/product-banner.png" width="100%" alt="写了就发 · Write Then Publish：一篇图文，两种创作方式，多种文章排版。经典与沉浸共用正文，支持图文卡片、公众号长文、实况与 Obsidian 同步。捏捏番茄出品。" />
+    <img src="docs/readme/posters/hero-v1.png" width="100%" alt="写了就发 / Write Then Publish 功能总览海报：一篇图文，多种排版；两种创作方式与两种文章排版。" />
   </a>
 </p>
 
@@ -19,13 +19,13 @@
   <a href="#live-photo"><img src="https://img.shields.io/badge/Live_Photo-WebCodecs-177d69.svg" alt="Live Photo: WebCodecs" /></a>
 </p>
 
-## 工作区预览
+## 从正文到成稿
 
 **Write Then Publish（写了就发）**，把写作、排版和导出放在同一个工作区。一篇正文，两种创作方式；可以排成自动分页的图文卡片，也可以排成公众号长文。
 
-<p align="center"><img src="docs/readme/auto-layout-workspace.png" width="100%" alt="新版经典模式实际截图：左侧 Markdown 正文，中间自动分页卡片，右侧作者信息和排版设置" /></p>
+<p align="center"><img src="docs/readme/posters/classic-writing-v1.png" width="100%" alt="经典模式功能海报：左边写 Markdown，右边实时预览，长文自动分页。" /></p>
 
-本页图片均来自新版实际界面。默认以游客身份使用，无需注册；首页、简介、关于的登录入口在当前页面打开账号窗口。点击“开始创作”进入工作区，首次引导依次介绍个人信息、样式、编辑、预览、文章排版、创作方式、下载与 Obsidian；跳过或完成都会新建一份空白稿。
+本页海报按现有功能重新设计，用图解呈现写作、自动排版、素材编辑与导出流程。默认以游客身份使用，无需注册；首页、简介、关于的登录入口在当前页面打开账号窗口。点击“开始创作”进入工作区，首次引导依次介绍个人信息、样式、编辑、预览、文章排版、创作方式、下载与 Obsidian；跳过或完成都会新建一份空白稿。
 
 ## 核心功能
 
@@ -38,7 +38,7 @@
 
 两种方式保留同一套完整工具栏：标题、加粗、斜体、下划线、引用、文字色、高亮、撤销重做、图片、实况、复制纯文本、表情与查找替换。切换时不另建一份内容。工具栏按空间换行，常用工具不需要横向滑动寻找。
 
-<p align="center"><img src="docs/readme/immersive-workspace.png" width="100%" alt="沉浸写作实际截图：同一篇文章的卡片完整展开，直接在卡片编辑，右侧保留样式设置" /></p>
+<p align="center"><img src="docs/readme/posters/immersive-writing-v1.png" width="100%" alt="沉浸写作功能海报：直接在卡片上写，写满自动续页，与经典模式共用同一份正文。" /></p>
 
 卡片缩放滑条在两种方式下均位于画布底栏右侧，缩放只改变视图。右侧集中设置作者信息、字号、行距、字体和颜色；**新建与重置样式默认字号为35**，旧稿保留已保存的值。点击头像直接选择本地图片，每页头像开关可控制头像显示。
 
@@ -53,13 +53,13 @@
 | 支持作者头像、昵称及个人备注 | 一键复制带内联样式的公众号富文本 |
 | 单张静态图片直接下载PNG，多张或多个文件打包 | 下载PNG长图，或复制公众号格式到后台 |
 
-<p align="center"><img src="docs/readme/feature-formats.png" width="100%" alt="公众号长文实际截图：原正文切换为长文，右侧提供主题、配色、字体及字号，顶部可复制公众号格式或下载" /></p>
+<p align="center"><img src="docs/readme/posters/article-layouts-v1.png" width="100%" alt="文章排版功能海报：同一份正文生成3:4图文卡片或公众号长文，支持主题、字体、字号与复制公众号格式。" /></p>
 
 默认备注为“全网 60 万订阅的创作者”，可自行修改或留空。这里的两种文章排版与经典／沉浸两种创作方式相互独立；动图、实况与拼图属于图文能力。
 
 ### 图片混排、裁剪与双图拼图
 
-<p align="center"><img src="docs/readme/feature-media.png" width="100%" alt="新版图片裁剪实际窗口：上传素材后选择裁剪范围和画面比例，裁剪只切除画面，不拉伸图片" /></p>
+<p align="center"><img src="docs/readme/posters/image-layout-v1.png" width="100%" alt="图片编辑功能海报：图片随文排好，支持上传、粘贴、拖放、移动、缩放、裁剪及双图拼图。" /></p>
 
 - **导入图片**：上传、粘贴、拖放和批量导入。
 - **调整素材**：支持自由、原图、1:1、4:3、16:9、3:4、9:16裁剪；这些是素材比例，成品卡片仍为3:4。
@@ -71,7 +71,7 @@
 
 ### Live Photo 实况图文
 
-<p align="center"><img src="docs/readme/feature-live-photo.png" width="100%" alt="新版实况编辑实际窗口：视频与图文一起排版，选择时长、倍速、画面比例、片段与声音" /></p>
+<p align="center"><img src="docs/readme/posters/live-photo-v1.png" width="100%" alt="Live Photo实况图文功能海报：选择3秒、5秒或8秒片段及倍速，原速可保留原声，在本机合成且原视频不上传。" /></p>
 
 工具栏的视频按钮以“**实况**”角标标识。视频可以和文字、普通图片一起放进同一篇图文，自动识别实况页并导出发布包；一篇图文可包含多张实况图片。
 
@@ -94,7 +94,7 @@
 
 ### Markdown 导入、Obsidian 同步与可编辑原稿
 
-<p align="center"><img src="docs/readme/feature-portable.png" width="100%" alt="新版Obsidian入口实际截图：黑白图标与同步角标，展开后连接仓库、读取笔记图片并将修改同步回去" /></p>
+<p align="center"><img src="docs/readme/posters/obsidian-portable-v1.png" width="100%" alt="Obsidian与原稿功能海报：Markdown导入、授权后双向同步，以及保存正文、设置和素材的ZIP原稿备份。" /></p>
 
 Obsidian入口常显，黑白图标右上角标记“**同步**”。
 
