@@ -1,27 +1,30 @@
-# README 功能海报
+# README 创作流程与功能海报
 
-2026-11-28 按用户要求重新设计。README 的七张主图与功能配图改用围绕现有功能构思的海报，以大标题、纸张与图解讲清使用方式。它们是功能示意；此前真实界面截图继续保留在本目录，网页实现和用户稿件不受影响。
+2026-11-28 V2。按用户反馈重新组织信息：从导入内容到成品导出及原稿续写，沿同一条创作流程阅读。当前为一张总览加五个环节，共六张功能海报。
 
-## 视觉与内容
+## 信息结构
 
-- 黑白、墨绿与浅鼠尾草绿；统一宽幅、粗体标题、白色纸张和连接箭头。
-- 中文产品名“写了就发”与英文名“Write Then Publish”在总览中同时突出；各功能图保留英文品牌。
-- 经典／沉浸对应在哪里写；图文卡片／公众号长文对应最终文章排版，分别说明。
-- 卡片用段落线与山水插图表现内容流动；不增加人物头像、认证、虚构页脚或页码，不改动原产品logo。
-- 实况海报区分倍速与原速保留原声；Obsidian海报说明连接并授权后同步，不描绘已连接的真实状态。
+1. **导入内容**：输入、粘贴 Markdown、连接 Obsidian 笔记库并读取引用图片；写回需授权，无法直写时导出 Markdown＋附件 ZIP。
+2. **写作编辑**：经典／沉浸是两种创作方式，合并对照，共用正文与完整工具。
+3. **处理素材**：普通图片的裁剪和拼图、GIF 原件、Live Photo 片段／倍速／原速原声。
+4. **选择排版**：图文卡片／公众号长文是两种独立成品形式，集中在一节说明。
+5. **导出与续写**：成品 PNG／多文件 ZIP、下载命名、完整可编辑原稿备份及再次导入。
 
-| 文件 | 功能重点 |
+首页总览用五种不同对象串起流程：笔记文件夹、编辑稿、照片与视频、排版成品、PNG与ZIP。各环节突出不同任务，避免连续多张都只展示卡片排版。账号与数据、本地运行、技术说明放在功能流程之后；能力矩阵默认折叠。
+
+## 当前配图
+
+| 文件 | 环节 |
 |---|---|
-| posters/hero-v1.png | 一篇图文、多种排版，游客打开即写 |
-| posters/classic-writing-v1.png | Markdown正文、实时预览、自动分页 |
-| posters/immersive-writing-v1.png | 卡片直接编辑、向下续页、共用正文 |
-| posters/article-layouts-v1.png | 3:4图文卡片、公众号长文、复制富文本 |
-| posters/image-layout-v1.png | 上传粘贴拖放、图片位置与大小、裁剪和拼图 |
-| posters/live-photo-v1.png | 片段、时长、倍速、原速原声、本机合成 |
-| posters/obsidian-portable-v1.png | Markdown导入、Obsidian授权同步、ZIP原稿备份 |
+| posters/workflow-overview-v2.png | 五步流程总览 |
+| posters/content-import-v2.png | 导入与 Obsidian 互通 |
+| posters/writing-modes-v2.png | 经典与沉浸合并对照 |
+| posters/media-toolkit-v2.png | 图片、GIF、Live Photo 素材处理 |
+| posters/article-layouts-v1.png | 两种文章排版 |
+| posters/export-backup-v2.png | 成品、可编辑原稿与本地草稿 |
 
-七张均为1672×941 PNG，使用内置 image_gen 生成。首图确定系列风格，其余海报以首图为风格参考独立生成；实况海报追加一次局部编辑，精简重复的原声说明。
+统一黑白、墨绿与浅绿宽幅海报，均为1672×941 PNG；使用内置 image_gen。五张V2海报独立生成，排版海报沿用V1。完整提示词见 [posters/prompts-v2.md](posters/prompts-v2.md)，文件信息见 [posters/manifest-v2.json](posters/manifest-v2.json)。
 
-完整提示词见 [posters/prompts.md](posters/prompts.md)，文件尺寸及哈希见 [posters/manifest.json](posters/manifest.json)。文案依据当前 README、src/app.js 和 index.html 中已有功能逐项核对，未加入自动发布、云端稿件同步或AI写作等能力。
+海报为功能示意，原截图与V1海报均保留。文案依据现有代码核对；Markdown 通过输入或粘贴接入，不承诺单独的本地 .md 文件上传入口。未增加自动发布、AI写作或云端稿件同步等能力。原产品logo、头像和认证素材不变。
 
-README顶部在线入口、功能／本地运行／能力矩阵导航以及License、Frontend、Live Photo三项徽章继续保留。此前 product-banner.png、auto-layout-workspace.png 等截图原件保持不变。
+README顶部在线入口、核心功能／本地运行／能力矩阵导航及三项徽章继续保留。此次仅调整README、说明和海报资产，不修改网页交互功能。
