@@ -1,0 +1,49 @@
+{
+  "date": "2026-11-28",
+  "kind": "workflow-feature-posters",
+  "tool": "built-in image_gen",
+  "images": [
+    {
+      "file": "docs/readme/posters/workflow-overview-v2.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1661570,
+      "sha256": "54fe8ab2467a8661d476a90e9cc45623e9cd2a65bcc04a8371aabfedf4bc1e16"
+    },
+    {
+      "file": "docs/readme/posters/content-import-v2.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1710431,
+      "sha256": "2b2ace8bdeb7be1f2328783f262e5bfbdab25e710f4a40f90dd36121b50fa752"
+    },
+    {
+      "file": "docs/readme/posters/writing-modes-v2.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1671957,
+      "sha256": "b8daaa4ad43002929db8573e51a7f3c0cd38200e7d58308e220476e241c56d50"
+    },
+    {
+      "file": "docs/readme/posters/media-toolkit-v2.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1695915,
+      "sha256": "06ac5e7be61707d53577cbfe162265d40d0002a0d26206346a082b111a79fd18"
+    },
+    {
+      "file": "docs/readme/posters/article-layouts-v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1616397,
+      "sha256": "413c2eb27a96f02ecdfd9226ed59cb5ee78880f0f423d7c9079c0187bb4df4de"
+    },
+    {
+      "file": "docs/readme/posters/export-backup-v2.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1710572,
+      "sha256": "3292a16dda4b00ba424d9d3cbfd3356fa8beffb0bc81a5d279eae0dcbf83d12a"
+    }
+  ]
+}
