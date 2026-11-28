@@ -1,0 +1,56 @@
+{
+  "date": "2026-11-28",
+  "kind": "feature-marketing-posters",
+  "tool": "built-in image_gen",
+  "images": [
+    {
+      "file": "docs/readme/posters/hero-v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1655457,
+      "sha256": "2bdca648222c7ceaef349ca9a249b6d37ace45715337fac975f08f9bfd340b85"
+    },
+    {
+      "file": "docs/readme/posters/classic-writing-v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1616801,
+      "sha256": "6c2ade7c508a8d9bf88602ae9528a335c2126e997e9380cc5fb38ead9e99e269"
+    },
+    {
+      "file": "docs/readme/posters/immersive-writing-v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1568825,
+      "sha256": "73ce80def94748689ff69d6c8a4b35371a56f73131e651b5d1fe55e322a6fd7f"
+    },
+    {
+      "file": "docs/readme/posters/article-layouts-v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1616397,
+      "sha256": "413c2eb27a96f02ecdfd9226ed59cb5ee78880f0f423d7c9079c0187bb4df4de"
+    },
+    {
+      "file": "docs/readme/posters/image-layout-v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1670320,
+      "sha256": "162eeafabfa86eee2d60b5abc32bd8b7bf9940422d8aa35402086eeba66aa69f"
+    },
+    {
+      "file": "docs/readme/posters/live-photo-v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1774119,
+      "sha256": "40755283909e3eefe900331205b7aa2573f072f286ed8b669280b60d2cd5b627"
+    },
+    {
+      "file": "docs/readme/posters/obsidian-portable-v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1696005,
+      "sha256": "99f3df2e6bfa1067c50bf2c76228525d4db3471df4a8abae8143e98272eaa77e"
+    }
+  ]
+}
