@@ -47,12 +47,7 @@ body.reference-workspace [data-panel-resize=history] { display:none; }
 body.reference-workspace .editor-panel { grid-area:editor; display:flex; flex-direction:column; gap:0; height:100%; min-width:0; min-height:0; padding:0; border:0; overflow:hidden; background:var(--paper); }
 body.reference-workspace .preview-panel { grid-area:preview; display:flex; flex-direction:column; min-width:0; min-height:0; padding:0; overflow:hidden; background:var(--paper); }
 body.reference-workspace [data-panel-resize=editor] { grid-area:editor-resize; width:4px; background:var(--line); border:0; }
-body.reference-workspace .reference-document-bar { display:flex; align-items:center; flex-wrap:nowrap; justify-content:flex-start; height:58px; min-height:58px; gap:10px; margin:0; padding:0 16px; border-bottom:1px solid var(--line); }
-.reference-document-title { display:flex; align-items:center; gap:8px; min-width:0; padding:0; flex:1 1 auto; background:transparent; color:var(--ink); text-align:left; }
-.reference-document-title strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; font-weight:600; }
-.reference-document-title>svg { width:12px; height:12px; color:var(--muted); flex-shrink:0; }
-.reference-document-icon { display:grid; place-items:center; width:26px; height:28px; flex-shrink:0; background:var(--soft); border-radius:6px; color:var(--muted); }
-.reference-document-icon svg { width:15px; height:15px; }
+body.reference-workspace .reference-document-bar { display:flex; align-items:center; flex-wrap:nowrap; justify-content:flex-end; height:58px; min-height:58px; gap:10px; margin:0; padding:0 16px; border-bottom:1px solid var(--line); }
 body.reference-workspace .brand-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:nowrap; flex:0 1 auto; gap:5px; width:auto; margin:0; padding:0; }
 body.reference-workspace .brand-actions>.secondary-button { display:inline-flex; align-items:center; gap:5px; min-width:0; min-height:34px; padding:6px; background:transparent; border:0; color:var(--muted); box-shadow:none; font-size:12px; }
 body.reference-workspace .brand-actions>.secondary-button svg { width:15px; height:15px; }

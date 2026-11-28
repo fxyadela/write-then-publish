@@ -45,11 +45,7 @@
   header.replaceChildren(historyToggle,home,modeButton,nav);
   header.classList.add('reference-global-header');
 
-  const title=document.createElement('button');title.type='button';title.className='reference-document-title';
-  title.setAttribute('aria-label','打开本地草稿');
-  title.innerHTML='<span class="reference-document-icon"><i data-lucide="file-text" aria-hidden="true"></i></span><strong>未命名图文</strong><i data-lucide="chevron-down" aria-hidden="true"></i>';
-  title.addEventListener('click',()=>toggleHistory());
-  oldBrand.hidden=true;brandRow.prepend(title);brandRow.classList.add('reference-document-bar');
+  oldBrand.hidden=true;brandRow.classList.add('reference-document-bar');
   output.setAttribute('aria-label','文章排版');
   output.querySelector('[data-app-mode="cards"]').innerHTML='<i data-lucide="panels-top-left" aria-hidden="true"></i><span>图文卡片</span>';
   output.querySelector('[data-app-mode="article"]').innerHTML='<i data-lucide="align-left" aria-hidden="true"></i><span>公众号长文</span>';
@@ -191,7 +187,6 @@
     modeButton.querySelector('strong').textContent=immersive?'沉浸写作':'经典模式';
     fit.hidden=!article;
     const text=els.content.value.trim();
-    title.querySelector('strong').textContent=projectTitleFromData(readForm())||'未命名图文';
     leftStatus.firstElementChild.textContent=`Markdown · ${[...text.replace(/\s/g,'')].length} 字`;
     const color=els.bgColor.value.toLowerCase();
     const name=palettes.find(([value])=>value===color)?.[1]||'自定义';
